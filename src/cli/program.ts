@@ -7,7 +7,7 @@ export const createProgram = (): Command => {
 
   program
     .name('heimdall')
-    .description('CLI scaffold with strict TypeScript architecture.')
+    .description('Build deterministic agentic workflows.')
     .option('-c, --config <path>', 'Path to a config file')
     .option('--json', 'Print the final command result as JSON')
     .option('-v, --verbose', 'Enable verbose diagnostics')

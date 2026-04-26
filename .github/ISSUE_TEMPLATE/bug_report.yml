@@ -6,7 +6,7 @@ body:
   - type: markdown
     attributes:
       value: |
-        Thanks for helping improve Heimdall. Please remove secrets, tokens, prompts, file paths, and logs that should not be public.
+        Thanks for helping improve Heimdall. Please remove secrets, tokens, private workflow inputs, prompts, file paths, and logs that should not be public.
 
   - type: textarea
     id: summary
@@ -99,7 +99,7 @@ body:
     id: logs
     attributes:
       label: Relevant output or logs
-      description: Paste stdout, stderr, stack traces, or debug output. Redact credentials, prompts, API responses, and local paths if needed.
+      description: Paste stdout, stderr, stack traces, or debug output. Redact credentials, prompts, private workflow inputs, API responses, and local paths if needed.
       render: shell
 
   - type: checkboxes

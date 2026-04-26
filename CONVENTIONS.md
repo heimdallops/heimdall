@@ -37,7 +37,7 @@
 
 ## Naming and File Size
 
-- Use verb-first command names (`init`, `doctor`, `dashboard`, `deploy`, etc.).
+- Use verb-first command names
 - Prefer descriptive identifiers over abbreviations.
 
 ## Observability and Debugging
@@ -80,4 +80,4 @@
 
 - Keep commits focused and single-purpose.
 - Do not mix formatting-only edits with behavior changes when avoidable.
-- Prefer additive scaffolding and avoid speculative implementation.
+- Prefer additive implementation and avoid speculative behavior.
