@@ -1,0 +1,57 @@
+name: Feature request
+description: Suggest a new capability or improvement for the Heimdall CLI.
+title: '[Feature]: '
+labels: [enhancement, needs-triage]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use this form for product, CLI, workflow, and developer-experience improvements. Please avoid including private prompts, secrets, or proprietary data.
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem to solve
+      description: What user need, workflow gap, or pain point should this address?
+      placeholder: I want to...
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Possible solution
+      description: Describe the behavior you want Heimdall to provide.
+      placeholder: Add a command/flag/config option that...
+
+  - type: textarea
+    id: cli-ux
+    attributes:
+      label: CLI experience
+      description: If applicable, show the expected command, flags, input, stdout/stderr, and JSON output shape.
+      placeholder: |
+        Command: `heimdall ...`
+        Output: ...
+      render: shell
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: What workarounds or other designs have you considered?
+
+  - type: textarea
+    id: implementation
+    attributes:
+      label: Implementation notes
+      description: Optional pointers for maintainers, including related commands, config keys, tests, or docs.
+
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Before submitting
+      options:
+        - label: I searched existing issues for similar requests.
+          required: true
+        - label: I removed or redacted secrets, tokens, private prompts, and sensitive data.
+          required: true
