@@ -2,6 +2,7 @@ import type { Writable } from 'node:stream';
 
 import { theme } from './theme.ts';
 
+/** Runtime controls for human/log output routing. */
 export interface PrinterOptions {
   readonly stdout: Writable;
   readonly stderr: Writable;
@@ -9,6 +10,15 @@ export interface PrinterOptions {
   readonly debug: boolean;
 }
 
+/**
+ * Semantic output interface for commands and orchestration code.
+ *
+ * Stream principles:
+ * - stdout is reserved for final command output only, including JSON results.
+ * - stderr is for errors, warnings, progress, diagnostics, verbose logs, and
+ *   debug logs.
+ * - `--json` affects final result formatting, not log formatting.
+ */
 export interface Printer {
   readonly out: (message: string) => void;
   readonly info: (message: string) => void;
@@ -23,6 +33,7 @@ const writeLine = (stream: Writable, message: string): void => {
   stream.write(`${message}\n`);
 };
 
+/** Creates a printer bound to the current process streams and log verbosity. */
 export const createPrinter = (options: PrinterOptions): Printer => {
   const writeLog = (message: string, colorize: (value: string) => string): void => {
     writeLine(options.stderr, colorize(message));
