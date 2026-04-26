@@ -1,20 +1,20 @@
-import { createContext } from './cli/context.ts';
 import { withErrorBoundary } from './cli/middleware/with-error-boundary.ts';
 import { createProgram } from './cli/program.ts';
 import { registerCommands } from './cli/register-commands.ts';
+import { createPrinter } from './output/printer.ts';
 
 const run = async (): Promise<number> => {
   const program = createProgram();
   registerCommands(program);
 
-  const context = await createContext({
-    cwd: process.cwd(),
+  const bootstrapPrinter = createPrinter({
     stdout: process.stdout,
     stderr: process.stderr,
-    flags: program.opts(),
+    verbose: false,
+    debug: false,
   });
 
-  return withErrorBoundary(context, async (): Promise<void> => {
+  return withErrorBoundary(bootstrapPrinter, async (): Promise<void> => {
     await program.parseAsync(process.argv);
   });
 };

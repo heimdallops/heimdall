@@ -1,6 +1,6 @@
 import { EXIT_CODE } from '../../errors/cli-error.ts';
 import { mapUnknownError } from '../../errors/map-error.ts';
-import type { CliContext } from '../context.ts';
+import type { Printer } from '../../output/printer.ts';
 
 const getCommanderError = (error: unknown): { code?: string; exitCode?: number } | null => {
   if (typeof error !== 'object' || error === null) {
@@ -22,7 +22,7 @@ const getCommanderError = (error: unknown): { code?: string; exitCode?: number }
 };
 
 export const withErrorBoundary = async <T>(
-  context: CliContext,
+  printer: Printer,
   run: () => Promise<T>
 ): Promise<number> => {
   try {
@@ -40,7 +40,7 @@ export const withErrorBoundary = async <T>(
     }
 
     const mapped = mapUnknownError(error);
-    context.printer.error(`[${mapped.code}] ${mapped.message}`);
+    printer.error(`[${mapped.code}] ${mapped.message}`);
     return mapped.exitCode;
   }
 };

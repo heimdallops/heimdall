@@ -12,15 +12,16 @@ Use this skill when implementing a concrete CLI command.
 1. Create `src/commands/<name>/command.ts`.
 2. Export `buildCommand(program): void` from `command.ts`.
 3. Define Commander args/options, descriptions, examples, and common workflows in `command.ts`.
-4. Validate args/options with `zod` before calling runtime logic.
-5. Create `src/commands/<name>/run.ts` for orchestration.
-6. Pass `run(ctx, input)` explicitly; do not use global context.
-7. Put domain logic in `src/core/` when it is not command-specific orchestration.
-8. Put side-effect adapters in `src/services/` only when they centralize real behavior.
-9. Register the command in `src/cli/register-commands.ts`.
-10. Add unit tests for parsing/core behavior under `test/unit/`.
-11. Add integration tests under `test/integration/cli/` that invoke the built CLI with `execa`.
-12. Run `npm run quality` before finishing.
+4. Create `CliContext` inside the Commander action after parsing, using `program.opts()` so global flags are available.
+5. Validate args/options with `zod` before calling runtime logic.
+6. Create `src/commands/<name>/run.ts` for orchestration.
+7. Pass `run(ctx, input)` explicitly; do not use global context.
+8. Put domain logic in `src/core/` when it is not command-specific orchestration.
+9. Put side-effect adapters in `src/services/` only when they centralize real behavior.
+10. Register the command in `src/cli/register-commands.ts`.
+11. Add unit tests for parsing/core behavior under `test/unit/`.
+12. Add integration tests under `test/integration/cli/` that invoke the built CLI with `execa`.
+13. Run `npm run quality` before finishing.
 
 ## Output Rules
 
