@@ -1,0 +1,68 @@
+{
+  "name": "heimdall",
+  "version": "0.1.0",
+  "description": "TypeScript-first CLI application scaffold for Node 24.",
+  "type": "module",
+  "bin": {
+    "heimdall": "dist/index.js"
+  },
+  "main": "dist/index.js",
+  "files": [
+    "dist"
+  ],
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "dev": "node --experimental-strip-types src/index.ts",
+    "build": "tsup --config tsup.config.ts",
+    "build:sea": "npm run build && node --experimental-sea-config sea-config.json",
+    "typecheck": "tsc --project tsconfig.json --noEmit",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
+    "format": "prettier --check .",
+    "format:fix": "prettier --write .",
+    "test": "npm run build && vitest run",
+    "test:unit": "vitest run test/unit",
+    "test:integration": "npm run build && vitest run test/integration",
+    "quality": "npm run lint:fix && npm run format:fix && npm run typecheck && npm run build && npm run test"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/heimdallops/heimdall.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/heimdallops/heimdall/issues"
+  },
+  "homepage": "https://github.com/heimdallops/heimdall#readme",
+  "dependencies": {
+    "@inquirer/prompts": "^8.4.2",
+    "commander": "^14.0.3",
+    "conf": "^15.1.0",
+    "cosmiconfig": "^9.0.1",
+    "execa": "^9.6.1",
+    "ink": "^7.0.1",
+    "ora": "^9.4.0",
+    "picocolors": "^1.1.1",
+    "react": "^19.2.5",
+    "zod": "^4.3.6"
+  },
+  "devDependencies": {
+    "@types/node": "^25.6.0",
+    "@types/react": "^19.2.14",
+    "@typescript-eslint/eslint-plugin": "^8.59.0",
+    "@typescript-eslint/parser": "^8.59.0",
+    "eslint": "^10.2.1",
+    "eslint-config-prettier": "^10.1.8",
+    "eslint-plugin-simple-import-sort": "^13.0.0",
+    "eslint-plugin-unused-imports": "^4.4.1",
+    "prettier": "^3.8.3",
+    "tsup": "^8.5.1",
+    "typescript": "^6.0.3",
+    "vitest": "^4.1.5"
+  },
+  "packageManager": "npm@11"
+}
