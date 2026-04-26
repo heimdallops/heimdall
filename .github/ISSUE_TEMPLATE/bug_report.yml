@@ -1,0 +1,113 @@
+name: Bug report
+description: Report a reproducible problem with the Heimdall CLI.
+title: '[Bug]: '
+labels: [bug, needs-triage]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for helping improve Heimdall. Please remove secrets, tokens, prompts, file paths, and logs that should not be public.
+
+  - type: textarea
+    id: summary
+    attributes:
+      label: What happened?
+      description: Describe the bug and the user-visible impact.
+      placeholder: Heimdall failed when...
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: Include the exact command, flags, config shape, and inputs needed to reproduce. Redact sensitive values.
+      placeholder: |
+        1. Run `heimdall ...`
+        2. Provide config `...`
+        3. Observe `...`
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+      placeholder: I expected Heimdall to...
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+      placeholder: Instead, Heimdall...
+    validations:
+      required: true
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Affected area
+      options:
+        - CLI startup or help
+        - Command behavior
+        - Configuration
+        - Output formatting or JSON mode
+        - Installation, build, or packaging
+        - Tests or documentation
+        - Other
+    validations:
+      required: true
+
+  - type: dropdown
+    id: install-method
+    attributes:
+      label: Installation method
+      description: Select how you installed or ran Heimdall.
+      options:
+        - Standalone binary
+        - Homebrew
+        - npm global install
+        - npx
+        - From source
+        - Other
+    validations:
+      required: true
+
+  - type: input
+    id: heimdall-version
+    attributes:
+      label: Heimdall version
+      description: Use `heimdall --version`, the package version, or the commit SHA.
+      placeholder: 0.1.0 or commit SHA
+
+  - type: input
+    id: node-version
+    attributes:
+      label: Node.js version, if applicable
+      description: Only needed when running via npm, npx, or from source.
+      placeholder: node --version
+
+  - type: input
+    id: os
+    attributes:
+      label: Operating system
+      placeholder: Ubuntu 24.04, macOS 15, Windows 11, etc.
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant output or logs
+      description: Paste stdout, stderr, stack traces, or debug output. Redact credentials, prompts, API responses, and local paths if needed.
+      render: shell
+
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Before submitting
+      options:
+        - label: I searched existing issues for duplicates.
+          required: true
+        - label: I removed or redacted secrets, tokens, private prompts, and sensitive data.
+          required: true

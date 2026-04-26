@@ -31,11 +31,17 @@ export default [
       '@typescript-eslint/no-explicit-any': 'error',
       '@typescript-eslint/no-floating-promises': 'error',
       '@typescript-eslint/no-unused-vars': 'off',
+      'no-console': 'error',
       'no-restricted-syntax': [
         'error',
         {
           selector: 'ImportNamespaceSpecifier',
           message: 'Use named imports instead of namespace imports.',
+        },
+        {
+          selector:
+            "CallExpression[callee.object.object.name='process'][callee.object.property.name=/^(stdout|stderr)$/][callee.property.name='write']",
+          message: 'Use output/printer.ts instead of writing directly to process stdout or stderr.',
         },
       ],
       'simple-import-sort/imports': 'error',
