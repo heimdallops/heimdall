@@ -13,7 +13,7 @@ body:
     attributes:
       label: Problem to solve
       description: What user need, workflow gap, or pain point should this address?
-      placeholder: I need Heimdall to make agentic workflows...
+      placeholder: Describe the workflow behavior, output contract, or developer experience you want.
     validations:
       required: true
 
@@ -30,8 +30,8 @@ body:
       label: CLI experience
       description: If applicable, show the expected command, flags, input, stdout/stderr, and JSON output shape.
       placeholder: |
-        Command: [proposed Heimdall invocation]
-        Output: [expected human or JSON output]
+        Command: `heimdall ...`
+        Output: ...
       render: shell
 
   - type: textarea
