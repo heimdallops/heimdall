@@ -12,5 +12,6 @@ describe('cli help', () => {
 
     expect(result.exitCode).toBe(0);
     expect(result.stdout).toContain('Usage: heimdall');
+    expect(result.stdout).toContain('Build deterministic agentic workflows.');
   });
 });

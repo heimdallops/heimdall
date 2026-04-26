@@ -6,14 +6,14 @@ body:
   - type: markdown
     attributes:
       value: |
-        Use this for questions, early ideas, docs feedback, or reports that do not clearly fit as a bug or feature request. Please avoid sharing secrets or private data.
+        Use this for questions, early ideas, docs feedback, or reports that do not clearly fit as a bug or feature request. Please avoid sharing secrets, prompts, workflow inputs, or private data.
 
   - type: textarea
     id: question
     attributes:
       label: Question or topic
       description: What would you like to ask or discuss?
-      placeholder: I am trying to understand...
+      placeholder: I am trying to understand how Heimdall should support...
     validations:
       required: true
 
