@@ -27,7 +27,7 @@ export const withErrorBoundary = async <T>(
 ): Promise<number> => {
   try {
     await run();
-    return 0;
+    return EXIT_CODE.SUCCESS;
   } catch (error) {
     const commanderError = getCommanderError(error);
 
