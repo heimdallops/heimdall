@@ -1,7 +1,7 @@
 {
   "name": "heimdall",
   "version": "0.1.0",
-  "description": "TypeScript-first CLI application scaffold for Node 24.",
+  "description": "CLI for building deterministic agentic workflows.",
   "type": "module",
   "bin": {
     "heimdall": "dist/index.js"
@@ -31,7 +31,13 @@
     "type": "git",
     "url": "git+https://github.com/heimdallops/heimdall.git"
   },
-  "keywords": [],
+  "keywords": [
+    "agentic-workflows",
+    "deterministic",
+    "cli",
+    "workflow-orchestration",
+    "automation"
+  ],
   "author": "",
   "license": "MIT",
   "bugs": {

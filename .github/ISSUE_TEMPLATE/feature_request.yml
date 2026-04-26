@@ -13,7 +13,7 @@ body:
     attributes:
       label: Problem to solve
       description: What user need, workflow gap, or pain point should this address?
-      placeholder: I want to...
+      placeholder: Describe the workflow behavior, output contract, or developer experience you want.
     validations:
       required: true
 
@@ -22,7 +22,7 @@ body:
     attributes:
       label: Possible solution
       description: Describe the behavior you want Heimdall to provide.
-      placeholder: Add a command/flag/config option that...
+      placeholder: Describe the workflow behavior, output contract, or developer experience you want.
 
   - type: textarea
     id: cli-ux
