@@ -1,0 +1,24 @@
+name: Question / discussion
+description: Ask a question, discuss an idea, or raise something that does not fit another template.
+title: '[Question]: '
+labels: [question, needs-triage]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use this for questions, early ideas, docs feedback, or reports that do not clearly fit as a bug or feature request. Please avoid sharing secrets or private data.
+
+  - type: textarea
+    id: question
+    attributes:
+      label: Question or topic
+      description: What would you like to ask or discuss?
+      placeholder: I am trying to understand...
+    validations:
+      required: true
+
+  - type: textarea
+    id: context
+    attributes:
+      label: Context
+      description: Optional background, related commands, links, or examples.
