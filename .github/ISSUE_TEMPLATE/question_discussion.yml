@@ -13,7 +13,7 @@ body:
     attributes:
       label: Question or topic
       description: What would you like to ask or discuss?
-      placeholder: I am trying to understand how Heimdall should support...
+      placeholder: I am trying to understand...
     validations:
       required: true
 
