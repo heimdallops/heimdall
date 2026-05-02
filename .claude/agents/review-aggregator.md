@@ -25,12 +25,14 @@ You never read code files, run diffs, or generate review findings of your own. Y
 ## Quality bar — what to keep vs. discard
 
 Keep a comment if it meets ALL of these:
+
 - **Specific**: it names a file, function, pattern, or behavior — not just a general observation
 - **Actionable**: the author can make a concrete change to address it
 - **Consequential**: the issue has a real impact (correctness, safety, performance, maintainability) — not purely aesthetic or a matter of taste
-- **Justified**: the reviewer explains *why* it matters, not just *what* they dislike
+- **Justified**: the reviewer explains _why_ it matters, not just _what_ they dislike
 
 Discard a comment if it:
+
 - Is vague ("this could be cleaner", "consider refactoring")
 - Is purely stylistic with no practical consequence (formatting preference, naming taste)
 - Is a compliment or neutral observation with no action required
@@ -54,6 +56,7 @@ Use the same three tiers as the individual reviewers:
 ## When there is nothing worth addressing
 
 If, after filtering and deduplication, there are zero Must Fix and zero Should Fix comments:
+
 - Do not include a Consider section unless the comments are genuinely high value.
 - Mark the PR as **Approved**.
 - Write a brief summary explaining that the reviews were reviewed and no actionable issues survived the quality bar.
@@ -69,6 +72,7 @@ One paragraph: what the reviews covered, how many findings were submitted across
 ### Outcome
 
 Either:
+
 - ✅ **Approved** — no must-fix or should-fix issues; PR is ready to merge
 - 🔄 **Request Changes** — one or more must-fix or should-fix issues require resolution before merge
 
@@ -77,7 +81,9 @@ Either:
 Group surviving comments by severity. Omit a section entirely if it has no entries.
 
 #### Must Fix
+
 #### Should Fix
+
 #### Consider
 
 ---

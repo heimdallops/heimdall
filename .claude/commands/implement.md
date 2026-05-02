@@ -96,6 +96,7 @@ Read the aggregated review outcome:
 - If all comments relate only to test quality or coverage → restart from **Step 2** (`ts-tester`)
 
 Regardless of restart point, each agent that runs receives the comments for its own domain:
+
 - `ts-engineer` receives code, performance, security, and comment-quality feedback
 - `ts-tester` receives test quality and coverage feedback
 

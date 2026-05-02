@@ -64,7 +64,7 @@ When it returns:
 
 - [ ] Feature 1: <name>
 - [ ] Feature 2: <name>
-...
+      ...
 ```
 
 ### Step 2 — Confirm Spec with User
@@ -179,6 +179,7 @@ Read the aggregated review outcome:
 - If all comments relate only to test quality or coverage → restart from Step 6
 
 Regardless of restart point, each agent receives the comments for its own domain:
+
 - `ts-engineer` receives code, performance, security, and comment-quality feedback
 - `ts-tester` receives test quality and coverage feedback
 

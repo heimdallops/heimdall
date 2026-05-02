@@ -75,6 +75,7 @@ One short paragraph describing what the code does, what changed, and your overal
 ### Outcome
 
 Either:
+
 - ✅ **Approved** — no must-fix performance issues found
 - 🔄 **Request Changes** — one or more must-fix issues require resolution
 
@@ -83,12 +84,15 @@ Either:
 Group comments by severity. Omit a section entirely if there are no findings in it.
 
 #### Must Fix
+
 Issues that will cause measurable latency, memory growth, or throughput regression in production. Blocking.
 
 #### Should Fix
+
 Suboptimal patterns that matter at scale or under load. Non-blocking but strongly recommended.
 
 #### Consider
+
 Low-risk opportunities where the current code works but a targeted change would meaningfully improve performance. Skip this section if the suggestions would be low-value noise.
 
 ---

@@ -81,7 +81,7 @@ List behaviors, components, refactors, cleanup work, or adjacent improvements th
 
 If no explicit non-goals were provided, infer only obvious scope boundaries and label them as assumptions.
 
-------
+---
 
 ### Source of truth
 

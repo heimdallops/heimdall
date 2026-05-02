@@ -60,13 +60,14 @@ Duplicate tests obscure real coverage gaps and inflate suite runtime.
 
 This project follows the **trophy model**: emphasize integration tests, supported by focused unit tests for edge cases, with minimal E2E tests for critical user journeys.
 
-| Level       | Purpose | Mocking policy |
-|-------------|---------|----------------|
-| **Unit**    | Test one function/method in isolation, focused on edge cases and branching logic | Mock all external dependencies; never mock the module being tested |
-| **Integration** | Test that real components work together; verify behavior, not just logic | Mock only true external boundaries (third-party APIs, databases when no test DB is available); never mock components being integrated |
-| **E2E**     | Verify complete workflows through the full system from the user's perspective | Minimal or no mocking; test against a real running system |
+| Level           | Purpose                                                                          | Mocking policy                                                                                                                        |
+| --------------- | -------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
+| **Unit**        | Test one function/method in isolation, focused on edge cases and branching logic | Mock all external dependencies; never mock the module being tested                                                                    |
+| **Integration** | Test that real components work together; verify behavior, not just logic         | Mock only true external boundaries (third-party APIs, databases when no test DB is available); never mock components being integrated |
+| **E2E**         | Verify complete workflows through the full system from the user's perspective    | Minimal or no mocking; test against a real running system                                                                             |
 
 Flag tests that violate these boundaries:
+
 - A unit test that spins up the full stack is misplaced
 - An integration test that mocks both sides of the interaction it claims to test is effectively a unit test (possibly an ineffective one)
 - An E2E test with heavy mocking is not E2E
@@ -97,6 +98,7 @@ One short paragraph describing the test suite, what it covers, and your overall 
 ### Outcome
 
 Either:
+
 - ✅ **Approved** — no must-fix issues found
 - 🔄 **Request Changes** — one or more must-fix issues require resolution
 
@@ -105,12 +107,15 @@ Either:
 Group comments by severity. Omit a section entirely if there are no findings in it.
 
 #### Must Fix
+
 Issues where a test cannot fail, passes when it should not, verifies the wrong behavior, actively misleads about coverage, or is non-deterministic. Blocking.
 
 #### Should Fix
+
 Issues that are not immediately harmful but reduce suite value or create real risk (redundant tests, significant overlap, missing cleanup). Non-blocking but strongly recommended.
 
 #### Consider
+
 Low-risk suggestions where the current test works but a targeted improvement would meaningfully increase value. Skip this section if the suggestions would be low-value noise.
 
 ---

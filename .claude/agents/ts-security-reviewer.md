@@ -87,6 +87,7 @@ One short paragraph describing what the code does, what changed, and your overal
 ### Outcome
 
 Either:
+
 - ✅ **Approved** — no must-fix security issues found
 - 🔄 **Request Changes** — one or more must-fix issues require resolution
 
@@ -95,12 +96,15 @@ Either:
 Group comments by severity. Omit a section entirely if there are no findings in it.
 
 #### Must Fix
+
 Vulnerabilities that could be exploited to compromise the user's machine, leak credentials, or corrupt data. Blocking.
 
 #### Should Fix
+
 Insecure patterns that create meaningful risk or violate defense-in-depth. Non-blocking but strongly recommended.
 
 #### Consider
+
 Low-risk hardening opportunities where the current code works but a targeted change would meaningfully improve the security posture. Skip this section if the suggestions would be low-value noise.
 
 ---

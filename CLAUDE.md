@@ -9,33 +9,40 @@ Heimdall is a CLI for building deterministic agentic workflows from YAML. User-d
 These are implementation constraints, not slogans. Apply them by default.
 
 **YAGNI**
+
 - No config keys, flags, abstractions, or error paths without a concrete current use case
 - No speculative options, partial fake support, or stubs for hypothetical callers
 
 **KISS**
+
 - Prefer explicit control flow over clever meta-programming
 - Straightforward branches and typed interfaces beat dynamic behavior
 - Keep error paths obvious and local
 
 **DRY + Rule of Three**
+
 - Duplicate small, local logic when it preserves clarity
 - Extract shared utilities only after the same pattern appears at least three times and has stabilized
 - When extracting, preserve module boundaries and avoid hidden coupling
 
 **SRP — Single Responsibility**
+
 - Keep each module focused on one concern
 - `command.ts` parses, `run.ts` orchestrates, `core/` contains domain logic — don't collapse these layers
 
 **ISP — Interface Segregation**
+
 - Don't add unrelated concerns to an existing module or interface
 - When a new concern emerges, define a new interface rather than broadening an existing one
 
 **Fail Fast, Don't Hide Failures**
+
 - Throw `CliError` early for expected failures
 - Don't catch-and-swallow or silently fall back to a default that masks the problem
 - Silent failures produce confusing exit codes and hard-to-debug behavior
 
 **Reversibility**
+
 - Keep changes small in scope with an obvious blast radius
 - For risky changes (schema changes, config format changes), identify the rollback path before starting
 - Prefer sequential, mergeable steps over mega-patches

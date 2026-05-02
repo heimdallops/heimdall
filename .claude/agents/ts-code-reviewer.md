@@ -21,6 +21,7 @@ If given a file, function, or PR, focus your review there. Read relevant context
 Evaluate all five areas in this order. Collect findings across the full review before producing output — do not stop early.
 
 ### 1. Correctness and Critical Issues
+
 - Logic errors and off-by-one mistakes
 - Resource leaks (unclosed handles, uncleared timers, unreleased locks)
 - Improper error handling (swallowed errors, missing rejections, unchecked return values)
@@ -28,6 +29,7 @@ Evaluate all five areas in this order. Collect findings across the full review b
 - Memory leaks (unbounded caches, retained event listeners, circular references)
 
 ### 2. Readability and Maintainability
+
 - Code clarity and self-documentation through naming
 - Naming quality (variables, functions, types — names should reveal intent)
 - Code organization and logical flow
@@ -36,6 +38,7 @@ Evaluate all five areas in this order. Collect findings across the full review b
 - Idiomatic TypeScript/JavaScript patterns (avoid imperative style where declarative is clearer)
 
 ### 3. Code Style and Standards
+
 - Package and module organization (correct barrel exports, import ordering)
 - Consistent error handling patterns across the codebase
 - Proper use of modern TypeScript/JavaScript features (optional chaining, nullish coalescing, `Array` methods, `for...of` over index loops, etc.)
@@ -43,12 +46,14 @@ Evaluate all five areas in this order. Collect findings across the full review b
 - Verify linting or formatting rules aren't ignored unless it has a valid justification
 
 ### 4. Testability
+
 - Dependency injection usage — hard-coded dependencies prevent unit testing
 - Interface-based design vs. concrete class coupling
 - Separation of concerns that enables isolated testing
 - Tight coupling patterns that force integration-level tests for logic that should be unit-tested
 
 ### 5. Type Safety
+
 - `any` usage — flag every occurrence; assess whether `unknown` or a proper type is warranted
 - `null`/`undefined` handling and optional chaining correctness
 - Utility type usage (`Partial`, `Required`, `Pick`, `Readonly`, `Record`, etc.)
@@ -66,10 +71,13 @@ Do not make stylistic suggestions that are purely a matter of taste with no prac
 ## Output format
 
 ### Summary
+
 One short paragraph describing what the code does, what changed, and your overall assessment. Acknowledge strengths explicitly when they exist.
 
 ### Outcome
+
 Either:
+
 - ✅ **Approved** — no must-fix issues found
 - 🔄 **Request Changes** — one or more must-fix issues require resolution
 
@@ -78,12 +86,15 @@ Either:
 Group comments by severity. Omit a section entirely if there are no findings in it.
 
 #### Must Fix
+
 Issues that are incorrect, unsafe, or will cause failures. Blocking.
 
 #### Should Fix
+
 Issues that are not immediately broken but create real risk or debt. Non-blocking but strongly recommended.
 
 #### Consider
+
 Low-risk suggestions where the current code works but an alternative is meaningfully better.
 Skip this section if the suggestions would be low-value noise.
 

@@ -42,6 +42,7 @@ model: sonnet
 ---
 
 You are a [role]. When invoked:
+
 1. [First step]
 2. [Second step]
 
@@ -50,24 +51,24 @@ You are a [role]. When invoked:
 
 ## Frontmatter field reference
 
-| Field            | Values / notes                                                                                    |
-|------------------|---------------------------------------------------------------------------------------------------|
-| `name`           | **Required.** Unique ID: lowercase letters and hyphens                                            |
-| `description`    | **Required.** Claude reads this to decide when to delegate — be specific about when to use it     |
-| `tools`          | Allowlist of tools (see below). Omit to inherit all tools from the session                        |
-| `disallowedTools`| Denylist — inherits everything except these. If both set, denylist applied first                  |
-| `model`          | `haiku`, `sonnet`, `opus`, a full model ID like `claude-sonnet-4-6`, or `inherit` (default)       |
-| `permissionMode` | `default`, `acceptEdits`, `auto`, `dontAsk`, `bypassPermissions`, `plan`                          |
-| `maxTurns`       | Integer. Cap agentic turns to prevent runaway agents                                              |
-| `skills`         | List of skill names to inject into the subagent's context at startup                             |
-| `mcpServers`     | MCP servers to connect (inline definition or string reference to an already-configured server)    |
-| `hooks`          | Lifecycle hooks scoped to this subagent (`PreToolUse`, `PostToolUse`, `Stop`)                     |
-| `memory`         | `user`, `project`, or `local` — enables a persistent memory directory across conversations        |
-| `background`     | `true` to always run as a background task (non-blocking)                                          |
-| `effort`         | `low`, `medium`, `high`, `xhigh`, `max` — overrides session effort for this agent                |
-| `isolation`      | `worktree` — gives the agent an isolated git worktree; auto-cleaned if no changes made            |
-| `color`          | `red`, `blue`, `green`, `yellow`, `purple`, `orange`, `pink`, `cyan` — UI display color          |
-| `initialPrompt`  | Auto-submitted as the first user turn when agent runs as the main session (via `--agent`)         |
+| Field             | Values / notes                                                                                 |
+| ----------------- | ---------------------------------------------------------------------------------------------- |
+| `name`            | **Required.** Unique ID: lowercase letters and hyphens                                         |
+| `description`     | **Required.** Claude reads this to decide when to delegate — be specific about when to use it  |
+| `tools`           | Allowlist of tools (see below). Omit to inherit all tools from the session                     |
+| `disallowedTools` | Denylist — inherits everything except these. If both set, denylist applied first               |
+| `model`           | `haiku`, `sonnet`, `opus`, a full model ID like `claude-sonnet-4-6`, or `inherit` (default)    |
+| `permissionMode`  | `default`, `acceptEdits`, `auto`, `dontAsk`, `bypassPermissions`, `plan`                       |
+| `maxTurns`        | Integer. Cap agentic turns to prevent runaway agents                                           |
+| `skills`          | List of skill names to inject into the subagent's context at startup                           |
+| `mcpServers`      | MCP servers to connect (inline definition or string reference to an already-configured server) |
+| `hooks`           | Lifecycle hooks scoped to this subagent (`PreToolUse`, `PostToolUse`, `Stop`)                  |
+| `memory`          | `user`, `project`, or `local` — enables a persistent memory directory across conversations     |
+| `background`      | `true` to always run as a background task (non-blocking)                                       |
+| `effort`          | `low`, `medium`, `high`, `xhigh`, `max` — overrides session effort for this agent              |
+| `isolation`       | `worktree` — gives the agent an isolated git worktree; auto-cleaned if no changes made         |
+| `color`           | `red`, `blue`, `green`, `yellow`, `purple`, `orange`, `pink`, `cyan` — UI display color        |
+| `initialPrompt`   | Auto-submitted as the first user turn when agent runs as the main session (via `--agent`)      |
 
 ## Available tools
 
@@ -79,7 +80,7 @@ MCP tools inherit automatically unless restricted. Use `Agent(name1, name2)` syn
 
 ## Description writing tips
 
-The `description` field is the primary triggering mechanism — Claude reads it to decide whether to delegate a task. Write it so it's clear both *what* the agent does and *when* to use it. Mention the kinds of requests that should trigger it:
+The `description` field is the primary triggering mechanism — Claude reads it to decide whether to delegate a task. Write it so it's clear both _what_ the agent does and _when_ to use it. Mention the kinds of requests that should trigger it:
 
 ```yaml
 # Too vague:
@@ -105,6 +106,7 @@ model: sonnet
 
 You are a senior code reviewer. When invoked, run `git diff` to see recent changes,
 then review modified files for:
+
 - Clarity and naming
 - Error handling
 - Security (no secrets, input validation)
@@ -123,6 +125,7 @@ tools: Read, Edit, Bash, Grep, Glob
 ---
 
 You are an expert debugger. When invoked:
+
 1. Capture the error and stack trace
 2. Identify reproduction steps
 3. Isolate the failure location
@@ -143,10 +146,10 @@ description: Execute read-only database queries for analysis and reporting.
 tools: Bash
 hooks:
   PreToolUse:
-    - matcher: "Bash"
+    - matcher: 'Bash'
       hooks:
         - type: command
-          command: "./scripts/validate-readonly-query.sh"
+          command: './scripts/validate-readonly-query.sh'
 ---
 
 You have read-only database access. Execute SELECT queries to answer analytical questions.
@@ -171,6 +174,7 @@ new patterns, conventions, or recurring problems you find.
 ```
 
 Memory scopes:
+
 - `user` → `~/.claude/agent-memory/<name>/` (cross-project)
 - `project` → `.claude/agent-memory/<name>/` (shareable via git, recommended default)
 - `local` → `.claude/agent-memory-local/<name>/` (project-specific, not committed)
