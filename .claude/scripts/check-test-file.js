@@ -25,7 +25,9 @@ if (mode === '--block-tests') {
 } else if (mode === '--require-tests') {
   if (!isTestFile(filePath)) {
     process.stderr.write(`BLOCKED: ts-tester only modifies test files. Path: ${filePath}\n`);
-    process.stderr.write('Report production code issues to the user or a production-code agent instead.\n');
+    process.stderr.write(
+      'Report production code issues to the user or a production-code agent instead.\n'
+    );
     process.exit(2);
   }
 } else {
