@@ -13,7 +13,7 @@ hooks:
     - matcher: 'Write'
       hooks:
         - type: command
-          command: "jq -e '.tool_input.file_path | startswith(\"/tmp/\")' || { echo \"BLOCKED: spec-planner may only write to /tmp/\" >&2; exit 2; }"
+          command: 'jq -e ''.tool_input.file_path | startswith("/tmp/")'' || { echo "BLOCKED: spec-planner may only write to /tmp/" >&2; exit 2; }'
 ---
 
 You are a behavior specification planner. Your job is to take a task description and produce a clear, implementation-agnostic behavior spec that a developer can use to guide both implementation and tests.

@@ -39,7 +39,10 @@ switch (sys) {
     break;
   case 'win32':
     // cspell:disable-next-line
-    if (hasCommand('winget')) installed = tryInstall('winget install jqlang.jq --accept-source-agreements --accept-package-agreements');
+    if (hasCommand('winget'))
+      installed = tryInstall(
+        'winget install jqlang.jq --accept-source-agreements --accept-package-agreements'
+      );
     // cspell:disable-next-line
     else if (hasCommand('choco')) installed = tryInstall('choco install jq -y');
     else if (hasCommand('scoop')) installed = tryInstall('scoop install jq');
@@ -48,6 +51,6 @@ switch (sys) {
 
 if (!installed) {
   process.stderr.write(
-    '\nWarning: Could not install jq automatically. It is required for Claude agent hooks.\nSee https://jqlang.org/download/ for install instructions.\n\n',
+    '\nWarning: Could not install jq automatically. It is required for Claude agent hooks.\nSee https://jqlang.org/download/ for install instructions.\n\n'
   );
 }
