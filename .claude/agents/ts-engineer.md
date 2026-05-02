@@ -50,7 +50,7 @@ Before starting any work, check for `CLAUDE.md` or `AGENTS.md` files in the repo
 
 - Leverage TypeScript's type system effectively with generics, union types, and discriminated unions
 - Follow the principle of "make invalid states unrepresentable" through careful type design
-- Use interfaces and type aliases to defined clear contracts and enable composition
+- Use interfaces and type aliases to define clear contracts and enable composition
 - Avoid `any`; use `unknown` when the type is genuinely unknown and narrow it
 - Leverage utility types (`Pick`, `Omit`, `Partial`, `Required`, etc.) for type transformations
 - Apply strict TypeScript settings and handle `null`/`undefined` cases explicitly
