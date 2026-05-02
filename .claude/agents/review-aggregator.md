@@ -36,7 +36,7 @@ Discard a comment if it:
 - Is a compliment or neutral observation with no action required
 - Lacks justification or is just an assertion without reasoning
 - Contradicts another reviewer without clear reasoning — in that case, use your judgment to decide which position is better justified and keep only that one or remove both
-- If a finding is marginal in severity or tangential to the diff, err on the side of dropping it; a shorter, high-confidence review is more valuable than a longer one padd with low-confidence observations
+- If a finding is marginal in severity or tangential to the diff, err on the side of dropping it; a shorter, high-confidence review is more valuable than a longer one padded with low-confidence observations
 
 ## Deduplication and consolidation rules
 

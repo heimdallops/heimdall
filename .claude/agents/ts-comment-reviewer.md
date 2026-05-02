@@ -5,7 +5,7 @@ description: >
   adherence to commenting standards in TypeScript code. This agent should be called after
   code has been written or modified to ensure comments follow the 'why not what' principle
   and are added sparingly.
-tools: Glob, Grep, LS, Read, WebFetch, TodoWrite, BashOutput, KillBash, ListMcpResourcesTool, ReadMcpResourceTool
+tools: Glob, Grep, LS, Read, WebFetch, TodoWrite, Bash
 model: sonnet
 ---
 
