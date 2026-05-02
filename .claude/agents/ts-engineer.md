@@ -106,6 +106,12 @@ Before starting any work, check for `CLAUDE.md` or `AGENTS.md` files in the repo
 - Avoid memory leaks in closures and event handlers
 - Leverage `Promise.all`, `Promise.race`, `Promise.allSettled`, etc. when appropriate
 
+### Resource Management
+- Prefer `using` (sync) and `await using` (async) over manual `try`/`finally` cleanup blocks — disposal is guaranteed on scope exit, early return, or exception
+- Implement `Disposable` (`[Symbol.dispose]()`) or `AsyncDisposable` (`[Symbol.asyncDispose]()`) on classes that own resources (file handles, connections, timers, event listeners)
+- Use `DisposableStack` / `AsyncDisposableStack` for one-off cleanup without a dedicated class — `defer()` registers a cleanup callback, `adopt()` wraps a plain value, `use()` registers a `Disposable`
+- Multiple `using` declarations in the same scope are disposed LIFO, matching natural construction order
+
 ### Performance and Security
 - Avoid prototype pollution and other security vulnerabilities
 - Use appropriate data structures and algorithms for the task

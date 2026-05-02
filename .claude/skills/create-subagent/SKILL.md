@@ -10,8 +10,7 @@ description: >
 
 # Create a Claude Code Subagent
 
-Subagents are specialized AI assistants that run in their own context window with a custom
-system prompt, specific tool access, and independent permissions. Use them to:
+Subagents are specialized AI assistants that run in their own context window with a custom system prompt, specific tool access, and independent permissions. Use them to:
 
 - Keep verbose output (logs, search results, test runs) out of the main conversation
 - Enforce tool restrictions (e.g. read-only reviewer, SQL-only analyst)
@@ -32,8 +31,7 @@ Before writing the file, confirm these with the user:
 
 ## File format
 
-Subagents are Markdown files with YAML frontmatter. Only `name` and `description` are
-required; all other fields are optional.
+Subagents are Markdown files with YAML frontmatter. Only `name` and `description` are required; all other fields are optional.
 
 ```markdown
 ---
@@ -77,15 +75,11 @@ Internal tools you can list in `tools`:
 `Read`, `Write`, `Edit`, `MultiEdit`, `Bash`, `Glob`, `Grep`, `LS`, `WebFetch`, `WebSearch`,
 `TodoWrite`, `NotebookEdit`, `Agent`, `AskUserQuestion`, `ExitPlanMode`
 
-MCP tools inherit automatically unless restricted. Use `Agent(name1, name2)` syntax in
-`tools` to limit which subagent types this agent can spawn (only relevant when running as
-the main session via `--agent`).
+MCP tools inherit automatically unless restricted. Use `Agent(name1, name2)` syntax in `tools` to limit which subagent types this agent can spawn (only relevant when running as the main session via `--agent`).
 
 ## Description writing tips
 
-The `description` field is the primary triggering mechanism — Claude reads it to decide
-whether to delegate a task. Write it so it's clear both *what* the agent does and *when*
-to use it. Mention the kinds of requests that should trigger it:
+The `description` field is the primary triggering mechanism — Claude reads it to decide whether to delegate a task. Write it so it's clear both *what* the agent does and *when* to use it. Mention the kinds of requests that should trigger it:
 
 ```yaml
 # Too vague:
@@ -140,8 +134,7 @@ Explain the root cause and provide prevention recommendations.
 
 ### Restricted by hook (fine-grained control)
 
-When you need to allow a tool but block specific operations within it, use a `PreToolUse`
-hook instead of (or alongside) the `tools` field:
+When you need to allow a tool but block specific operations within it, use a `PreToolUse` hook instead of (or alongside) the `tools` field:
 
 ```markdown
 ---

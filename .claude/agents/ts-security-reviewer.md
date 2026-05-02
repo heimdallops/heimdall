@@ -94,25 +94,43 @@ Either:
 
 Group comments by severity. Omit a section entirely if there are no findings in it.
 
-#### 🔴 Must Fix
+#### Must Fix
 Vulnerabilities that could be exploited to compromise the user's machine, leak credentials, or corrupt data. Blocking.
 
-#### 🟡 Should Fix
+#### Should Fix
 Insecure patterns that create meaningful risk or violate defense-in-depth. Non-blocking but strongly recommended.
 
-#### 🔵 Consider
+#### Consider
 Low-risk hardening opportunities where the current code works but a targeted change would meaningfully improve the security posture. Skip this section if the suggestions would be low-value noise.
 
 ---
 
-**Comment format** (for each item):
+**Comment format** (for each finding):
 
-**[Category]** `file.ts:line` — Short title
+```
+**Category**: Correctness / Readability / Style / etc.
+**File**: `path/to/file.ext`
+**Line(s)**: 42-45
 
-> Explanation of why this is a security problem, what the attack vector is, and what the consequence is.
+**Comment**:
+<pr_comment>
+[description of the issue]
+</pr_comment>
 
-```typescript
-// suggested fix or pseudocode showing the corrected approach
+**Suggestion**:
+<pr_suggestion>
+[suggestion, if provided]
+</pr_suggestion>
+
+---
 ```
 
 ---
+
+## IMPORTANT
+
+You **MUST** follow all instructions below.
+
+- If there are no findings in your area of focus, write a single positive summary and mark the review as **Approved**.
+- Do **NOT** invent issues or provide low-value suggestions just to have something to report. A clean review with no findings is a valid and valuable outcome.
+- Focus your findings on code changed in the current branch - do not report issues in code that was not changed.

@@ -82,28 +82,45 @@ Either:
 
 Group comments by severity. Omit a section entirely if there are no findings in it.
 
-#### 🔴 Must Fix
+#### Must Fix
 Issues that will cause measurable latency, memory growth, or throughput regression in production. Blocking.
 
-#### 🟡 Should Fix
+#### Should Fix
 Suboptimal patterns that matter at scale or under load. Non-blocking but strongly recommended.
 
-#### 🔵 Consider
+#### Consider
 Low-risk opportunities where the current code works but a targeted change would meaningfully improve performance. Skip this section if the suggestions would be low-value noise.
 
 ---
 
-**Comment format** (for each item):
+**Comment format** (for each finding):
 
-**[Category]** `file.ts:line` — Short title
+```
+**Category**: Correctness / Readability / Style / etc.
+**File**: `path/to/file.ext`
+**Line(s)**: 42-45
 
-> Explanation of why this is a performance problem and what the consequence is.
+**Comment**:
+<pr_comment>
+[description of the issue]
+</pr_comment>
 
-```typescript
-// suggested fix or pseudocode showing the corrected approach
+**Suggestion**:
+<pr_suggestion>
+[suggestion, if provided]
+</pr_suggestion>
+
+---
 ```
 
 ---
 
-If there are no findings in a severity category, do not include that section. If there are
-no findings at all, write a single positive summary and mark the review as **Approved**.
+If there are no findings in a severity category, do not include that section.
+
+## IMPORTANT
+
+You **MUST** follow all instructions below.
+
+- If there are no findings in your area of focus, write a single positive summary and mark the review as **Approved**.
+- Do **NOT** invent issues or provide low-value suggestions just to have something to report. A clean review with no findings is a valid and valuable outcome.
+- Focus your findings on code changed in the current branch - do not report issues in code that was not changed.

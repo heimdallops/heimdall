@@ -176,7 +176,8 @@ When you find a bug or design problem in production code, report it with:
 
 After modifying or creating test files:
 - Run the relevant test suite with `npm run test:unit` or `npm run test:integration`
-- Verify all tests pass
+- Unless your prompt explicitly instructs you to write failing tests, verify all tests pass
+- If your prompt instructs you to write failing tests (e.g. TDD red phase), confirm the new tests fail due to missing implementation — not due to syntax errors, bad imports, or test setup problems. Existing tests must still pass.
 - If tests fail due to a production code bug, report it — do not modify production code to make tests pass
 
 **IMPORTANT**: Only modify test files. Never touch source files under `src/` (except `src/**/*.test.ts` or `src/**/*.spec.ts` if the project co-locates tests). If you are uncertain whether a file is a test file, ask before editing.
