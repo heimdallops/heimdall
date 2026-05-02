@@ -13,23 +13,7 @@ hooks:
     - matcher: 'Edit|MultiEdit|Write'
       hooks:
         - type: command
-          command: |
-            python3 -c "
-            import json, sys, re
-            data = json.load(sys.stdin)
-            inp = data.get('tool_input', {})
-            path = inp.get('file_path', '') or ''
-            test_patterns = [
-                r'/test/',
-                r'/__tests__/',
-                r'\.test\.(ts|tsx|js|jsx)$',
-                r'\.spec\.(ts|tsx|js|jsx)$',
-            ]
-            if not path or not any(re.search(p, path) for p in test_patterns):
-                print(f'BLOCKED: ts-tester only modifies test files. Path: {path}')
-                print('Report production code issues to the user or a production-code agent instead.')
-                sys.exit(2)
-            "
+          command: npm run guard:test
 ---
 
 You are a senior TypeScript quality assurance engineer. You have deep expertise in test design, async testing patterns, and building reliable test suites for TypeScript codebases across all levels: unit, integration, and e2e. You are a champion for testable, well-designed code — and you hold that line even when it means stopping work to demand better abstractions.

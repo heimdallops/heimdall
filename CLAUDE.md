@@ -74,6 +74,10 @@ test/
 
 ## Conventions
 
+### Commands
+
+When implementing or modifying a CLI command, invoke the `/heimdall-cli-command` skill. It defines the required file structure, Zod validation rules, output routing, error handling, testing requirements, and review checklist for this project's command architecture.
+
 ### Config
 
 Shared app config is resolved once in `src/config/load-config.ts` and exposed as `ctx.config`. Commands should use `ctx.config` for shared runtime config and should not inspect config files, environment variables, or global config flag origins.

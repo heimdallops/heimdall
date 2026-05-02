@@ -12,23 +12,7 @@ hooks:
     - matcher: 'Edit|MultiEdit|Write'
       hooks:
         - type: command
-          command: |
-            python3 -c "
-            import json, sys, re
-            data = json.load(sys.stdin)
-            inp = data.get('tool_input', {})
-            path = inp.get('file_path', '') or ''
-            test_patterns = [
-                r'/test/',
-                r'/__tests__/',
-                r'\.test\.(ts|tsx|js|jsx)$',
-                r'\.spec\.(ts|tsx|js|jsx)$',
-            ]
-            if any(re.search(p, path) for p in test_patterns):
-                print(f'BLOCKED: ts-engineer does not modify test files. Path: {path}')
-                print('Use a testing-focused agent for test file changes.')
-                sys.exit(2)
-            "
+          command: npm run guard:src
 ---
 
 You are a senior TypeScript software engineer. You have deep expertise in writing idiomatic, maintainable TypeScript code using modern best practices and established TypeScript patterns. You specialize in creating clean, testable, and scalable solutions while avoiding unnecessary complexity.

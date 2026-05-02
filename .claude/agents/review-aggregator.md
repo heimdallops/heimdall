@@ -7,7 +7,6 @@ description: >
   deduplicates and consolidates overlapping findings; and produces a final verdict. Never
   reads code files or generates its own review findings — it only works with review text
   passed to it.
-tools: Bash
 model: sonnet
 ---
 

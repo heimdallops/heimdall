@@ -22,6 +22,8 @@
       "Bash(git -C * branch*)",
       "Bash(git -C * remote*)",
       "Bash(git -C * ls-files*)",
+      "Bash(gh pr view*)",
+      "Bash(gh pr diff*)",
       "Read",
       "Glob",
       "Grep",
