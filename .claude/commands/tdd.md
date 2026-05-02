@@ -57,7 +57,7 @@ The spec-planner may ask the user clarifying questions before returning — wait
 When it returns:
 
 1. Write the full spec output to `$SESSION_DIR/spec.md`
-2. Extract the ordered feature list and create `$SESSION_DIR/progress.md` with one unchecked item per feature:
+2. Read the `### Features` section of the spec and create `$SESSION_DIR/progress.md` with one unchecked item per feature, preserving the order from the spec:
 
 ```markdown
 # Progress

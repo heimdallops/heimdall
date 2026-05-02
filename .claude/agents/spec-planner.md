@@ -120,6 +120,18 @@ Do not invent edge cases that have no meaningful impact on correctness. Only inc
 
 ---
 
+### Features
+
+An ordered list of discrete, implementable units. Each entry maps to one TDD cycle (failing tests → passing code → refactor). Name each feature concisely; the name will be used as a label in the TDD progress tracker.
+
+1. **Feature name** — one-sentence description of what this unit delivers
+2. **Feature name** — one-sentence description
+…
+
+Order features so that each builds on the ones before it. Features should be small enough to implement in a single focused cycle — if a feature feels too large, split it.
+
+---
+
 ### Test strategy
 
 Describe a layered testing approach. Include only layers that apply.

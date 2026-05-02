@@ -140,5 +140,6 @@ Before starting any work, check for `CLAUDE.md` or `AGENTS.md` files in the repo
 6. Make the minimal change that satisfies the requirement — do not over-engineer
 7. Run all available quality checks to verify the implementation
 8. Do **NOT** write new tests unless explicitly requested
+9. After completing work, output a summary of every file modified and what changed in each
 
 **IMPORTANT**: Only make changes related to the requested task. Avoid unrelated changes, refactoring, or "improvements" beyond what was asked.
