@@ -11,9 +11,8 @@ Implement the task provided at the end of this prompt using a test-driven develo
 ```mermaid
 flowchart TD
   Start([Start]) --> MkDir["Create session directory\nmktemp -d → SESSION_DIR"]
-  MkDir --> Planner["1. spec-planner\nGenerate spec & scenarios"]
-  Planner --> WriteFiles["Write spec → SESSION_DIR/spec.md\nCreate SESSION_DIR/progress.md"]
-  WriteFiles --> Confirm{"User confirms\nspec?"}
+  MkDir --> Planner["1. spec-planner\nGenerate spec & scenarios\nWrite spec.md + progress.md"]
+  Planner --> Confirm{"User confirms\nspec?"}
   Confirm -- "Request changes" --> Planner
   Confirm -- Confirmed --> FeatureCheck{"All features\ncomplete in\nprogress.md?"}
   FeatureCheck -- No --> NextFeature["Read next unchecked\nfeature from progress.md"]
@@ -51,28 +50,16 @@ Run `mktemp -d` and record the result as `SESSION_DIR`. All session files go her
 Spawn the `spec-planner` subagent. Its prompt must include:
 
 - The full contents of the `<task>` block at the bottom of this prompt
+- `SESSION_DIR`: the path recorded in Step 0 — instruct it to write the spec directly to `$SESSION_DIR/spec.md` and the feature progress list directly to `$SESSION_DIR/progress.md`
 
 The spec-planner may ask the user clarifying questions before returning — wait for it to complete fully.
-
-When it returns:
-
-1. Write the full spec output to `$SESSION_DIR/spec.md`
-2. Read the `### Features` section of the spec and create `$SESSION_DIR/progress.md` with one unchecked item per feature, preserving the order from the spec:
-
-```markdown
-# Progress
-
-- [ ] Feature 1: <name>
-- [ ] Feature 2: <name>
-      ...
-```
 
 ### Step 2 — Confirm Spec with User
 
 Tell the user the spec has been written to `$SESSION_DIR/spec.md` and ask them to review it. Wait for their response before proceeding.
 
 - If they confirm: continue to Phase 2
-- If they request changes: re-spawn `spec-planner` with the original task, the current version of the `$SESSION_DIR/spec.md`, and their feedback, then overwrite `$SESSION_DIR/spec.md` and `$SESSION_DIR/progress.md` with the updated output. Repeat until confirmed.
+- If they request changes: re-spawn `spec-planner` with the original task, `SESSION_DIR`, the path to the existing spec (`$SESSION_DIR/spec.md`), and their feedback. Instruct it to read the existing spec before making changes and to overwrite both `$SESSION_DIR/spec.md` and `$SESSION_DIR/progress.md` with its updated output. Repeat until confirmed.
 
 ---
 
@@ -136,7 +123,7 @@ Wait for it to complete before proceeding.
 
 In a **single message**, spawn all five reviewer subagents simultaneously. Each reviewer's prompt must include:
 
-- The full contents of the `<task>` block at the bottom of this prompt
+- The spec file path: `$SESSION_DIR/spec.md` — instruct it to read this file for the full spec
 
 Reviewers to spawn:
 
