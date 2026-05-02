@@ -126,7 +126,7 @@ An ordered list of discrete, implementable units. Each entry maps to one TDD cyc
 
 1. **Feature name** — one-sentence description of what this unit delivers
 2. **Feature name** — one-sentence description
-…
+   …
 
 Order features so that each builds on the ones before it. Features should be small enough to implement in a single focused cycle — if a feature feels too large, split it.
 
