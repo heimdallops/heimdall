@@ -72,7 +72,7 @@ When it returns:
 Tell the user the spec has been written to `$SESSION_DIR/spec.md` and ask them to review it. Wait for their response before proceeding.
 
 - If they confirm: continue to Phase 2
-- If they request changes: re-spawn `spec-planner` with the original task and their feedback, then overwrite `$SESSION_DIR/spec.md` and `$SESSION_DIR/progress.md` with the updated output. Repeat until confirmed.
+- If they request changes: re-spawn `spec-planner` with the original task, the current version of the `$SESSION_DIR/spec.md`, and their feedback, then overwrite `$SESSION_DIR/spec.md` and `$SESSION_DIR/progress.md` with the updated output. Repeat until confirmed.
 
 ---
 
