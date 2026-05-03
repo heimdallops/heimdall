@@ -181,6 +181,7 @@ Regardless of restart point, each agent receives the comments for its own domain
 - Do not address review feedback yourself. Route it to the appropriate subagent.
 - Do not run `npm run quality` yourself — the engineer and tester agents run their own quality checks.
 - The TDD loop (Steps 3–5) is complete only when `$SESSION_DIR/progress.md` has no unchecked items. Do not skip to Phase 3 early.
+- Do not read `$SESSION_DIR/spec.md` yourself. Pass the path to subagents and let them read it.
 
 ---
 
