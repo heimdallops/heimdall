@@ -162,7 +162,7 @@ Read the aggregated review outcome:
 
 **Request Changes** — determine the restart point, then pass each agent the comments relevant to its category (Must Fix, Should Fix, and Consider):
 
-- If any comment relates to source code, performance, security, or comment quality → spawn `ts-engineer` to address those comments, then restart from Step 6
+- If any comment relates to source code, performance, security, or comment quality → spawn `ts-engineer` to address those comments, then restart from Step 6 and pass any test-related feedback to `ts-tester` to iterate on.
 - If all comments relate only to test quality or coverage → restart from Step 6
 
 Regardless of restart point, each agent receives the comments for its own domain:
