@@ -1,0 +1,182 @@
+name: Publish to npm
+
+on:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: Git ref to checkout (branch, tag, or commit SHA)
+        type: string
+        required: false
+        default: main
+      version:
+        description: package.json version that must match the checked-out ref (e.g. 0.1.0)
+        type: string
+        required: true
+      dry_run:
+        description: When true, runs all checks but does not run npm publish
+        type: boolean
+        required: false
+        default: false
+  workflow_call:
+    inputs:
+      ref:
+        description: Git ref to checkout (branch, tag, or commit SHA). Empty uses the caller workflow commit.
+        type: string
+        required: false
+        default: ""
+      version:
+        description: package.json version that must match the checked-out ref (e.g. 0.1.0)
+        type: string
+        required: true
+      dry_run:
+        description: When true, runs all checks but does not run npm publish
+        type: boolean
+        required: false
+        default: false
+    secrets:
+      NPM_TOKEN:
+        required: true
+      DISCORD_WEBHOOK_URL:
+        required: false
+
+concurrency:
+  group: publish-npm-${{ inputs.version }}-${{ inputs.dry_run }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    name: Verify package version
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6.0.2
+        with:
+          ref: ${{ inputs.ref != '' && inputs.ref || github.sha }}
+
+      - name: Match package.json version to input
+        env:
+          EXPECTED_VERSION: ${{ inputs.version }}
+        run: |
+          EXPECTED="$(node -e "console.log(process.env.EXPECTED_VERSION.trim())")"
+          PKG="$(node -p "require('./package.json').version")"
+          if [ "$PKG" != "$EXPECTED" ]; then
+            echo "::error::package.json version is $PKG but workflow input version is $EXPECTED"
+            exit 1
+          fi
+          echo "Version $PKG matches workflow input."
+
+  build:
+    name: Lint, Format, Typecheck, Build
+    runs-on: ubuntu-latest
+    needs: validate
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6.0.2
+        with:
+          ref: ${{ inputs.ref != '' && inputs.ref || github.sha }}
+
+      - name: Setup Node
+        uses: actions/setup-node@v6.4.0
+        with:
+          node-version-file: package.json
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+      - name: Build
+        run: npm run build
+
+  test:
+    name: Test (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    needs: validate
+
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+          - ubuntu-latest
+          - macos-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6.0.2
+        with:
+          ref: ${{ inputs.ref != '' && inputs.ref || github.sha }}
+
+      - name: Setup Node
+        uses: actions/setup-node@v6.4.0
+        with:
+          node-version-file: package.json
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Test
+        run: npm test
+
+  publish:
+    name: Publish to npm
+    runs-on: ubuntu-latest
+    needs: [build, test]
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6.0.2
+        with:
+          ref: ${{ inputs.ref != '' && inputs.ref || github.sha }}
+
+      - name: Setup Node
+        uses: actions/setup-node@v6.4.0
+        with:
+          node-version-file: package.json
+          cache: npm
+          registry-url: https://registry.npmjs.org
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build
+        run: npm run build
+
+      - name: Check if version is already published
+        id: version-check
+        run: |
+          PKG_VERSION=$(node -p "require('./package.json').version")
+          PKG_NAME=$(node -p "require('./package.json').name")
+          if npm view "${PKG_NAME}@${PKG_VERSION}" version 2>/dev/null | grep -q "${PKG_VERSION}"; then
+            echo "published=true" >> "$GITHUB_OUTPUT"
+            echo "Version ${PKG_VERSION} is already published — skipping."
+          else
+            echo "published=false" >> "$GITHUB_OUTPUT"
+            echo "Version ${PKG_VERSION} is new — will publish."
+          fi
+
+      - name: Publish (dry run)
+        if: steps.version-check.outputs.published == 'false' && inputs.dry_run
+        run: npm publish --access public --dry-run
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: Publish
+        if: steps.version-check.outputs.published == 'false' && !inputs.dry_run
+        run: npm publish --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+  notify-discord:
+    name: Notify Discord (publish result)
+    needs: [validate, build, test, publish]
+    if: always()
+    uses: ./.github/workflows/reusable-discord-notify.yml
+    secrets: inherit
+    with:
+      title: ${{ needs.publish.result != 'success' && format('npm publish failed · v{0}', inputs.version) || inputs.dry_run && format('npm publish dry run · v{0} (no upload)', inputs.version) || format('npm publish succeeded · v{0}', inputs.version) }}
+      description: ${{ format('[View workflow run]({0}/{1}/actions/runs/{2})', github.server_url, github.repository, github.run_id) }}
+      tone: ${{ needs.publish.result != 'success' && 'failure' || inputs.dry_run && 'info' || 'success' }}

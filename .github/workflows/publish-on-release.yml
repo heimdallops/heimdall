@@ -1,0 +1,43 @@
+name: Publish to npm (release)
+
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: read
+
+jobs:
+  announce-discord:
+    name: Announce release on Discord
+    uses: ./.github/workflows/reusable-discord-notify.yml
+    secrets: inherit
+    with:
+      title: ${{ format('Release {0} published', github.event.release.tag_name) }}
+      description: ${{ format('A new GitHub release is live. The npm package will be published in a few minutes.\n\n{0}', github.event.release.html_url) }}
+      tone: info
+
+  package-version:
+    name: Read package version
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.read.outputs.version }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6.0.2
+        with:
+          ref: ${{ github.event.release.tag_name }}
+
+      - name: Read version from package.json
+        id: read
+        run: |
+          VERSION="$(node -p "require('./package.json').version")"
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+
+  publish:
+    needs: package-version
+    uses: ./.github/workflows/publish-to-npm.yml
+    with:
+      ref: ${{ github.event.release.tag_name }}
+      version: ${{ needs.package-version.outputs.version }}
+    secrets: inherit
