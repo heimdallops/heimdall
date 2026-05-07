@@ -1,5 +1,52 @@
 # CLAUDE
 
+## Overview
+
+Heimdall is a CLI for building deterministic agentic workflows from YAML. User-defined workflows define the phases, gates, feedback loops, artifacts, and completion criteria that guide agentic work — agents provide the intelligence, Heimdall owns the structure. Each run executes in an isolated git worktree so parallel tasks don't mix changes.
+
+## Principles
+
+These are implementation constraints, not slogans. Apply them by default.
+
+**YAGNI**
+
+- No config keys, flags, abstractions, or error paths without a concrete current use case
+- No speculative options, partial fake support, or stubs for hypothetical callers
+
+**KISS**
+
+- Prefer explicit control flow over clever meta-programming
+- Straightforward branches and typed interfaces beat dynamic behavior
+- Keep error paths obvious and local
+
+**DRY + Rule of Three**
+
+- Duplicate small, local logic when it preserves clarity
+- Extract shared utilities only after the same pattern appears at least three times and has stabilized
+- When extracting, preserve module boundaries and avoid hidden coupling
+
+**SRP — Single Responsibility**
+
+- Keep each module focused on one concern
+- `command.ts` parses, `run.ts` orchestrates, `core/` contains domain logic — don't collapse these layers
+
+**ISP — Interface Segregation**
+
+- Don't add unrelated concerns to an existing module or interface
+- When a new concern emerges, define a new interface rather than broadening an existing one
+
+**Fail Fast, Don't Hide Failures**
+
+- Throw `CliError` early for expected failures
+- Don't catch-and-swallow or silently fall back to a default that masks the problem
+- Silent failures produce confusing exit codes and hard-to-debug behavior
+
+**Reversibility**
+
+- Keep changes small in scope with an obvious blast radius
+- For risky changes (schema changes, config format changes), identify the rollback path before starting
+- Prefer sequential, mergeable steps over mega-patches
+
 ## Architecture
 
 ### Directory Structure
@@ -25,45 +72,19 @@ test/
   integration/cli/          # Built CLI invocation tests (stdout/stderr/exit code)
 ```
 
-### Command Structure
+## Conventions
 
-| Rule            | Expectation                                                                      |
-| --------------- | -------------------------------------------------------------------------------- |
-| Export          | `command.ts` exports `buildCommand(program): void`                               |
-| Separation      | Parse/validate in `command.ts`; orchestrate in `run.ts`; domain logic in `core/` |
-| Context         | Build one `CliContext`; pass `run(ctx, input)` explicitly                        |
-| Validation      | Use `zod` for args/options/config/env; fail fast with actionable errors          |
-| Output + errors | Use `output/printer.ts`; keep stdout/stderr separate; throw typed `CliError`     |
-| TUI mode        | Ink commands reject `--json` or provide explicit non-TUI fallback                |
+### Commands
 
-#### Layouts
+When implementing or modifying a CLI command, invoke the `/heimdall-cli-command` skill. It defines the required file structure, Zod validation rules, output routing, error handling, testing requirements, and review checklist for this project's command architecture.
 
-**Normal command**
-
-```text
-src/commands/<name>/
-  command.ts   # commander wiring + zod parse
-  run.ts       # orchestration only
-```
-
-**TUI command**
-
-```text
-src/commands/<name>/
-  command.ts         # commander wiring + mode checks (e.g. --json)
-  run.ts             # orchestration + Ink render call
-  tui/
-    app.tsx          # Ink app root
-    components/      # optional TUI-only components
-```
-
-## Config
+### Config
 
 Shared app config is resolved once in `src/config/load-config.ts` and exposed as `ctx.config`. Commands should use `ctx.config` for shared runtime config and should not inspect config files, environment variables, or global config flag origins.
 
 Command-specific args/options are separate from app config. Parse and validate them in `src/commands/<name>/command.ts`, then pass normalized input to `run(ctx, input)`.
 
-### Relevant Files
+**Relevant files**
 
 | File                        | Purpose                                                          |
 | --------------------------- | ---------------------------------------------------------------- |
@@ -72,7 +93,7 @@ Command-specific args/options are separate from app config. Parse and validate t
 | `src/cli/program.ts`        | Defines global CLI flags that may feed config                    |
 | `src/cli/context.ts`        | Builds `CliContext` with resolved `ctx.config`                   |
 
-### Source Rules
+**Rules**
 
 | Concept        | Rule                                                                                  |
 | -------------- | ------------------------------------------------------------------------------------- |
@@ -89,11 +110,9 @@ Precedence order, lowest to highest:
 
 Only add a source to a config key when that source is intentionally supported. Do not read config-file keys, environment variables, or global config flags ad hoc in commands.
 
-## Output
+### Output
 
 Use `output/printer.ts` for command output and log routing. Prefer semantic methods (`info`, `warn`, `debug`, etc.) over direct stream writes.
-
-**Rules**
 
 - Command code should use `Printer` for human/log output.
 - `Printer` owns stdout/stderr routing for its semantic methods.
@@ -101,14 +120,12 @@ Use `output/printer.ts` for command output and log routing. Prefer semantic meth
 - Treat `--json` as final result formatting, not JSON logging.
 - Do not call `console.log/error` directly in commands, core, or services.
 
-## Errors
+### Errors
 
 Expected failures should throw `CliError`.
 
-**Important References**
-
-- `src/errors/cli-error.ts` - error codes
-- `src/cli/middleware/with-error-boundary.ts` - error mapping/rendering
+- `src/errors/cli-error.ts` — error codes
+- `src/cli/middleware/with-error-boundary.ts` — error mapping/rendering
 
 **Rules**
 
@@ -116,6 +133,28 @@ Expected failures should throw `CliError`.
 - Use `EXIT_CODE` from `src/errors/cli-error.ts`; add new codes there when needed.
 - Let unknown failures bubble; do not catch-and-hide errors in commands.
 - Set `process.exitCode` only in top-level code.
+
+### Naming
+
+- Use noun-first subcommand hierarchies ending with a verb (e.g. `heimdall repos list`, not `heimdall list-repos`).
+- Prefer descriptive identifiers over abbreviations.
+
+### Tooling Suppressions
+
+Lint and type rules are enforced by CI. Don't suppress them to make the build pass — fix the root cause.
+
+`// eslint-disable-next-line` and `// @ts-expect-error` are acceptable only when an external library or generated type definition is wrong, with a comment naming the specific reason. File-level disables (`/* eslint-disable */`) are never acceptable.
+
+## Git
+
+Heimdall uses trunk-based development.
+
+- `main` is always deployable. All work lands on `main` via short-lived branches (aim for under 2 days).
+- Long-running work uses feature flags, not long-lived branches.
+- Keep commits focused and single-purpose. Do not mix formatting-only edits with behavior changes.
+- One PR per logical change — don't bundle unrelated work.
+
+**Before opening a PR**, run `npm run quality`. It covers typecheck, lint, format, and tests. CI enforces the same checks and will block on any failure.
 
 ## Commands
 
