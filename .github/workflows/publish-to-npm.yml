@@ -70,7 +70,7 @@ jobs:
           echo "Version $PKG matches workflow input."
 
   build:
-    name: Lint, Format, Typecheck, Build
+    name: Build
     runs-on: ubuntu-latest
     needs: validate
 
