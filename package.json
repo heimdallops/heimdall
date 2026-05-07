@@ -25,7 +25,10 @@
     "test": "npm run build && vitest run",
     "test:unit": "vitest run test/unit",
     "test:integration": "npm run build && vitest run test/integration",
-    "quality": "npm run lint:fix && npm run format:fix && npm run typecheck && npm run build && npm run test"
+    "quality": "npm run lint:fix && npm run format:fix && npm run typecheck && npm run build && npm run test",
+    "postinstall": "node scripts/install-sys-deps.js",
+    "guard:src": "node .claude/scripts/check-test-file.js --block-tests",
+    "guard:test": "node .claude/scripts/check-test-file.js --require-tests"
   },
   "repository": {
     "type": "git",
