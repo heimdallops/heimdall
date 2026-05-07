@@ -179,4 +179,4 @@ jobs:
     with:
       title: ${{ format('npm publish {0}{1} · v{2}', needs.publish.result, inputs.dry_run && ' (dry-run)' || '', inputs.version) }}
       description: ${{ format('[View workflow run]({0}/{1}/actions/runs/{2})', github.server_url, github.repository, github.run_id) }}
-      tone: ${{ needs.publish.result != 'success' && 'failure' || inputs.dry_run && 'info' || 'success' }}
+      tone: ${{ needs.publish.result != 'success' && 'failure' || 'success' }}
