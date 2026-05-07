@@ -28,7 +28,21 @@ jobs:
     name: Post to Discord
     runs-on: ubuntu-latest
     steps:
+      - id: webhook
+        name: Check Discord webhook
+        env:
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+        run: |
+          URL="$(printf '%s' "${DISCORD_WEBHOOK_URL:-}" | tr -d '[:space:]')"
+          if [ -z "$URL" ]; then
+            echo "configured=false" >> "$GITHUB_OUTPUT"
+            echo "::notice title=Discord skipped::DISCORD_WEBHOOK_URL is not set; no message was sent to Discord."
+          else
+            echo "configured=true" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Send Discord webhook
+        if: steps.webhook.outputs.configured == 'true'
         env:
           WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
           TITLE: ${{ inputs.title }}
@@ -44,9 +58,7 @@ jobs:
 
           webhook = (os.environ.get("WEBHOOK_URL") or "").strip().rstrip("/")
           if not webhook:
-              print("DISCORD_WEBHOOK_URL not set; skipping Discord notification.")
-              raise SystemExit(0)
-          # discordapp.com redirects; discord.com avoids edge cases. Cloudflare may 403 urllib's default UA.
+              raise SystemExit("DISCORD_WEBHOOK_URL was empty after gate step")
           webhook = webhook.replace("https://discordapp.com/", "https://discord.com/")
 
           colors = {"success": 3066993, "failure": 15158332, "info": 3447003}

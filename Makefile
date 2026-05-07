@@ -19,6 +19,3 @@ github-run-check-secret-file:
 
 github-run-publish-npm: github-run-check-secret-file
 	act workflow_dispatch -W .github/workflows/publish-to-npm.yml --input "ref=$(ACT_REF)" --input "version=$(ACT_VERSION)" --input "dry_run=true" --secret-file "$(ACT_SECRET_FILE)" $(if $(strip $(ACT_GITHUB_TOKEN)),-s GITHUB_TOKEN="$(ACT_GITHUB_TOKEN)")
-
-# Alias
-act-publish-npm-dry: github-run-publish-npm
