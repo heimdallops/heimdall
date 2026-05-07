@@ -10,12 +10,18 @@ permissions:
 jobs:
   announce-discord:
     name: Announce release on Discord
-    uses: ./.github/workflows/reusable-discord-notify.yml
-    secrets: inherit
-    with:
-      title: ${{ format('Release {0} published', github.event.release.tag_name) }}
-      description: ${{ format('A new GitHub release is live. The npm package will be published in a few minutes.\n\n{0}', github.event.release.html_url) }}
-      tone: info
+    runs-on: ubuntu-latest
+    steps:
+      - name: Post release announcement to Discord
+        continue-on-error: true
+        uses: tsickert/discord-webhook@v7.0.0
+        with:
+          webhook-url: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          username: Heimdall CI
+          embed-title: ${{ format('Release {0} published', github.event.release.tag_name) }}
+          embed-description: ${{ format('A new GitHub release is live. The npm package will be published in a few minutes.\n\n{0}', github.event.release.html_url) }}
+          embed-color: 3447003
+          embed-footer-text: ${{ github.repository }}
 
   package-version:
     name: Read package version
@@ -31,7 +37,7 @@ jobs:
       - name: Read version from package.json
         id: read
         run: |
-          VERSION="$(node -p "require('./package.json').version")"
+          VERSION="$(jq -r '.version' package.json)"
           echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
 
   publish:

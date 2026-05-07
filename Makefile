@@ -6,7 +6,7 @@
 
 # Ref passed to the workflow (branch, tag, or SHA). Default: current HEAD.
 ACT_REF ?= $(shell git rev-parse HEAD)
-ACT_VERSION ?= $(shell node -p "require('./package.json').version")
+ACT_VERSION ?= $(shell jq -r '.version' package.json)
 ACT_SECRET_FILE ?= .github/.secrets
 
 # act does not set github.token. actions/checkout needs a PAT — either add
