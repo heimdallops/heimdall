@@ -7,9 +7,24 @@ on:
         description: Git ref to checkout (branch, tag, or commit SHA)
         type: string
         required: true
+      version:
+        description: Version to inject into package.json/package-lock.json before build
+        type: string
+        required: true
+      upload_package_artifact:
+        description: If true, package and upload an npm tarball artifact
+        type: boolean
+        required: false
+        default: false
+      package_artifact_name:
+        description: Artifact name used when upload_package_artifact is true
+        type: string
+        required: false
+        default: npm-package-tarball
 
 permissions:
   contents: read
+  actions: write
 
 jobs:
   build:
@@ -27,8 +42,27 @@ jobs:
           node-version-file: package.json
           cache: npm
 
+      - name: Inject build version into package metadata
+        env:
+          TARGET_VERSION: ${{ inputs.version }}
+        run: |
+          jq --arg v "$TARGET_VERSION" '.version = $v' package.json > package.json.tmp
+          mv package.json.tmp package.json
+          npm install --package-lock-only --ignore-scripts
+
       - name: Install dependencies
         run: npm ci
 
       - name: Build
         run: npm run build
+
+      - name: Pack npm tarball
+        if: inputs.upload_package_artifact
+        run: npm pack
+
+      - name: Upload package artifact
+        if: inputs.upload_package_artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ inputs.package_artifact_name }}
+          path: "*.tgz"
