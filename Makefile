@@ -1,5 +1,6 @@
 .PHONY: github-run-check-secret-file github-run-publish-npm github-run-publish-on-release
 
+
 # Ref passed to the workflow (branch, tag, or SHA). Default: current HEAD.
 ACT_REF ?= $(shell git rev-parse HEAD)
 ACT_VERSION ?= $(shell jq -r '.version' package.json)
@@ -24,3 +25,8 @@ github-run-publish-npm: github-run-check-secret-file
 github-run-publish-on-release: github-run-check-secret-file
 	@printf '{\n  "release": {\n    "tag_name": "%s",\n    "html_url": "%s"\n  }\n}\n' "$(ACT_RELEASE_TAG)" "$(ACT_RELEASE_URL)" > "$(ACT_RELEASE_EVENT_FILE)"
 	act release -W .github/workflows/publish-on-release.yml --artifact-server-path "$(ACT_ARTIFACT_DIR)" --eventpath "$(ACT_RELEASE_EVENT_FILE)" --secret-file "$(ACT_SECRET_FILE)" $(if $(strip $(ACT_GITHUB_TOKEN)),-s GITHUB_TOKEN="$(ACT_GITHUB_TOKEN)")
+  
+.DEFAULT_GOAL := quality
+%:
+	npm run $(subst -,:,$@)
+

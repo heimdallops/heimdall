@@ -30,8 +30,8 @@ body:
       label: CLI experience
       description: If applicable, show the expected command, flags, input, stdout/stderr, and JSON output shape.
       placeholder: |
-        Command: `heimdall ...`
-        Output: ...
+        Command: [proposed Heimdall invocation]
+        Output: [expected human or JSON output]
       render: shell
 
   - type: textarea
