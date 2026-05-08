@@ -8,7 +8,7 @@ on:
         type: string
         required: true
       version:
-        description: package.json version that must match the checked-out ref (e.g. 0.1.0)
+        description: Version to inject into package.json/package-lock.json before build and publish
         type: string
         required: true
       dry_run:
@@ -23,7 +23,7 @@ on:
         type: string
         required: true
       version:
-        description: package.json version that must match the checked-out ref (e.g. 0.1.0)
+        description: Version to inject into package.json/package-lock.json before build and publish
         type: string
         required: true
       dry_run:
@@ -43,10 +43,11 @@ concurrency:
 
 permissions:
   contents: read
+  actions: read
 
 jobs:
   validate:
-    name: Verify package version
+    name: Validate publish input
     runs-on: ubuntu-latest
 
     steps:
@@ -55,17 +56,16 @@ jobs:
         with:
           ref: ${{ inputs.ref }}
 
-      - name: Match package.json version to input
+      - name: Validate version input is not empty
         env:
           EXPECTED_VERSION: ${{ inputs.version }}
         run: |
-          EXPECTED="$(node -e "console.log(process.env.EXPECTED_VERSION.trim())")"
-          PKG="$(jq -r '.version' package.json)"
-          if [ "$PKG" != "$EXPECTED" ]; then
-            echo "::error::package.json version is $PKG but workflow input version is $EXPECTED"
+          EXPECTED="$(printf '%s' "${EXPECTED_VERSION:-}" | tr -d '[:space:]')"
+          if [ -z "$EXPECTED" ]; then
+            echo "::error::version input must not be empty"
             exit 1
           fi
-          echo "Version $PKG matches workflow input."
+          echo "Using publish version: $EXPECTED"
 
   build:
     name: Build
@@ -73,6 +73,9 @@ jobs:
     uses: ./.github/workflows/build.yml
     with:
       ref: ${{ inputs.ref }}
+      version: ${{ inputs.version }}
+      upload_package_artifact: true
+      package_artifact_name: npm-package-tarball
 
   test:
     name: Test
@@ -99,16 +102,16 @@ jobs:
           cache: npm
           registry-url: https://registry.npmjs.org
 
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Build
-        run: npm run build
+      - name: Download built package artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: npm-package-tarball
+          path: .
 
       - name: Check if version is already published
         id: version-check
         run: |
-          PKG_VERSION="$(jq -r '.version' package.json)"
+          PKG_VERSION="${{ inputs.version }}"
           PKG_NAME="$(jq -r '.name' package.json)"
           if npm view "${PKG_NAME}@${PKG_VERSION}" version 2>/dev/null | grep -q "${PKG_VERSION}"; then
             echo "published=true" >> "$GITHUB_OUTPUT"
@@ -120,13 +123,13 @@ jobs:
 
       - name: Publish (dry run)
         if: steps.version-check.outputs.published == 'false' && inputs.dry_run
-        run: npm publish --access public --dry-run
+        run: npm publish ./*.tgz --access public --dry-run
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
       - name: Publish
         if: steps.version-check.outputs.published == 'false' && !inputs.dry_run
-        run: npm publish --access public
+        run: npm publish ./*.tgz --access public
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
