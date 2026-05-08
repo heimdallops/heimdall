@@ -145,7 +145,7 @@ jobs:
         with:
           webhook-url: ${{ secrets.DISCORD_WEBHOOK_URL }}
           username: Heimdall CI
-          embed-title: ${{ format('npm publish {0}{1} · v{2}', needs.publish.result, inputs.dry_run && ' (dry-run)' || '', inputs.version) }}
+          embed-title: ${{ format('npm publish {0}{1} · v{2}', needs.publish.result, (inputs.dry_run == true || inputs.dry_run == 'true') && ' (dry-run)' || '', inputs.version) }}
           embed-description: ${{ format('[View workflow run]({0}/{1}/actions/runs/{2})', github.server_url, github.repository, github.run_id) }}
           embed-color: ${{ needs.publish.result != 'success' && 15158332 || 3066993 }}
           embed-footer-text: ${{ github.repository }}
