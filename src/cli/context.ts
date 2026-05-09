@@ -24,7 +24,7 @@ export interface ContextOptions {
 export const createContext = async (options: ContextOptions): Promise<CliContext> => {
   const config = await loadConfig(options.flags, options.cwd);
 
-  return {
+  const ctx: CliContext = {
     cwd: options.cwd,
     config,
     printer: createPrinter({
@@ -32,9 +32,12 @@ export const createContext = async (options: ContextOptions): Promise<CliContext
       stderr: options.stderr,
       verbose: config.verbose,
       debug: config.debug,
+      quiet: config.quiet,
     }),
     stdout: options.stdout,
     stderr: options.stderr,
     isTui: options.isTui ?? false,
   };
+
+  return ctx;
 };

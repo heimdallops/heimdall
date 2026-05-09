@@ -1,26 +1,30 @@
 #!/usr/bin/env node
-import { execFileSync, execSync } from 'node:child_process';
+import { execFileSync } from 'node:child_process';
 import { platform } from 'node:os';
 
 function hasCommand(cmd) {
   try {
     execFileSync(cmd, ['--version'], { stdio: 'ignore' });
+
     return true;
   } catch {
     return false;
   }
 }
 
-function tryInstall(cmd) {
+function tryInstall(command, args) {
   try {
-    execSync(cmd, { stdio: 'inherit' });
+    execFileSync(command, args, { stdio: 'inherit' });
+
     return true;
   } catch {
     return false;
   }
 }
 
-if (hasCommand('jq')) process.exit(0);
+if (hasCommand('jq')) {
+  process.exit(0);
+}
 
 process.stdout.write('jq not found, attempting to install...\n');
 
@@ -29,23 +33,37 @@ let installed = false;
 
 switch (sys) {
   case 'darwin':
-    if (hasCommand('brew')) installed = tryInstall('brew install jq');
+    if (hasCommand('brew')) {
+      installed = tryInstall('brew', ['install', 'jq']);
+    }
+
     break;
   case 'linux':
-    if (hasCommand('apt')) installed = tryInstall('apt install -y jq');
-    else if (hasCommand('dnf')) installed = tryInstall('dnf install -y jq');
-    else if (hasCommand('yum')) installed = tryInstall('yum install -y jq');
-    else if (hasCommand('apk')) installed = tryInstall('apk add jq');
+    if (hasCommand('apt')) {
+      installed = tryInstall('apt', ['install', '-y', 'jq']);
+    } else if (hasCommand('dnf')) {
+      installed = tryInstall('dnf', ['install', '-y', 'jq']);
+    } else if (hasCommand('yum')) {
+      installed = tryInstall('yum', ['install', '-y', 'jq']);
+    } else if (hasCommand('apk')) {
+      installed = tryInstall('apk', ['add', 'jq']);
+    }
+
     break;
   case 'win32':
-    // cspell:disable-next-line
-    if (hasCommand('winget'))
-      installed = tryInstall(
-        'winget install jqlang.jq --accept-source-agreements --accept-package-agreements'
-      );
-    // cspell:disable-next-line
-    else if (hasCommand('choco')) installed = tryInstall('choco install jq -y');
-    else if (hasCommand('scoop')) installed = tryInstall('scoop install jq');
+    if (hasCommand('winget')) {
+      installed = tryInstall('winget', [
+        'install',
+        'jqlang.jq',
+        '--accept-source-agreements',
+        '--accept-package-agreements',
+      ]);
+    } else if (hasCommand('choco')) {
+      installed = tryInstall('choco', ['install', 'jq', '-y']);
+    } else if (hasCommand('scoop')) {
+      installed = tryInstall('scoop', ['install', 'jq']);
+    }
+
     break;
 }
 

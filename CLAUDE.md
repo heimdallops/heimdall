@@ -120,6 +120,31 @@ Use `output/printer.ts` for command output and log routing. Prefer semantic meth
 - Treat `--json` as final result formatting, not JSON logging.
 - Do not call `console.log/error` directly in commands, core, or services.
 
+### Logging
+
+All diagnostic output goes through `ctx.printer`. Never call `console.log` or `console.error` directly in commands, core, or services.
+
+**When to log — and when not to**
+
+Default to silence. Only log when the message helps the user understand what the command is doing or why it failed. Ask: would a user running this command in a script care? If not, don't log it.
+
+| Method    | Use when…                                                                 |
+| --------- | ------------------------------------------------------------------------- |
+| `out`     | Emitting the final result of the command (the thing being asked for)      |
+| `info`    | A meaningful step the user should know about (e.g. "Created worktree")    |
+| `success` | The command completed successfully (use sparingly — once per command)     |
+| `warn`    | Something unexpected happened but execution can continue                  |
+| `error`   | A failure the user needs to act on; prefer throwing `CliError` instead    |
+| `verbose` | Progress detail useful when debugging a slow or multi-step operation      |
+| `debug`   | Internal state only useful when diagnosing a bug (IDs, paths, raw values) |
+
+**What not to log**
+
+- Don't log the start and end of every internal function — that's noise, not signal.
+- Don't log things the user already knows (e.g. echoing back their own input).
+- Don't log sensitive values (tokens, secrets, full file paths from user config). The solution is not to log them, not to redact after the fact.
+- Don't use `error()` for expected failures — throw `CliError` instead so the error boundary handles formatting and exit codes consistently.
+
 ### Errors
 
 Expected failures should throw `CliError`.

@@ -1,5 +1,6 @@
 import { cosmiconfig } from 'cosmiconfig';
 
+import { CliError, EXIT_CODE } from '../errors/cli-error.ts';
 import type { Config } from './schema.ts';
 import {
   cliFlagsSchema,
@@ -11,9 +12,8 @@ import {
 
 const explorer = cosmiconfig('heimdall');
 
-const hasOwn = (source: Record<string, unknown>, key: string): boolean => {
-  return Object.prototype.hasOwnProperty.call(source, key);
-};
+const hasOwn = (source: Record<string, unknown>, key: string): boolean =>
+  Object.prototype.hasOwnProperty.call(source, key);
 
 export const loadConfig = async (flagsInput: unknown, cwd: string): Promise<Config> => {
   const flags = cliFlagsSchema.parse(flagsInput);
@@ -43,5 +43,21 @@ export const loadConfig = async (flagsInput: unknown, cwd: string): Promise<Conf
     }
   }
 
-  return configSchema.parse(config);
+  const resolvedConfig = configSchema.parse(config);
+
+  if (resolvedConfig.quiet && (resolvedConfig.verbose || resolvedConfig.debug)) {
+    const conflicting = [
+      resolvedConfig.verbose ? '--verbose' : undefined,
+      resolvedConfig.debug ? '--debug' : undefined,
+    ]
+      .filter(Boolean)
+      .join(' and ');
+
+    throw new CliError(`--quiet cannot be combined with ${conflicting}`, {
+      code: 'CONFLICTING_FLAGS',
+      exitCode: EXIT_CODE.USAGE,
+    });
+  }
+
+  return resolvedConfig;
 };
