@@ -75,7 +75,6 @@ jobs:
       ref: ${{ inputs.ref }}
       version: ${{ inputs.version }}
       upload_package_artifact: true
-      package_artifact_name: npm-package-tarball
 
   test:
     name: Test
@@ -103,9 +102,9 @@ jobs:
           registry-url: https://registry.npmjs.org
 
       - name: Download built package artifact
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v5
         with:
-          name: npm-package-tarball
+          name: ${{ needs.build.outputs.package_artifact_name }}
           path: .
 
       - name: Check if version is already published
