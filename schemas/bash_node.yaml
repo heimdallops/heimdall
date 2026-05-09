@@ -1,0 +1,15 @@
+$schema: 'https://json-schema.org/draft/2020-12/schema'
+allOf:
+  - $ref: node.yaml
+  - type: object
+    properties:
+      bash:
+        type: string
+        description: The bash script to execute.
+      env:
+        type: object
+        description: Key/value pairs to inject into the environment.
+        additionalProperties:
+          type: string
+    required:
+      - bash

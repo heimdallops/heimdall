@@ -1,0 +1,33 @@
+$schema: 'https://json-schema.org/draft/2020-12/schema'
+type: object
+properties:
+  version:
+    type: string
+    description: Workflow definition version
+  name:
+    type: string
+    description: Workflow name
+    minLength: 1
+  description:
+    type: string
+    description: Workflow description
+  platform:
+    $ref: platform.yaml
+  platform_options:
+    $ref: platform_options_union.yaml
+  variables:
+    type: object
+    description: Shared string variables available to all nodes in the workflow.
+    additionalProperties:
+      type: string
+  workspace:
+    $ref: workspace.yaml
+  nodes:
+    type: array
+    description: List of nodes that make up this workflow.
+    items:
+      $ref: node_union.yaml
+    minItems: 1
+required:
+  - name
+  - nodes

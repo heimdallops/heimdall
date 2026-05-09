@@ -1,0 +1,14 @@
+$schema: 'https://json-schema.org/draft/2020-12/schema'
+allOf:
+  - $ref: node.yaml
+  - type: object
+    properties:
+      platform:
+        $ref: platform.yaml
+      platform_options:
+        $ref: platform_options_union.yaml
+      output_format:
+        type: object
+        description: >-
+          JSON Schema object defining the structure for this node's output.
+          Must be a valid JSON Schema (draft-07 or later).

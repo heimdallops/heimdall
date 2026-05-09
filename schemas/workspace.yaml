@@ -1,0 +1,6 @@
+$schema: 'https://json-schema.org/draft/2020-12/schema'
+type: object
+properties:
+  worktree:
+    type: boolean
+    description: 'Use a git worktree when using this workflow (default: true).'

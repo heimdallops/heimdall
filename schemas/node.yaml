@@ -1,0 +1,43 @@
+$schema: 'https://json-schema.org/draft/2020-12/schema'
+type: object
+properties:
+  id:
+    type: string
+    description: Unique identifier for this node.
+    minLength: 1
+  depends_on:
+    type: array
+    description: IDs of nodes this node depends on.
+    items:
+      type: string
+      minLength: 1
+  if:
+    type: string
+    description: Conditional expression that must be truthy for this node to run.
+  context:
+    type: string
+    description: 'Whether to inherit context from previous node(s) (default: clean).'
+    enum:
+      - clean
+      - shared
+  timeout:
+    type: number
+    description: Maximum time to wait before timing out, in milliseconds.
+    minimum: 0
+  retries:
+    type: object
+    properties:
+      max_attempts:
+        type: integer
+        description: Max number of retry attempts.
+        minimum: 0
+      initial_delay_ms:
+        type: integer
+        description: Initial delay in milliseconds before the first retry. Uses exponential backoff with jitter.
+        minimum: 0
+      max_delay_ms:
+        type: integer
+        description: Maximum delay in milliseconds between retry attempts.
+        minimum: 0
+required:
+  - id

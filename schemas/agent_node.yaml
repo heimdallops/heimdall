@@ -1,0 +1,16 @@
+$schema: 'https://json-schema.org/draft/2020-12/schema'
+allOf:
+  - $ref: agentic_node.yaml
+  - type: object
+    properties:
+      agent:
+        type: string
+        description: >-
+          Path to an existing agent file. Frontmatter is stripped when injected
+          into the Claude prompt and used as config for this node. Config
+          provided on the node directly takes precedence.
+      instructions:
+        type: string
+        description: Specific instructions to provide the agent.
+    required:
+      - agent

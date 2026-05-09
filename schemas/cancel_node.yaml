@@ -1,0 +1,10 @@
+$schema: 'https://json-schema.org/draft/2020-12/schema'
+allOf:
+  - $ref: node.yaml
+  - type: object
+    properties:
+      cancel:
+        type: string
+        description: The reason the workflow was cancelled. In-flight parallel nodes are stopped immediately.
+    required:
+      - cancel

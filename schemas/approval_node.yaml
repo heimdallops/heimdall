@@ -1,0 +1,26 @@
+$schema: 'https://json-schema.org/draft/2020-12/schema'
+allOf:
+  - $ref: node.yaml
+  - type: object
+    properties:
+      approval:
+        type: object
+        description: >-
+          Request human approval before continuing. Answering no exits the
+          workflow immediately. Answering yes continues to the next step.
+        properties:
+          message:
+            type: string
+            description: Message to display to the user.
+          enable_feedback:
+            type: boolean
+            description: Enable a third option to gather user feedback.
+          feedback_message:
+            type: string
+            description: >-
+              Message to display when prompting for feedback.
+              Defaults to "Other".
+        required:
+          - message
+    required:
+      - approval

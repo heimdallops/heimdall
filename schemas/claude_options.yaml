@@ -1,0 +1,61 @@
+$schema: 'https://json-schema.org/draft/2020-12/schema'
+allOf:
+  - $ref: platform_options.yaml
+  - type: object
+    properties:
+      reasoning_effort:
+        type: string
+        description: Default reasoning level.
+        enum:
+          - low
+          - medium
+          - high
+          - max
+      disable_tool_search:
+        type: boolean
+        description: >-
+          Recommended. Disable autodiscovery of tools (agents, skills, MCPs) so
+          only tools explicitly provided in the config are available. Defaults to
+          false to avoid unexpected behavior.
+      allowed_tools:
+        type: array
+        description: >-
+          Built-in tools Claude is allowed to use.
+          Set to an empty array to disable all tools.
+        items:
+          type: string
+      denied_tools:
+        type: array
+        description: Tools Claude cannot use, applied after allowed_tools.
+        items:
+          type: string
+      hooks:
+        type: object
+        description: SDK hook callbacks.
+      mcps:
+        description: >-
+          MCP server config. If a string, a path to a JSON config file
+          for MCP servers.
+        oneOf:
+          - type: string
+          - type: object
+      skills:
+        type: array
+        description: Skills to preload.
+        items:
+          type: string
+      agents:
+        type: array
+        description: List of paths to subagent definitions.
+        items:
+          type: string
+      maxBudgetUsd:
+        type: number
+        description: USD cost cap; node fails if exceeded.
+        minimum: 0
+      systemPrompt:
+        type: string
+        description: Override the default system prompt.
+      sandbox:
+        type: object
+        description: OS-level filesystem and network restrictions.

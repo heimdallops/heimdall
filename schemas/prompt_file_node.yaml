@@ -1,0 +1,13 @@
+$schema: 'https://json-schema.org/draft/2020-12/schema'
+allOf:
+  - $ref: agentic_node.yaml
+  - type: object
+    properties:
+      prompt_file:
+        type: string
+        description: Path to a file containing a prompt. Supports LiquidJS templates.
+      scope:
+        type: object
+        description: Variables available to the LiquidJS template when rendering the prompt file.
+    required:
+      - prompt_file
