@@ -6,6 +6,7 @@ on:
 
 permissions:
   contents: read
+  actions: write
 
 jobs:
   validate-release-tag:
@@ -36,6 +37,36 @@ jobs:
           }
           echo "Release tag ok: ${NORMALIZED}"
 
+  sync-package-version:
+    name: Sync package version from release tag
+    needs: validate-release-tag
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6.0.2
+        with:
+          ref: ${{ github.event.release.tag_name }}
+          fetch-depth: 0
+
+      - name: Setup Node
+        uses: actions/setup-node@v6.4.0
+        with:
+          node-version-file: package.json
+
+      # Align package.json / package-lock.json with the semver git tag (single place for release versioning).
+      # --no-git-tag-version avoids commit/tag side effects in CI.
+      # --allow-same-version: tag often matches package.json already; npm exits with "Version not changed" otherwise.
+      - name: Sync package version from git
+        run: npm version from-git --no-git-tag-version
+
+      - name: Upload package metadata for build
+        uses: actions/upload-artifact@v5
+        with:
+          name: release-package-metadata
+          path: |
+            package.json
+            package-lock.json
+
   announce-discord:
     name: Announce release on Discord
     needs: validate-release-tag
@@ -56,9 +87,9 @@ jobs:
           embed-footer-text: ${{ github.repository }}
 
   publish:
-    needs: validate-release-tag
+    needs: [validate-release-tag, sync-package-version]
     uses: ./.github/workflows/publish-to-npm.yml
     with:
       ref: ${{ github.event.release.tag_name }}
-      version: ${{ github.event.release.tag_name }}
+      package_metadata_artifact: release-package-metadata
     secrets: inherit
