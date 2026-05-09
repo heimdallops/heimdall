@@ -16,11 +16,10 @@ on:
         type: boolean
         required: false
         default: false
+    outputs:
       package_artifact_name:
-        description: Artifact name used when upload_package_artifact is true
-        type: string
-        required: false
-        default: npm-package-tarball
+        description: Resolved artifact name including version and git hash
+        value: ${{ jobs.build.outputs.package_artifact_name }}
 
 permissions:
   contents: read
@@ -30,6 +29,8 @@ jobs:
   build:
     name: Build
     runs-on: ubuntu-latest
+    outputs:
+      package_artifact_name: ${{ steps.resolve-artifact-name.outputs.name }}
     steps:
       - name: Checkout
         uses: actions/checkout@v6.0.2
@@ -56,13 +57,21 @@ jobs:
       - name: Build
         run: npm run build
 
+      - name: Resolve package artifact name
+        id: resolve-artifact-name
+        env:
+          TARGET_VERSION: ${{ inputs.version }}
+        run: |
+          SHORT_SHA="$(git rev-parse --short=12 HEAD)"
+          echo "name=npm-package-tarball-${TARGET_VERSION}-${SHORT_SHA}" >> "$GITHUB_OUTPUT"
+
       - name: Pack npm tarball
         if: inputs.upload_package_artifact
         run: npm pack
 
       - name: Upload package artifact
         if: inputs.upload_package_artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
-          name: ${{ inputs.package_artifact_name }}
+          name: ${{ steps.resolve-artifact-name.outputs.name }}
           path: "*.tgz"
