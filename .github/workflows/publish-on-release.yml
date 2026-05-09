@@ -5,21 +5,32 @@ on:
     types: [published]
 
 permissions:
-  contents: read
+  contents: write
   actions: write
 
 jobs:
-  validate-release-tag:
+  detect_dry_run:
+    name: Detect dry run
+    runs-on: ubuntu-latest
+    outputs:
+      dry_run: ${{ steps.flag.outputs.dry_run }}
+    steps:
+      - id: flag
+        run: |
+          if [ "${{ secrets.DRY_RUN }}" = "true" ]; then
+            echo "dry_run=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "dry_run=false" >> "$GITHUB_OUTPUT"
+          fi
+
+  validate_release_tag:
     name: Validate release tag
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout
-        uses: actions/checkout@v6.0.2
-
       - name: Setup Node
         uses: actions/setup-node@v6.4.0
         with:
-          node-version-file: package.json
+          node-version: 24
 
       - name: Validate tag is semver
         env:
@@ -30,17 +41,19 @@ jobs:
             echo "::error::release tag_name is empty"
             exit 1
           fi
-          # Use the semver package CLI (not node -e require), so resolution works under act and npm exec.
           NORMALIZED="$(npm exec --yes --package=semver@7 -- semver "$TAG")" || {
             echo "::error::release tag must be valid semver (got ${TAG})"
             exit 1
           }
           echo "Release tag ok: ${NORMALIZED}"
 
-  sync-package-version:
-    name: Sync package version from release tag
-    needs: validate-release-tag
+  prepare_release_branch:
+    name: Sync package version and push release branch
+    needs: validate_release_tag
     runs-on: ubuntu-latest
+    outputs:
+      branch_name: ${{ steps.branch_meta.outputs.name }}
+      semver_version: ${{ steps.branch_meta.outputs.version }}
     steps:
       - name: Checkout
         uses: actions/checkout@v6.0.2
@@ -53,43 +66,205 @@ jobs:
         with:
           node-version-file: package.json
 
-      # Align package.json / package-lock.json with the semver git tag (single place for release versioning).
-      # --no-git-tag-version avoids commit/tag side effects in CI.
-      # --allow-same-version: tag often matches package.json already; npm exits with "Version not changed" otherwise.
-      - name: Sync package version from git
+      - name: Sync package version from git tag
         run: npm version from-git --no-git-tag-version
 
-      - name: Upload package metadata for build
-        uses: actions/upload-artifact@v5
-        with:
-          name: release-package-metadata
-          path: |
-            package.json
-            package-lock.json
+      - id: branch_meta
+        run: |
+          set -euo pipefail
+          VERSION="$(jq -r '.version' package.json)"
+          # run_id/run_attempt repeat under act (e.g. 1/1); add entropy so each push is unique.
+          if command -v openssl >/dev/null 2>&1; then
+            UNIQUE="$(openssl rand -hex 4)"
+          else
+            UNIQUE="$(printf '%s-%s' "$(date +%s)" "$$")"
+          fi
+          BRANCH="release/npm-${{ github.run_id }}-${{ github.run_attempt }}-${UNIQUE}"
+          {
+            echo "name=${BRANCH}"
+            echo "version=${VERSION}"
+          } >> "$GITHUB_OUTPUT"
 
-  announce-discord:
-    name: Announce release on Discord
-    needs: validate-release-tag
+      - name: Commit synced version and push branch
+        env:
+          BRANCH_NAME: ${{ steps.branch_meta.outputs.name }}
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git checkout -b "${BRANCH_NAME}"
+          git add package.json package-lock.json
+          git commit -m "chore(release): sync version from ${{ github.event.release.tag_name }}"
+          git push origin "HEAD:${BRANCH_NAME}"
+
+  build_package:
+    name: Build package artifact
+    needs: prepare_release_branch
+    uses: ./.github/workflows/build.yml
+    with:
+      ref: ${{ needs.prepare_release_branch.outputs.branch_name }}
+      upload_package_artifact: true
+
+  cleanup_release_branch:
+    name: Delete release branch
+    needs:
+      - prepare_release_branch
+      - build_package
+    if: always()
     runs-on: ubuntu-latest
     steps:
-      - name: Post release announcement to Discord
+      - name: Checkout
+        uses: actions/checkout@v6.0.2
+        with:
+          fetch-depth: 0
+
+      - name: Delete remote release branch
+        continue-on-error: true
+        env:
+          BRANCH_NAME: ${{ needs.prepare_release_branch.outputs.branch_name }}
+        run: |
+          set -euo pipefail
+          if [ -z "${BRANCH_NAME:-}" ]; then
+            echo "::notice::No release branch name was produced; skipping delete."
+            exit 0
+          fi
+          if git ls-remote origin "refs/heads/${BRANCH_NAME}" | grep -q .; then
+            git push origin --delete "${BRANCH_NAME}"
+            echo "Deleted branch ${BRANCH_NAME}"
+          else
+            echo "::notice::Branch ${BRANCH_NAME} is not present on origin; skipping delete."
+          fi
+
+  publish_to_npm:
+    name: Publish to npm (from artifact)
+    needs:
+      - detect_dry_run
+      - prepare_release_branch
+      - build_package
+      - cleanup_release_branch
+    if: needs.build_package.result == 'success'
+    uses: ./.github/workflows/publish-to-npm.yml
+    with:
+      dry_run: ${{ needs.detect_dry_run.outputs.dry_run == 'true' }}
+      package_artifact_name: ${{ needs.build_package.outputs.package_artifact_name }}
+    secrets: inherit
+
+  notify_release_outcome:
+    name: Notify release outcome (Discord)
+    needs:
+      - validate_release_tag
+      - prepare_release_branch
+      - build_package
+      - cleanup_release_branch
+      - publish_to_npm
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Truncate publish error for Discord
+        id: publish_err_excerpt
+        env:
+          FULL_MESSAGE: ${{ needs.publish_to_npm.outputs.publish_error_message }}
+        run: |
+          set -euo pipefail
+          TEXT="$(printf '%s' "${FULL_MESSAGE:-}" | head -c 1200)"
+          {
+            echo "text<<EOF"
+            printf '%s\n' "$TEXT"
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Prepare Discord embed metadata
+        id: discord_meta
+        env:
+          VALIDATE: ${{ needs.validate_release_tag.result }}
+          PREPARE: ${{ needs.prepare_release_branch.result }}
+          BUILD: ${{ needs.build_package.result }}
+          CLEANUP: ${{ needs.cleanup_release_branch.result }}
+          PUBLISH_JOB: ${{ needs.publish_to_npm.result }}
+          PUBLISH_STATUS: ${{ needs.publish_to_npm.outputs.publish_status }}
+        run: |
+          set -euo pipefail
+          FAILED=false
+          [ "$VALIDATE" = "success" ] || FAILED=true
+          [ "$PREPARE" = "success" ] || FAILED=true
+          [ "$BUILD" = "success" ] || FAILED=true
+          [ "$CLEANUP" = "success" ] || FAILED=true
+
+          if [ "$BUILD" = "success" ]; then
+            [ "$PUBLISH_JOB" = "success" ] || FAILED=true
+            if [ "$PUBLISH_JOB" = "success" ]; then
+              [ "${PUBLISH_STATUS:-}" != "failure" ] || FAILED=true
+            fi
+          fi
+
+          if [ "$FAILED" = true ]; then
+            echo "color=15158332" >> "$GITHUB_OUTPUT"
+            echo "title_prefix=Release pipeline failed" >> "$GITHUB_OUTPUT"
+          else
+            echo "color=3066993" >> "$GITHUB_OUTPUT"
+            echo "title_prefix=Release pipeline succeeded" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Compose Discord embed description
+        id: discord_embed
+        env:
+          RUN_URL: ${{ format('{0}/{1}/actions/runs/{2}', github.server_url, github.repository, github.run_id) }}
+          REPOSITORY: ${{ github.repository }}
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+          R_VALIDATE: ${{ needs.validate_release_tag.result }}
+          R_PREPARE: ${{ needs.prepare_release_branch.result }}
+          R_BUILD: ${{ needs.build_package.result }}
+          R_CLEANUP: ${{ needs.cleanup_release_branch.result }}
+          R_PUBLISH_JOB: ${{ needs.publish_to_npm.result }}
+          PUBLISH_STATUS: ${{ needs.publish_to_npm.outputs.publish_status }}
+          ERR_TEXT: ${{ steps.publish_err_excerpt.outputs.text }}
+        run: |
+          set -euo pipefail
+          ic() {
+            case "${1:-}" in
+              success) printf '%s' '✅' ;;
+              skipped) printf '%s' '⏭️' ;;
+              cancelled) printf '%s' '🛑' ;;
+              *) printf '%s' '❌' ;;
+            esac
+          }
+          DELIM="DISCORD_EMBED_BODY_EOF"
+          {
+            echo "description<<${DELIM}"
+            printf '🚀 **Heimdall release** · `%s` · **%s**\n\n' "${REPOSITORY}" "${RELEASE_TAG}"
+            printf '🔗 [**Open workflow run**](%s)\n\n' "${RUN_URL}"
+            printf '**Stages**\n'
+            printf '%s · Validate release tag · **%s**\n' "$(ic "$R_VALIDATE")" "${R_VALIDATE}"
+            printf '%s · Sync version & push branch · **%s**\n' "$(ic "$R_PREPARE")" "${R_PREPARE}"
+            printf '%s · Build package artifact · **%s**\n' "$(ic "$R_BUILD")" "${R_BUILD}"
+            printf '%s · Delete release branch · **%s**\n' "$(ic "$R_CLEANUP")" "${R_CLEANUP}"
+            printf '%s · Publish to npm · **%s**\n' "$(ic "$R_PUBLISH_JOB")" "${R_PUBLISH_JOB}"
+            printf '\n**npm publish**\n'
+            if [ -n "${PUBLISH_STATUS:-}" ]; then
+              case "${PUBLISH_STATUS}" in
+                success) PS='✨' ;;
+                failure) PS='💥' ;;
+                *) PS='📌' ;;
+              esac
+              printf '%s · Reported status · **%s**\n' "${PS}" "${PUBLISH_STATUS}"
+            else
+              printf '📌 · Reported status · _none (job skipped or no output)_\n'
+            fi
+            if [ -n "${ERR_TEXT:-}" ]; then
+              printf '\n**npm output** *(truncated)*\n```text\n%s\n```\n' "${ERR_TEXT}"
+            else
+              printf '\n_No npm stderr captured._\n'
+            fi
+            echo "${DELIM}"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Post release outcome to Discord
         continue-on-error: true
         uses: tsickert/discord-webhook@v7.0.0
         with:
           webhook-url: ${{ secrets.DISCORD_WEBHOOK_URL }}
           username: Heimdall CI
-          embed-title: ${{ format('Release {0} published', github.event.release.tag_name) }}
-          embed-description: |
-            A new GitHub release is live. The npm package will be published in a few minutes.
-
-            ${{ github.event.release.html_url }}
-          embed-color: 3447003
+          embed-title: ${{ format('{0} · {1}', steps.discord_meta.outputs.title_prefix, github.event.release.tag_name) }}
+          embed-description: ${{ steps.discord_embed.outputs.description }}
+          embed-color: ${{ steps.discord_meta.outputs.color }}
           embed-footer-text: ${{ github.repository }}
-
-  publish:
-    needs: [validate-release-tag, sync-package-version]
-    uses: ./.github/workflows/publish-to-npm.yml
-    with:
-      ref: ${{ github.event.release.tag_name }}
-      package_metadata_artifact: release-package-metadata
-    secrets: inherit
