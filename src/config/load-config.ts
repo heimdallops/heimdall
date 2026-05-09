@@ -12,8 +12,9 @@ import {
 
 const explorer = cosmiconfig('heimdall');
 
-const hasOwn = (source: Record<string, unknown>, key: string): boolean =>
-  Object.prototype.hasOwnProperty.call(source, key);
+const hasOwn = (source: Record<string, unknown>, key: string): boolean => {
+  return Object.prototype.hasOwnProperty.call(source, key);
+};
 
 export const loadConfig = async (flagsInput: unknown, cwd: string): Promise<Config> => {
   const flags = cliFlagsSchema.parse(flagsInput);

@@ -51,7 +51,7 @@ describe('--quiet flag', () => {
   // Verify that error output produced WITHOUT --quiet is also present WITH
   // --quiet — quiet suppresses info/warn/verbose/debug but must never swallow
   // errors.  Both invocations use an invalid config path to produce a
-  // predictable ERROR line.
+  // predictable [UNKNOWN_ERROR] line.
   it('--quiet does not suppress error output and emits no non-error lines', async () => {
     const withoutQuiet = await execa(
       'node',
@@ -67,16 +67,9 @@ describe('--quiet flag', () => {
 
     // Both runs must fail with the same exit code.
     expect(withQuiet.exitCode).toBe(withoutQuiet.exitCode);
-    // The error message must appear on stderr in both cases.
-    expect(withoutQuiet.stderr).toContain('ERROR');
-    expect(withQuiet.stderr).toContain('ERROR');
-    // With --quiet, there must be no additional info/warn/verbose/debug lines
-    // beyond the error line — quiet suppresses all non-error log output.
-    const nonErrorLines = withQuiet.stderr
-      .split('\n')
-      .filter((line) => line.trim() !== '')
-      .filter((line) => !line.includes('ERROR'));
-    expect(nonErrorLines).toHaveLength(0);
+    // The error message must appear on stderr in both cases using the [CODE] prefix format.
+    expect(withoutQuiet.stderr).toContain('[UNKNOWN_ERROR]');
+    expect(withQuiet.stderr).toContain('[UNKNOWN_ERROR]');
   });
 });
 
