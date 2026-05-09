@@ -6,7 +6,7 @@
 
 # Ref passed to the workflow (branch, tag, or SHA). Default: current HEAD.
 ACT_REF ?= $(shell git rev-parse HEAD)
-ACT_VERSION ?= $(shell jq -r '.version' package.json)
+ACT_VERSION ?= 0.1.1
 ACT_RELEASE_TAG ?= $(ACT_VERSION)
 ACT_RELEASE_URL ?= https://github.com/heimdallops/heimdall/releases/tag/$(ACT_RELEASE_TAG)
 ACT_SECRET_FILE ?= .github/.secrets
@@ -27,7 +27,7 @@ github-run-check-secret-file:
 	@mkdir -p "$(ACT_ARTIFACT_DIR)"
 
 github-run-publish-npm: github-run-check-secret-file
-	act workflow_dispatch -W .github/workflows/publish-to-npm.yml $(ACT_RUNNER_MAP) --artifact-server-path "$(ACT_ARTIFACT_DIR)" --input "ref=$(ACT_REF)" --input "version=$(ACT_VERSION)" --input "dry_run=true" --secret-file "$(ACT_SECRET_FILE)" $(if $(strip $(ACT_GITHUB_TOKEN)),-s GITHUB_TOKEN="$(ACT_GITHUB_TOKEN)")
+	act workflow_dispatch -W .github/workflows/publish-to-npm.yml $(ACT_RUNNER_MAP) --artifact-server-path "$(ACT_ARTIFACT_DIR)" --input "ref=$(ACT_REF)" --input "dry_run=true" --secret-file "$(ACT_SECRET_FILE)" $(if $(strip $(ACT_GITHUB_TOKEN)),-s GITHUB_TOKEN="$(ACT_GITHUB_TOKEN)")
 
 github-run-publish-on-release: github-run-check-secret-file
 	@printf '{\n  "release": {\n    "tag_name": "%s",\n    "html_url": "%s"\n  }\n}\n' "$(ACT_RELEASE_TAG)" "$(ACT_RELEASE_URL)" > "$(ACT_RELEASE_EVENT_FILE)"

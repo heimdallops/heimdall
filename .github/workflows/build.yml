@@ -12,6 +12,11 @@ on:
         type: boolean
         required: false
         default: false
+      package_metadata_artifact:
+        description: Optional artifact name containing package.json and package-lock.json (e.g. from release npm version from-git)
+        type: string
+        required: false
+        default: ""
     outputs:
       package_artifact_name:
         description: Resolved artifact name including version and git hash
@@ -32,7 +37,6 @@ jobs:
         uses: actions/checkout@v6.0.2
         with:
           ref: ${{ inputs.ref }}
-          fetch-depth: 0
 
       - name: Setup Node
         uses: actions/setup-node@v6.4.0
@@ -40,11 +44,18 @@ jobs:
           node-version-file: package.json
           cache: npm
 
-      # Release flows check out a semver tag; sync package.json and package-lock.json to that tag
-      # without ad-hoc edits or npm install (which can resolve and drift the lockfile).
-      # --no-git-tag-version avoids commit/tag side effects in CI.
-      - name: Sync package version from git
-        run: npm version from-git --allow-same-version --no-git-tag-version
+      - name: Download release package metadata
+        if: inputs.package_metadata_artifact != ''
+        uses: actions/download-artifact@v5
+        with:
+          name: ${{ inputs.package_metadata_artifact }}
+          path: ${{ runner.temp }}/release-package-metadata
+
+      - name: Apply release package metadata
+        if: inputs.package_metadata_artifact != ''
+        run: |
+          cp "${{ runner.temp }}/release-package-metadata/package.json" .
+          cp "${{ runner.temp }}/release-package-metadata/package-lock.json" .
 
       - name: Install dependencies
         run: npm ci
