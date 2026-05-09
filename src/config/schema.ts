@@ -5,6 +5,7 @@ export const configSchema = z
     json: z.boolean().default(false),
     verbose: z.boolean().default(false),
     debug: z.boolean().default(false),
+    quiet: z.boolean().default(false),
   })
   .strict();
 
@@ -13,6 +14,7 @@ export const cliFlagsSchema = z
     json: z.boolean().optional(),
     verbose: z.boolean().optional(),
     debug: z.boolean().optional(),
+    quiet: z.boolean().optional(),
     config: z.string().optional(),
   })
   .strict();
@@ -40,9 +42,8 @@ type ConfigSources = {
   readonly [Key in keyof Config]: ConfigSource<Key>;
 };
 
-const booleanFlag = (value: CliFlags[keyof CliFlags]): boolean | undefined => {
-  return typeof value === 'boolean' ? value : undefined;
-};
+const booleanFlag = (value: CliFlags[keyof CliFlags]): boolean | undefined =>
+  typeof value === 'boolean' ? value : undefined;
 
 export const configSources: ConfigSources = {
   json: {
@@ -57,18 +58,22 @@ export const configSources: ConfigSources = {
     defaultValue: false,
     flags: [{ key: 'debug', resolve: booleanFlag }],
   },
+  quiet: {
+    defaultValue: false,
+    flags: [{ key: 'quiet', resolve: booleanFlag }],
+  },
 };
 
 const fileConfigShape = Object.fromEntries(
-  Object.values(configSources).flatMap((source) => {
-    return source.file === undefined ? [] : [[source.file.key, source.file.schema.optional()]];
-  })
+  Object.values(configSources).flatMap((source) =>
+    source.file === undefined ? [] : [[source.file.key, source.file.schema.optional()]]
+  )
 ) as z.ZodRawShape;
 
 const envShape = Object.fromEntries(
-  Object.values(configSources).flatMap((source) => {
-    return source.env === undefined ? [] : [[source.env.key, source.env.schema.optional()]];
-  })
+  Object.values(configSources).flatMap((source) =>
+    source.env === undefined ? [] : [[source.env.key, source.env.schema.optional()]]
+  )
 ) as z.ZodRawShape;
 
 export const fileConfigSchema = z.object(fileConfigShape).strict();

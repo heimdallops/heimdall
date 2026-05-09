@@ -12,6 +12,7 @@ export const createProgram = (): Command => {
     .option('--json', 'Print the final command result as JSON')
     .option('-v, --verbose', 'Enable verbose diagnostics')
     .option('--debug', 'Enable debug diagnostics')
+    .option('-q, --quiet', 'Suppress all diagnostic output')
     .showHelpAfterError()
     .showSuggestionAfterError()
     .helpOption('-h, --help', 'Display help')

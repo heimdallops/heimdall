@@ -26,9 +26,9 @@
     "test:unit": "vitest run test/unit",
     "test:integration": "npm run build && vitest run test/integration",
     "quality": "npm run lint:fix && npm run format:fix && npm run typecheck && npm run build && npm run test",
-    "postinstall": "node scripts/install-sys-deps.js",
     "guard:src": "node .claude/scripts/check-test-file.js --block-tests",
-    "guard:test": "node .claude/scripts/check-test-file.js --require-tests"
+    "guard:test": "node .claude/scripts/check-test-file.js --require-tests",
+    "init": "node scripts/install-sys-deps.js"
   },
   "repository": {
     "type": "git",
@@ -49,13 +49,13 @@
   "homepage": "https://github.com/heimdallops/heimdall#readme",
   "dependencies": {
     "@inquirer/prompts": "^8.4.2",
+    "chalk": "^5.6.2",
     "commander": "^14.0.3",
     "conf": "^15.1.0",
     "cosmiconfig": "^9.0.1",
     "execa": "^9.6.1",
     "ink": "^7.0.1",
     "ora": "^9.4.0",
-    "picocolors": "^1.1.1",
     "react": "^19.2.5",
     "zod": "^4.3.6"
   },

@@ -27,6 +27,7 @@ export const withErrorBoundary = async <T>(
 ): Promise<number> => {
   try {
     await run();
+
     return EXIT_CODE.SUCCESS;
   } catch (error) {
     const commanderError = getCommanderError(error);
@@ -41,6 +42,16 @@ export const withErrorBoundary = async <T>(
 
     const mapped = mapUnknownError(error);
     printer.error(`[${mapped.code}] ${mapped.message}`);
+
+    if (mapped.code === 'UNKNOWN_ERROR') {
+      // Raw detail lives on cause to avoid leaking internals via mapped.message.
+      // If this error was caught before createContext() ran (e.g., during config
+      // loading), the printer is the bootstrap instance and debug() is a no-op.
+      const rawMessage =
+        mapped.cause instanceof Error ? mapped.cause.message : String(mapped.cause);
+      printer.debug(`[${mapped.code}] ${rawMessage}`);
+    }
+
     return mapped.exitCode;
   }
 };

@@ -1,13 +1,13 @@
 import type { Writable } from 'node:stream';
 
-import { theme } from './theme.ts';
+import { Chalk } from 'chalk';
 
-/** Runtime controls for human/log output routing. */
 export interface PrinterOptions {
   readonly stdout: Writable;
   readonly stderr: Writable;
   readonly verbose: boolean;
   readonly debug: boolean;
+  readonly quiet: boolean;
 }
 
 /**
@@ -29,49 +29,86 @@ export interface Printer {
   readonly debug: (message: string) => void;
 }
 
-const writeLine = (stream: Writable, message: string): void => {
-  stream.write(`${message}\n`);
+type Level = 'silent' | 'info' | 'verbose' | 'debug';
+
+const resolveLevel = (options: Pick<PrinterOptions, 'quiet' | 'verbose' | 'debug'>): Level => {
+  if (options.quiet) {
+    return 'silent';
+  }
+
+  if (options.debug) {
+    return 'debug';
+  }
+
+  if (options.verbose) {
+    return 'verbose';
+  }
+
+  return 'info';
 };
 
-/** Creates a printer bound to the current process streams and log verbosity. */
 export const createPrinter = (options: PrinterOptions): Printer => {
-  const writeLog = (message: string, colorize: (value: string) => string): void => {
-    writeLine(options.stderr, colorize(message));
+  const level = resolveLevel(options);
+  const isTty = 'isTTY' in options.stderr && (options.stderr as NodeJS.WriteStream).isTTY === true;
+  const c = new Chalk(isTty ? {} : { level: 0 });
+  const labels = {
+    info: c.cyan('INFO'),
+    success: c.green('SUCCESS'),
+    warn: c.yellow('WARN'),
+    error: c.red('ERROR'),
+    verbose: c.gray('VERBOSE'),
+    debug: c.dim('DEBUG'),
   };
 
-  const writeVerbose = (message: string): void => {
-    if (options.verbose || options.debug) {
-      writeLog(message, theme.muted);
+  const logPrefix = (label: string): string => {
+    if (level !== 'debug') {
+      return '';
     }
+
+    const now = new Date();
+    const time = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}:${String(now.getSeconds()).padStart(2, '0')}`;
+
+    return `[${time}] ${label}: `;
   };
 
-  const writeDebug = (message: string): void => {
-    if (options.debug) {
-      writeLog(message, theme.muted);
+  const log = (label: string, message: string): void => {
+    if (level === 'silent') {
+      return;
     }
+
+    options.stderr.write(`${logPrefix(label)}${message}\n`);
   };
 
   return {
     out: (message: string): void => {
-      writeLine(options.stdout, message);
+      options.stdout.write(`${message}\n`);
     },
     info: (message: string): void => {
-      writeLog(message, theme.info);
+      log(labels.info, message);
     },
     success: (message: string): void => {
-      writeLog(message, theme.success);
+      log(labels.success, message);
     },
     warn: (message: string): void => {
-      writeLog(message, theme.warning);
+      log(labels.warn, message);
     },
     error: (message: string): void => {
-      writeLog(message, theme.error);
+      // Errors always surface regardless of --quiet.
+      options.stderr.write(`${logPrefix(labels.error)}${message}\n`);
     },
     verbose: (message: string): void => {
-      writeVerbose(message);
+      if (level !== 'verbose' && level !== 'debug') {
+        return;
+      }
+
+      log(labels.verbose, message);
     },
     debug: (message: string): void => {
-      writeDebug(message);
+      if (level !== 'debug') {
+        return;
+      }
+
+      log(labels.debug, message);
     },
   };
 };
