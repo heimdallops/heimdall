@@ -8,7 +8,7 @@ on:
         type: string
         required: true
       version:
-        description: Version to inject into package.json/package-lock.json before build and publish
+        description: Expected semver for this publish (should match the git tag at ref; build syncs package metadata from git)
         type: string
         required: true
       dry_run:
@@ -23,7 +23,7 @@ on:
         type: string
         required: true
       version:
-        description: Version to inject into package.json/package-lock.json before build and publish
+        description: Expected semver for this publish (should match the git tag at ref; build syncs package metadata from git)
         type: string
         required: true
       dry_run:
@@ -56,7 +56,12 @@ jobs:
         with:
           ref: ${{ inputs.ref }}
 
-      - name: Validate version input is not empty
+      - name: Setup Node
+        uses: actions/setup-node@v6.4.0
+        with:
+          node-version-file: package.json
+
+      - name: Validate publish version (semver)
         env:
           EXPECTED_VERSION: ${{ inputs.version }}
         run: |
@@ -65,7 +70,12 @@ jobs:
             echo "::error::version input must not be empty"
             exit 1
           fi
-          echo "Using publish version: $EXPECTED"
+          # Use the semver package CLI (not node -e require), so resolution works under act and npm exec.
+          NORMALIZED="$(npm exec --yes --package=semver@7 -- semver "$EXPECTED")" || {
+            echo "::error::version must be valid semver (got ${EXPECTED})"
+            exit 1
+          }
+          echo "Using publish version: ${NORMALIZED}"
 
   build:
     name: Build
@@ -73,7 +83,6 @@ jobs:
     uses: ./.github/workflows/build.yml
     with:
       ref: ${{ inputs.ref }}
-      version: ${{ inputs.version }}
       upload_package_artifact: true
 
   test:
