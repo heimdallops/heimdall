@@ -107,8 +107,7 @@ jobs:
     with:
       dry_run: ${{ needs.detect_dry_run.outputs.dry_run == 'true' }}
       package_artifact_name: ${{ needs.build.outputs.package_artifact_name }}
-      package_name: ${{ needs.build.outputs.package_name }}
-      package_version: ${{ needs.build.outputs.package_version }}
+      ref: ${{ needs.prepare_release_branch.outputs.branch_name }}
     secrets: inherit
 
   cleanup_release_branch:
@@ -220,6 +219,14 @@ jobs:
             printf '%s · Build package artifact · **%s**\n' "$(ic "$R_BUILD")" "${R_BUILD}"
             printf '%s · Delete release branch · **%s**\n' "$(ic "$R_CLEANUP")" "${R_CLEANUP}"
             printf '%s · Publish to npm · **%s**\n' "$(ic "$R_PUBLISH_JOB")" "${R_PUBLISH_JOB}"
+            printf '\n**npm publish**\n'
+            case "${R_PUBLISH_JOB}" in
+              success) PS='✨' ;;
+              skipped) PS='⏭️' ;;
+              cancelled) PS='🛑' ;;
+              *) PS='💥' ;;
+            esac
+            printf '%s · Reported status · **%s**\n' "${PS}" "${R_PUBLISH_JOB}"
             if [ -n "${ERR_TEXT:-}" ]; then
               printf '\n**npm output** *(truncated)*\n```text\n%s\n```\n' "${ERR_TEXT}"
             else
