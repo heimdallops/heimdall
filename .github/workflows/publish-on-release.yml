@@ -84,7 +84,7 @@ jobs:
 
           git add package.json package-lock.json
           git commit -m "chore: sync package version to ${VERSION}"
-          git push origin "$BRANCH"
+          git push --force-with-lease origin "$BRANCH"
 
           echo "name=${BRANCH}" >> "$GITHUB_OUTPUT"
 
