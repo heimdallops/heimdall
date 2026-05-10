@@ -14,8 +14,14 @@ on:
         default: false
     outputs:
       package_artifact_name:
-        description: Resolved artifact name including version and git hash
+        description: Resolved artifact name based on package version
         value: ${{ jobs.build.outputs.package_artifact_name }}
+      package_name:
+        description: npm package name from package.json
+        value: ${{ jobs.build.outputs.package_name }}
+      package_version:
+        description: npm package version from package.json
+        value: ${{ jobs.build.outputs.package_version }}
 
 permissions:
   contents: read
@@ -27,6 +33,8 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       package_artifact_name: ${{ steps.resolve-artifact-name.outputs.name }}
+      package_name: ${{ steps.resolve-artifact-name.outputs.package_name }}
+      package_version: ${{ steps.resolve-artifact-name.outputs.package_version }}
     steps:
       - name: Checkout
         uses: actions/checkout@v6.0.2
@@ -48,9 +56,11 @@ jobs:
       - name: Resolve package artifact name
         id: resolve-artifact-name
         run: |
-          SHORT_SHA="$(git rev-parse --short=12 HEAD)"
+          TARGET_NAME="$(jq -r '.name' package.json)"
           TARGET_VERSION="$(jq -r '.version' package.json)"
-          echo "name=npm-package-tarball-${TARGET_VERSION}-${SHORT_SHA}" >> "$GITHUB_OUTPUT"
+          echo "package_name=${TARGET_NAME}" >> "$GITHUB_OUTPUT"
+          echo "package_version=${TARGET_VERSION}" >> "$GITHUB_OUTPUT"
+          echo "name=npm-package-tarball-${TARGET_VERSION}" >> "$GITHUB_OUTPUT"
 
       - name: Pack npm tarball
         if: inputs.upload_package_artifact
