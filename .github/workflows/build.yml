@@ -61,4 +61,4 @@ jobs:
         uses: actions/upload-artifact@v5
         with:
           name: ${{ steps.resolve-artifact-name.outputs.name }}
-          path: "*.tgz"
+          path: '*.tgz'
