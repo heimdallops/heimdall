@@ -6,7 +6,7 @@ export const mapUnknownError = (error: unknown): CliError => {
   }
 
   if (error instanceof Error) {
-    return new CliError(error.message, {
+    return new CliError('An unexpected error occurred.', {
       code: 'UNKNOWN_ERROR',
       exitCode: EXIT_CODE.UNKNOWN,
       cause: error,

@@ -9,8 +9,12 @@ const TEST_DIR_NAMES = new Set(['test', 'tests', '__tests__']);
 const TEST_FILE_RE = /\.(test|spec)\.(ts|tsx|js|jsx|mjs|cjs)$/;
 
 function isTestFile(fp) {
-  if (!fp) return false;
+  if (!fp) {
+    return false;
+  }
+
   const segments = normalize(fp).split(sep);
+
   return segments.some((s) => TEST_DIR_NAMES.has(s)) || TEST_FILE_RE.test(fp);
 }
 
