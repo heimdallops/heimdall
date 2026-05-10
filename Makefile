@@ -1,9 +1,10 @@
 .DEFAULT_GOAL := quality
-.PHONY: github-run-check-secret-file github-run-publish-npm github-run-publish-on-release
+.PHONY: github-run-init-secrets github-run-publish-on-release
 
 %:
 	npm run $(subst -,:,$@)
 
+ACT ?= act
 ACT_VERSION ?= 0.1.1
 ACT_RELEASE_TAG ?= $(ACT_VERSION)
 ACT_RELEASE_URL ?= https://github.com/heimdallops/heimdall/releases/tag/$(ACT_RELEASE_TAG)
@@ -11,8 +12,6 @@ ACT_SECRET_FILE ?= .github/.secrets
 ACT_ARTIFACT_DIR ?= .github/workflows/.act/.act-artifacts
 ACT_RELEASE_EVENT_FILE ?= .github/workflows/.act/.act-release-event.json
 
-# Optional (act only; do not create this secret on GitHub): dry-run mode for publish-on-release (npm and anything else wired to needs.detect_dry_run)
-#   DRY_RUN=true
 #
 # act does not set github.token. actions/checkout needs a PAT — either add
 #   GITHUB_TOKEN=ghp_...
@@ -23,17 +22,25 @@ ACT_GITHUB_TOKEN ?= $(shell gh auth token 2>/dev/null)
 # macos-latest cannot run macOS in Docker; map it to the same Linux image so tests still execute.
 ACT_RUNNER_MAP ?= -P ubuntu-latest=catthehacker/ubuntu:act-latest -P macos-latest=catthehacker/ubuntu:act-latest
 
-github-run-check-secret-file:
-	@test -f "$(ACT_SECRET_FILE)" || (echo "Missing $(ACT_SECRET_FILE) — create it for act (see Makefile header)." >&2 && exit 1)
+github-run-init-secrets:
+	@if [ -f "$(ACT_SECRET_FILE)" ]; then \
+		echo "$(ACT_SECRET_FILE) already exists — delete it first to regenerate." >&2; \
+		exit 1; \
+	fi
+	@printf 'NPM_TOKEN: '; read -r NPM_TOKEN; \
+	printf 'DISCORD_WEBHOOK_URL: '; read -r DISCORD_WEBHOOK_URL; \
+	printf 'NPM_TOKEN=%s\nDISCORD_WEBHOOK_URL=%s\n' "$$NPM_TOKEN" "$$DISCORD_WEBHOOK_URL" > "$(ACT_SECRET_FILE)"; \
+	echo "Created $(ACT_SECRET_FILE)."
+
+github-run-publish-on-release:
+	@test -f "$(ACT_SECRET_FILE)" || $(MAKE) github-run-init-secrets
 	@mkdir -p "$(ACT_ARTIFACT_DIR)"
-
-# Artifact name from a prior build (e.g. npm-package-tarball-*). Required for publish-to-npm only.
-ACT_PACKAGE_ARTIFACT_NAME ?=
-
-github-run-publish-npm: github-run-check-secret-file
-	@test -n "$(strip $(ACT_PACKAGE_ARTIFACT_NAME))" || (echo "Set ACT_PACKAGE_ARTIFACT_NAME to the uploaded tarball artifact name (from build)." >&2 && exit 1)
-	act workflow_dispatch -W .github/workflows/publish-to-npm.yml $(ACT_RUNNER_MAP) --artifact-server-path "$(ACT_ARTIFACT_DIR)" --input "dry_run=true" --input "package_artifact_name=$(ACT_PACKAGE_ARTIFACT_NAME)" --secret-file "$(ACT_SECRET_FILE)" $(if $(strip $(ACT_GITHUB_TOKEN)),-s GITHUB_TOKEN="$(ACT_GITHUB_TOKEN)")
-
-github-run-publish-on-release: github-run-check-secret-file
 	@printf '{\n  "release": {\n    "tag_name": "%s",\n    "html_url": "%s"\n  }\n}\n' "$(ACT_RELEASE_TAG)" "$(ACT_RELEASE_URL)" > "$(ACT_RELEASE_EVENT_FILE)"
-	act release -W .github/workflows/publish-on-release.yml $(ACT_RUNNER_MAP) --artifact-server-path "$(ACT_ARTIFACT_DIR)" --eventpath "$(ACT_RELEASE_EVENT_FILE)" --secret-file "$(ACT_SECRET_FILE)" $(if $(strip $(ACT_GITHUB_TOKEN)),-s GITHUB_TOKEN="$(ACT_GITHUB_TOKEN)")
+	@$(ACT) release \
+		-W .github/workflows/publish-on-release.yml \
+		$(ACT_RUNNER_MAP) \
+		--artifact-server-path "$(ACT_ARTIFACT_DIR)" \
+		--eventpath "$(ACT_RELEASE_EVENT_FILE)" \
+		--secret-file "$(ACT_SECRET_FILE)" \
+		$(if $(strip $(ACT_GITHUB_TOKEN)),-s GITHUB_TOKEN="$(ACT_GITHUB_TOKEN)") \
+		--var DRY_RUN=true

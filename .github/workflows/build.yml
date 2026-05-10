@@ -14,7 +14,7 @@ on:
         default: false
     outputs:
       package_artifact_name:
-        description: Resolved artifact name including version and git hash
+        description: Resolved artifact name based on package version
         value: ${{ jobs.build.outputs.package_artifact_name }}
 
 permissions:
@@ -48,9 +48,8 @@ jobs:
       - name: Resolve package artifact name
         id: resolve-artifact-name
         run: |
-          SHORT_SHA="$(git rev-parse --short=12 HEAD)"
           TARGET_VERSION="$(jq -r '.version' package.json)"
-          echo "name=npm-package-tarball-${TARGET_VERSION}-${SHORT_SHA}" >> "$GITHUB_OUTPUT"
+          echo "name=npm-package-tarball-${TARGET_VERSION}" >> "$GITHUB_OUTPUT"
 
       - name: Pack npm tarball
         if: inputs.upload_package_artifact
