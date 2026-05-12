@@ -1,0 +1,40 @@
+$schema: 'https://json-schema.org/draft/2020-12/schema'
+description: >-
+  Built-in variables available in expression contexts throughout a workflow.
+  Referenced via ${{ heimdall.<key> }} or ${{ loop.<key> }} in node fields
+  that support expressions.
+type: object
+properties:
+  heimdall:
+    type: object
+    description: Workflow-scoped runtime variables provided by Heimdall.
+    properties:
+      session_dir:
+        type: string
+        description: >-
+          Absolute path to a temporary directory scoped to this workflow run.
+          Persists for the lifetime of the run. Use it to share files between
+          nodes (e.g. spec.md, progress.txt) without polluting the workspace.
+    required:
+      - session_dir
+  loop:
+    type: object
+    description: >-
+      Loop-scoped variables available only within a loop_node's nodes list.
+    properties:
+      iteration:
+        type: integer
+        description: The current iteration index, starting at 1.
+        minimum: 1
+      nodes:
+        type: object
+        description: >-
+          Outputs of sibling nodes within the current loop, keyed by node id.
+          Each entry holds the output from the most recent iteration of that
+          node. Available in until conditions and node if expressions.
+          Not accessible outside the loop.
+        additionalProperties:
+          description: The output of the sibling node with the matching id.
+    required:
+      - iteration
+      - nodes

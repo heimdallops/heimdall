@@ -1,0 +1,13 @@
+$schema: 'https://json-schema.org/draft/2020-12/schema'
+description: >-
+  Output produced by a loop_node after all iterations complete. Available to
+  downstream nodes via needs.<id>.output. Individual step outputs from within
+  the loop are not directly accessible outside it.
+type: object
+properties:
+  iterations:
+    type: integer
+    description: The number of iterations that ran before the loop exited.
+    minimum: 1
+required:
+  - iterations
