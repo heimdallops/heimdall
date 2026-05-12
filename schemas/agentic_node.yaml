@@ -1,4 +1,5 @@
 $schema: 'https://json-schema.org/draft/2020-12/schema'
+description: Base properties shared by all AI-executed node types (agent, prompt, prompt_file). Extends node.yaml.
 allOf:
   - $ref: node.yaml
   - type: object
@@ -7,8 +8,21 @@ allOf:
         $ref: platform.yaml
       platform_options:
         $ref: platform_options_union.yaml
+      context:
+        type: string
+        description: >-
+          Controls session continuity with the previous agentic node (default: clean).
+          "clean" starts a fresh session with no memory of prior agent interactions.
+          "shared" continues the session from the immediately preceding agentic node,
+          as if the conversation had not ended. Only valid when this node has a single
+          agentic predecessor — not supported in fan-in scenarios where depends_on
+          references multiple nodes. Prefer node outputs or artifacts over shared
+          context to keep data flow explicit and debuggable.
+        enum:
+          - clean
+          - shared
       output_format:
         type: object
         description: >-
           JSON Schema object defining the structure for this node's output.
-          Must be a valid JSON Schema (draft-07 or later).
+          Must be a valid JSON Schema.

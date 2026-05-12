@@ -1,15 +1,21 @@
 $schema: 'https://json-schema.org/draft/2020-12/schema'
+description: Executes a bash script and exposes its stdout as the node output.
 allOf:
   - $ref: node.yaml
   - type: object
     properties:
       bash:
         type: string
-        description: The bash script to execute.
+        description: >-
+          The bash script to execute. Supports ${{ <expression> }} interpolation
+          using CEL expressions.
       env:
         type: object
         description: Key/value pairs to inject into the environment.
         additionalProperties:
           type: string
+          description: >-
+            Environment variable value. Supports ${{ <expression> }}
+            interpolation using CEL expressions.
     required:
       - bash

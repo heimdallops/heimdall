@@ -1,4 +1,5 @@
 $schema: 'https://json-schema.org/draft/2020-12/schema'
+description: Runs a series of nodes repeatedly until a condition is met or a maximum iteration count is reached.
 allOf:
   - $ref: node.yaml
   - type: object
@@ -9,7 +10,9 @@ allOf:
         properties:
           until:
             type: string
-            description: Conditional expression that must evaluate to a truthy value to exit the loop.
+            description: >-
+              CEL expression that must evaluate to true to exit the loop.
+              Do not wrap in ${{ }}.
           max_iterations:
             type: integer
             description: Max number of iterations before the loop exits even if until does not evaluate to a truthy value.
@@ -20,6 +23,8 @@ allOf:
             items:
               $ref: node_union.yaml
             minItems: 1
+        required:
+          - nodes
         anyOf:
           - required:
               - until

@@ -1,4 +1,5 @@
 $schema: 'https://json-schema.org/draft/2020-12/schema'
+description: Base properties shared by all node types. Every node must have a unique id; all other fields are optional.
 type: object
 properties:
   id:
@@ -13,13 +14,9 @@ properties:
       minLength: 1
   if:
     type: string
-    description: Conditional expression that must be truthy for this node to run.
-  context:
-    type: string
-    description: 'Whether to inherit context from previous node(s) (default: clean).'
-    enum:
-      - clean
-      - shared
+    description: >-
+      CEL expression that must evaluate to true for this node to run.
+      Do not wrap in ${{ }}.
   timeout:
     type: number
     description: Maximum time to wait before timing out, in milliseconds.

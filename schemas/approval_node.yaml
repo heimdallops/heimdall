@@ -1,4 +1,5 @@
 $schema: 'https://json-schema.org/draft/2020-12/schema'
+description: Pauses the workflow and prompts the user for approval before continuing. A "no" response exits the workflow immediately.
 allOf:
   - $ref: node.yaml
   - type: object
@@ -11,7 +12,9 @@ allOf:
         properties:
           message:
             type: string
-            description: Message to display to the user.
+            description: >-
+              Message to display to the user. Supports ${{ <expression> }}
+              interpolation using CEL expressions.
           enable_feedback:
             type: boolean
             description: Enable a third option to gather user feedback.
