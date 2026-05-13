@@ -1,0 +1,121 @@
+name: Publish to npm
+
+on:
+  workflow_call:
+    inputs:
+      dry_run:
+        description: When true, runs all checks but does not run npm publish
+        type: boolean
+        required: false
+        default: false
+      package_artifact_name:
+        description: Uploaded npm tarball artifact from the build workflow.
+        type: string
+        required: true
+      ref:
+        description: Git ref of the release branch to checkout for package metadata.
+        type: string
+        required: true
+    outputs:
+      publish_error_message:
+        description: Error detail when publishing fails
+        value: ${{ jobs.publish.outputs.error_message }}
+      package_version:
+        description: Package version published
+        value: ${{ jobs.publish.outputs.package_version }}
+    secrets:
+      NPM_TOKEN:
+        required: true
+
+concurrency:
+  group: publish-npm-${{ inputs.package_artifact_name }}-${{ inputs.dry_run }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  actions: write
+
+jobs:
+  publish:
+    name: Publish to npm
+    runs-on: ubuntu-latest
+    outputs:
+      error_message: ${{ steps.summary.outputs.error_message }}
+      package_version: ${{ steps.pkg_meta.outputs.version }}
+    steps:
+      - name: Checkout release branch
+        uses: actions/checkout@v6.0.2
+        with:
+          ref: ${{ inputs.ref }}
+
+      - name: Setup Node
+        uses: actions/setup-node@v6.4.0
+        with:
+          node-version-file: package.json
+          registry-url: https://registry.npmjs.org
+
+      - name: Read package metadata
+        id: pkg_meta
+        run: |
+          echo "name=$(jq -r '.name' package.json)" >> "$GITHUB_OUTPUT"
+          echo "version=$(jq -r '.version' package.json)" >> "$GITHUB_OUTPUT"
+
+      - name: Download built package artifact
+        uses: actions/download-artifact@v5
+        with:
+          name: ${{ inputs.package_artifact_name }}
+          path: .
+
+      - name: Check if version is already published
+        id: version_check
+        run: |
+          PKG_VERSION="${{ steps.pkg_meta.outputs.version }}"
+          PKG_NAME="${{ steps.pkg_meta.outputs.name }}"
+          if npm view "${PKG_NAME}@${PKG_VERSION}" version 2>/dev/null | grep -q "${PKG_VERSION}"; then
+            echo "published=true" >> "$GITHUB_OUTPUT"
+            echo "Version ${PKG_VERSION} is already published — skipping."
+          else
+            echo "published=false" >> "$GITHUB_OUTPUT"
+            echo "Version ${PKG_VERSION} is new — will publish."
+          fi
+
+      - name: Publish package
+        id: npm_publish
+        if: steps.version_check.outputs.published == 'false'
+        continue-on-error: true
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          set -o pipefail
+          if [ "${{ inputs.dry_run }}" = "true" ]; then
+            npm publish ./*.tgz --access public --dry-run 2>&1 | tee "${RUNNER_TEMP}/npm-publish.log"
+          else
+            npm publish ./*.tgz --access public 2>&1 | tee "${RUNNER_TEMP}/npm-publish.log"
+          fi
+
+      - name: Summarize publish outcome
+        id: summary
+        if: always()
+        run: |
+          set -euo pipefail
+          if [ "${{ steps.version_check.outputs.published }}" = "true" ]; then
+            echo "error_message=" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          PUB_OUTCOME="${{ steps.npm_publish.outcome }}"
+          if [ "$PUB_OUTCOME" = "success" ]; then
+            echo "error_message=" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          LOG="$(cat "${RUNNER_TEMP}/npm-publish.log" 2>/dev/null || echo "(no npm log captured)")"
+          {
+            echo "error_message<<EOF"
+            printf '%s\n' "$LOG"
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Enforce publish success
+        if: always() && steps.summary.outputs.status == 'failure'
+        run: |
+          echo "::error::npm publish did not succeed"
+          exit 1
