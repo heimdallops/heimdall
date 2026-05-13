@@ -50,11 +50,11 @@ allOf:
         description: List of paths to subagent definitions.
         items:
           type: string
-      maxBudgetUsd:
+      max_budget_usd:
         type: number
         description: USD cost cap; node fails if exceeded.
         minimum: 0
-      systemPrompt:
+      system_prompt:
         type: string
         description: Override the default system prompt.
       sandbox:

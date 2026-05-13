@@ -1,4 +1,4 @@
 $schema: 'https://json-schema.org/draft/2020-12/schema'
-description: Union of platform-specific option types. The shape is determined by the platform selected in the workflow or node.
+description: Platform-specific options schema. Currently only Claude options are supported by this union.
 oneOf:
   - $ref: claude_options.yaml

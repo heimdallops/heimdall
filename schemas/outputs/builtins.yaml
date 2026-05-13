@@ -1,10 +1,16 @@
 $schema: 'https://json-schema.org/draft/2020-12/schema'
 description: >-
-  Built-in variables available in expression contexts throughout a workflow.
-  Referenced via ${{ heimdall.<key> }} or ${{ loop.<key> }} in node fields
-  that support expressions.
+  Built-in keywords available in expression contexts throughout a workflow.
 type: object
 properties:
+  loop:
+    description: >-
+      Keyword available only within a loop_node's nodes list. Refers to the
+      enclosing loop_node's own output context (see loop_node_output.yaml).
+      Use loop.iteration for the current iteration index and loop.nodes.<id>
+      to access a sibling node's output from the previous iteration.
+      Cannot be used outside a loop — use needs.<loop_id> instead.
+    $ref: loop_node_output.yaml
   heimdall:
     type: object
     description: Workflow-scoped runtime variables provided by Heimdall.
@@ -17,24 +23,3 @@ properties:
           nodes (e.g. spec.md, progress.txt) without polluting the workspace.
     required:
       - session_dir
-  loop:
-    type: object
-    description: >-
-      Loop-scoped variables available only within a loop_node's nodes list.
-    properties:
-      iteration:
-        type: integer
-        description: The current iteration index, starting at 1.
-        minimum: 1
-      nodes:
-        type: object
-        description: >-
-          Outputs of sibling nodes within the current loop, keyed by node id.
-          Each entry holds the output from the most recent iteration of that
-          node. Available in until conditions and node if expressions.
-          Not accessible outside the loop.
-        additionalProperties:
-          description: The output of the sibling node with the matching id.
-    required:
-      - iteration
-      - nodes

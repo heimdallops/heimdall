@@ -7,11 +7,10 @@ allOf:
       agent:
         type: string
         description: >-
-          Name or path of the agent to run. A bare name (e.g. "ts-engineer") is
-          resolved against the agents listed in platform_options. A relative or
-          absolute path (contains "/" or ends in ".md") loads the file directly.
-          Frontmatter is stripped and used as config for this node; config
-          provided on the node directly takes precedence.
+          Name or path of the agent to run. Bare names are resolved using the
+          same search path as the configured platform. Frontmatter is stripped
+          and used as config for this node; config provided on the node directly
+          takes precedence.
       instructions:
         type: string
         description: >-

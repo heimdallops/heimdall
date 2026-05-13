@@ -8,7 +8,9 @@ properties:
     minLength: 1
   depends_on:
     type: array
-    description: IDs of nodes this node depends on.
+    description: >-
+      IDs of nodes that must complete before this node runs. A node becomes
+      eligible to run as soon as all its dependencies have completed.
     items:
       type: string
       minLength: 1

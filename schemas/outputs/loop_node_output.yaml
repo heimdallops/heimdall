@@ -1,13 +1,25 @@
 $schema: 'https://json-schema.org/draft/2020-12/schema'
 description: >-
-  Output produced by a loop_node after all iterations complete. Available to
-  downstream nodes via needs.<id>.output. Individual step outputs from within
-  the loop are not directly accessible outside it.
+  Output of a loop_node. Accessible to downstream nodes via needs.<id>.<property>
+  and to nodes within the loop via loop.<property>, where loop refers to the
+  enclosing loop_node's own output context.
 type: object
 properties:
   iterations:
     type: integer
     description: The number of iterations that ran before the loop exited.
     minimum: 1
+  nodes:
+    type: object
+    description: >-
+      Output of each child node from its most recent iteration, keyed by node id.
+      Persists after the loop exits and is accessible to downstream nodes.
+      Within a loop, prefer needs.<id> to reference a direct predecessor.
+      Use loop.nodes.<id> only when referencing a node that runs after the
+      current node in the same loop — to access its output from the previous
+      iteration (e.g. a coding agent node reading feedback from a prior round).
+    additionalProperties:
+      description: The output of the child node with the matching id from its most recent iteration.
 required:
   - iterations
+  - nodes
