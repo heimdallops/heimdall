@@ -8,3 +8,4 @@ oneOf:
   - $ref: approval_node.yaml
   - $ref: cancel_node.yaml
   - $ref: loop_node.yaml
+  - $ref: break_node.yaml

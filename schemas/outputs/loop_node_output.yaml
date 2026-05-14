@@ -5,21 +5,30 @@ description: >-
   enclosing loop_node's own output context.
 type: object
 properties:
-  iterations:
+  iteration:
     type: integer
-    description: The number of iterations that ran before the loop exited.
-    minimum: 1
+    description: >-
+      Number of iterations completed so far. 0 during the first iteration,
+      incremented to 1 once it completes, 2 after the second, and so on.
+      Use loop.iteration inside the loop and needs.<loop_id>.iteration outside.
+    minimum: 0
   nodes:
     type: object
     description: >-
-      Output of each child node from its most recent iteration, keyed by node id.
-      Persists after the loop exits and is accessible to downstream nodes.
-      Within a loop, prefer needs.<id> to reference a direct predecessor.
-      Use loop.nodes.<id> only when referencing a node that runs after the
-      current node in the same loop — to access its output from the previous
-      iteration (e.g. a coding agent node reading feedback from a prior round).
+      Output of each child node keyed by node id, always reflecting that node's
+      most recent execution. Within a loop, if a node has not yet run in the
+      current iteration, loop.nodes.<id> holds its output from the previous
+      iteration; on the first iteration it is undefined.
+
+      Prefer needs.<id> over loop.nodes.<id> when referencing a direct
+      predecessor — needs makes execution order explicit and prevents potential
+      race conditions. Use loop.nodes.<id> only when you need the output of a
+      node that runs after the current node in the iteration order.
+
+      After the loop exits, accessible to downstream nodes via
+      needs.<loop_id>.nodes.<id>.
     additionalProperties:
-      description: The output of the child node with the matching id from its most recent iteration.
+      description: The output of the child node with the matching id.
 required:
-  - iterations
+  - iteration
   - nodes

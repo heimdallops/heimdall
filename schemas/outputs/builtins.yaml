@@ -6,9 +6,10 @@ properties:
   loop:
     description: >-
       Keyword available only within a loop_node's nodes list. Refers to the
-      enclosing loop_node's own output context (see loop_node_output.yaml).
-      Use loop.iteration for the current iteration index and loop.nodes.<id>
-      to access a sibling node's output from the previous iteration.
+      enclosing loop_node's live output context (see loop_node_output.yaml).
+      Use loop.iteration for the number of iterations completed so far.
+      Use loop.nodes.<id> to access a sibling node's output from the previous
+      iteration — undefined on the first iteration.
       Cannot be used outside a loop — use needs.<loop_id> instead.
     $ref: loop_node_output.yaml
   heimdall:
