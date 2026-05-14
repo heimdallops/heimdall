@@ -1,0 +1,63 @@
+name: Reusable build
+
+on:
+  workflow_call:
+    inputs:
+      ref:
+        description: Git ref to checkout (branch, tag, or commit SHA)
+        type: string
+        required: true
+      upload_package_artifact:
+        description: If true, package and upload an npm tarball artifact
+        type: boolean
+        required: false
+        default: false
+    outputs:
+      package_artifact_name:
+        description: Resolved artifact name based on package version
+        value: ${{ jobs.build.outputs.package_artifact_name }}
+
+permissions:
+  contents: read
+  actions: write
+
+jobs:
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+    outputs:
+      package_artifact_name: ${{ steps.resolve-artifact-name.outputs.name }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6.0.2
+        with:
+          ref: ${{ inputs.ref }}
+
+      - name: Setup Node
+        uses: actions/setup-node@v6.4.0
+        with:
+          node-version-file: package.json
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build
+        run: npm run build
+
+      - name: Resolve package artifact name
+        id: resolve-artifact-name
+        run: |
+          TARGET_VERSION="$(jq -r '.version' package.json)"
+          echo "name=npm-package-tarball-${TARGET_VERSION}" >> "$GITHUB_OUTPUT"
+
+      - name: Pack npm tarball
+        if: inputs.upload_package_artifact
+        run: npm pack
+
+      - name: Upload package artifact
+        if: inputs.upload_package_artifact
+        uses: actions/upload-artifact@v5
+        with:
+          name: ${{ steps.resolve-artifact-name.outputs.name }}
+          path: '*.tgz'
