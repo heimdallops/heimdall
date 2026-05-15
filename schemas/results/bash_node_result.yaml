@@ -1,0 +1,19 @@
+$schema: 'https://json-schema.org/draft/2020-12/schema'
+description: >-
+  Output produced by a bash_node. Available to downstream nodes via needs.<id>.output.
+  When output_format is "text" (default), output is the stdout as a plain string with
+  trailing newlines stripped. When output_format is "json", stdout is parsed as JSON
+  and its properties are accessible directly (e.g. needs.<id>.output.some_field).
+  The node fails immediately if stdout is not valid JSON when output_format is "json".
+type: object
+properties:
+  output:
+    description: >-
+      The stdout of the bash script, with trailing newlines stripped. A plain string
+      when output_format is "text". A structured object matching the parsed JSON when
+      output_format is "json".
+    oneOf:
+      - type: string
+      - type: object
+required:
+  - output

@@ -17,5 +17,17 @@ allOf:
           description: >-
             Environment variable value. Supports ${{ <expression> }}
             interpolation using CEL expressions.
+      output_format:
+        type: string
+        enum:
+          - text
+          - json
+        default: text
+        description: >-
+          Controls how stdout is parsed. "text" (default) exposes stdout as a
+          plain string on needs.<id>.output. "json" parses stdout as JSON and
+          exposes the parsed structure on needs.<id>.output, making fields
+          accessible as needs.<id>.output.<field>. If "json" is set and stdout
+          is not valid JSON, the node fails immediately.
     required:
       - bash

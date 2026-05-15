@@ -12,7 +12,9 @@ allOf:
             type: string
             description: >-
               CEL expression that must evaluate to true to exit the loop.
-              Do not wrap in ${{ }}.
+              Do not wrap in ${{ }}. Use "true" combined with a break_node
+              inside the loop to control exit explicitly from within the
+              iteration.
           max_iterations:
             type: integer
             description: Max number of iterations before the loop exits even if until does not evaluate to a truthy value.

@@ -5,13 +5,12 @@ type: object
 properties:
   loop:
     description: >-
-      Keyword available only within a loop_node's nodes list. Refers to the
-      enclosing loop_node's live output context (see loop_node_output.yaml).
+      Refers to the enclosing loop_node's output context (see loop_node_result.yaml).
       Use loop.iteration for the number of iterations completed so far.
-      Use loop.nodes.<id> to access a sibling node's output from the previous
-      iteration — undefined on the first iteration.
+      Use loop.nodes.<id> to inspect a child node's last output.
+      Not available inside the loop body — use needs.<id> there instead.
       Cannot be used outside a loop — use needs.<loop_id> instead.
-    $ref: loop_node_output.yaml
+    $ref: loop_node_result.yaml
   heimdall:
     type: object
     description: Workflow-scoped runtime variables provided by Heimdall.

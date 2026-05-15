@@ -1,0 +1,27 @@
+$schema: 'https://json-schema.org/draft/2020-12/schema'
+description: >-
+  Output of a loop_node. Accessible to downstream nodes via needs.<id>.<property>
+  and in the until expression via loop.<property>.
+type: object
+properties:
+  iteration:
+    type: integer
+    description: >-
+      Number of iterations completed so far. Starts at 0 and increments by 1
+      after each iteration finishes — so it reads 0 while the first iteration
+      is running, 1 while the second is running, and so on. A loop with
+      max_iterations: N exits when iteration reaches N.
+      Available in until and to downstream nodes via needs.<loop_id>.iteration.
+    minimum: 0
+  nodes:
+    type: object
+    description: >-
+      Output of each child node keyed by node id, reflecting that node's most
+      recent completed execution. Not available to nodes within the loop body —
+      use needs.<id> there instead. Accessible in the until expression and,
+      after the loop exits, to downstream nodes via needs.<loop_id>.nodes.<id>.
+    additionalProperties:
+      description: The output of the child node with the matching id.
+required:
+  - iteration
+  - nodes
