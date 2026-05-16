@@ -16,7 +16,7 @@
   "scripts": {
     "dev": "node --experimental-strip-types src/index.ts",
     "build": "tsup --config tsup.config.ts",
-    "build:sea": "npm run build && node --experimental-sea-config sea-config.json",
+    "build:sea": "tsup --config tsup.config.sea.ts && node --experimental-sea-config sea-config.json",
     "typecheck": "tsc --project tsconfig.json --noEmit",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
