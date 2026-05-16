@@ -1,5 +1,5 @@
 .DEFAULT_GOAL := quality
-.PHONY: github-run-init-secrets github-run-publish-on-release github-run-publish-binaries
+.PHONY: github-run-init-secrets github-run-publish-on-release github-run-publish-binaries github-run-publish-binaries-quick
 
 %:
 	npm run $(subst -,:,$@)
@@ -28,14 +28,7 @@ ACT_RUNNER_MAP ?= \
 	-P macos-latest=catthehacker/ubuntu:act-latest \
 	-P windows-latest=catthehacker/ubuntu:act-latest
 
-# Map the GitHub repo to the local working tree so act uses local code instead
-# of fetching from the remote. This makes uncommitted changes visible in the
-# workflow without needing a push first.
-ACT_LOCAL_REPO ?= --local-repository heimdallops/heimdall=.
-
-# Restrict the matrix to Linux x64 only for faster local debug runs.
-# Override to test other targets: ACT_MATRIX="target=linux-arm64"
-ACT_MATRIX ?= --matrix target:linux-x64
+ACT_MATRIX ?=
 
 github-run-init-secrets:
 	@if [ -f "$(ACT_SECRET_FILE)" ]; then \
@@ -60,19 +53,32 @@ github-run-publish-on-release:
 		$(if $(strip $(ACT_GITHUB_TOKEN)),-s GITHUB_TOKEN="$(ACT_GITHUB_TOKEN)") \
 		--var DRY_RUN=true
 
-# Run only the publish-binaries workflow locally with act.
-# All platform runners are mapped to the same Linux Docker image so the workflow graph is validated,
-# but the resulting binaries will be Linux x64 regardless of matrix target.
+# Run the full publish-binaries workflow locally with act (build + publish jobs).
+# All platform runners map to the same Linux Docker image, so binaries are all Linux x64
+# regardless of matrix target label — but the full workflow graph is exercised end to end.
+# Requires: the current branch must be pushed to the remote (actions/checkout fetches it).
 github-run-publish-binaries:
 	@mkdir -p "$(ACT_ARTIFACT_DIR)"
-	@printf '{\n  "release": {\n    "tag_name": "%s",\n    "html_url": "%s"\n  }\n}\n' "$(ACT_RELEASE_TAG)" "$(ACT_RELEASE_URL)" > "$(ACT_RELEASE_EVENT_FILE)"
 	@$(ACT) workflow_call \
 		-W .github/workflows/publish-binaries.yml \
 		$(ACT_RUNNER_MAP) \
-		$(ACT_LOCAL_REPO) \
 		$(ACT_MATRIX) \
 		--artifact-server-path "$(ACT_ARTIFACT_DIR)" \
-		--input ref=main \
+		--input ref=$(shell git rev-parse --abbrev-ref HEAD) \
+		--input release_tag=$(ACT_RELEASE_TAG) \
+		--input dry_run=true \
+		$(if $(strip $(ACT_GITHUB_TOKEN)),-s GITHUB_TOKEN="$(ACT_GITHUB_TOKEN)")
+
+# Fast variant: build job only, linux-x64 matrix entry only. Skips the publish job.
+github-run-publish-binaries-quick:
+	@mkdir -p "$(ACT_ARTIFACT_DIR)"
+	@$(ACT) workflow_call \
+		-W .github/workflows/publish-binaries.yml \
+		-j build \
+		$(ACT_RUNNER_MAP) \
+		--matrix target:linux-x64 \
+		--artifact-server-path "$(ACT_ARTIFACT_DIR)" \
+		--input ref=$(shell git rev-parse --abbrev-ref HEAD) \
 		--input release_tag=$(ACT_RELEASE_TAG) \
 		--input dry_run=true \
 		$(if $(strip $(ACT_GITHUB_TOKEN)),-s GITHUB_TOKEN="$(ACT_GITHUB_TOKEN)")
