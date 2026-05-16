@@ -13,10 +13,10 @@
 #   curl -fsSL .../install.sh | bash
 #
 #   # Install specific version
-#   VERSION=v0.2.0 curl -fsSL .../install.sh | bash
+#   curl -fsSL .../install.sh | VERSION=v0.2.0 bash
 #
 #   # Install to a custom directory
-#   INSTALL_DIR=~/.local/bin curl -fsSL .../install.sh | bash
+#   curl -fsSL .../install.sh | INSTALL_DIR=~/.local/bin bash
 
 set -euo pipefail
 
@@ -132,7 +132,7 @@ main() {
   chmod +x "$binary_path"
 
   info "Verifying binary..."
-  if ! "$binary_path" --version >/dev/null 2>&1; then
+  if ! "$binary_path" --help >/dev/null 2>&1; then
     die "Downloaded binary failed to execute. The release may be incomplete or incompatible with this system."
   fi
 
