@@ -25,6 +25,15 @@ allOf:
             items:
               $ref: node_union.yaml
             minItems: 1
+          outputs:
+            type: object
+            description: >-
+              Declares the values exposed to downstream nodes after the loop exits.
+              Each key becomes a field on needs.<loop_id>.output. Values are CEL
+              expressions evaluated in the loop's final iteration context, where
+              loop.nodes.<id> and loop.iteration are available.
+            additionalProperties:
+              type: string
         required:
           - nodes
         anyOf:

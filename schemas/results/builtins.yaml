@@ -3,14 +3,55 @@ description: >-
   Built-in keywords available in expression contexts throughout a workflow.
 type: object
 properties:
-  loop:
+  inputs:
+    type: object
     description: >-
-      Refers to the enclosing loop_node's output context (see loop_node_result.yaml).
-      Use loop.iteration for the number of iterations completed so far.
-      Use loop.nodes.<id> to inspect a child node's last output.
-      Not available inside the loop body — use needs.<id> there instead.
-      Cannot be used outside a loop — use needs.<loop_id> instead.
-    $ref: loop_node_result.yaml
+      Resolved values of the workflow's declared inputs. Each key corresponds
+      to an input name declared in the top-level inputs map; the value is the
+      resolved runtime value (after applying defaults). The shape of each value
+      matches the declared type (string, number, or boolean).
+    additionalProperties:
+      oneOf:
+        - type: string
+        - type: number
+        - type: boolean
+  vars:
+    type: object
+    description: >-
+      Resolved values of the workflow's declared variables. Each key corresponds
+      to a variable name declared in the top-level variables map; the value is
+      the resolved runtime value (string, number, or boolean).
+    additionalProperties:
+      oneOf:
+        - type: string
+        - type: number
+        - type: boolean
+  loop:
+    type: object
+    description: >-
+      Internal context of the enclosing loop_node, available within the loop's
+      until expression and outputs expressions. Not available inside the loop body
+      (use needs.<id> there) and cannot be used outside a loop (use needs.<loop_id>
+      there instead).
+    properties:
+      iteration:
+        type: integer
+        description: >-
+          Number of iterations completed so far. Starts at 0 and increments by 1
+          after each iteration finishes — so it reads 0 while the first iteration
+          is running, 1 while the second is running, and so on.
+        minimum: 0
+      nodes:
+        type: object
+        description: >-
+          Output of each child node keyed by node id, reflecting that node's most
+          recent completed execution. Use loop.nodes.<id> to inspect a child node's
+          last output when writing until or outputs expressions.
+        additionalProperties:
+          description: The output of the child node with the matching id.
+    required:
+      - iteration
+      - nodes
   heimdall:
     type: object
     description: Workflow-scoped runtime variables provided by Heimdall.

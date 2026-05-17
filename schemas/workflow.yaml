@@ -63,11 +63,14 @@ properties:
             properties:
               default:
                 type: boolean
-  variables:
+  vars:
     type: object
-    description: Static string variables available to all nodes in the workflow.
+    description: Static variables available to all nodes in the workflow.
     additionalProperties:
-      type: string
+      oneOf:
+        - type: string
+        - type: number
+        - type: boolean
   workspace:
     $ref: workspace.yaml
   nodes:
