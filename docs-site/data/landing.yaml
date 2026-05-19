@@ -1,0 +1,90 @@
+hero:
+  enable: true
+  weight: 10
+  template: hero
+
+  badge:
+    text: Preview
+    color: primary
+    pill: true
+    soft: true
+
+  titleLogo:
+    path: "images/logos"
+    filename: "heimdall-logo.png"
+    alt: "Heimdall logo"
+    height: 72px
+
+  title: "Heimdall"
+  subtitle: |
+    A CLI for **deterministic agentic workflows** from YAML. Agents provide the intelligence;
+    Heimdall owns the structure — phases, gates, feedback loops, and isolated git worktrees.
+
+  image:
+    path: "images"
+    filename: "heimdall-logo.png"
+    alt: "Heimdall logo"
+    boxShadow: true
+    rounded: true
+
+  ctaButton:
+    icon: visibility
+    btnText: "About Heimdall"
+    url: "/docs/about/"
+  cta2Button:
+    icon: code
+    btnText: "Workflow examples"
+    url: "/docs/guides/workflows/"
+
+  info: "**Open source** · MIT Licensed · Documentation preview"
+
+featureGrid:
+  enable: true
+  weight: 20
+  template: feature grid
+
+  title: Why Heimdall?
+  subtitle: Make agentic development explicit — structure, validation, and handoffs are first-class, not improvised.
+
+  items:
+    - title: Deterministic structure
+      icon: account_tree
+      description: YAML workflows define phases, gates, artifacts, and completion criteria so every run follows the same playbook.
+      ctaLink:
+        text: Learn more
+        url: /docs/about/
+
+    - title: Feedback loops
+      icon: loop
+      description: Review, validation, correction, and retry paths are part of the workflow model — not bolted on after the fact.
+      ctaLink:
+        text: Learn more
+        url: /docs/about/
+
+    - title: Isolated execution
+      icon: fork_right
+      description: Each run uses a separate git worktree so parallel fixes and implementations do not mix changes.
+      ctaLink:
+        text: Learn more
+        url: /docs/about/
+
+    - title: PR-ready paths
+      icon: merge
+      description: Model workflows from ticket intake through implementation, validation, review, and pull request creation.
+      ctaLink:
+        text: Example workflow
+        url: /docs/guides/workflows/
+
+    - title: Complex branching
+      icon: hub
+      description: Branching, iteration, and explicit handoffs — built for real team processes, not linear prompt chains.
+      ctaLink:
+        text: Workflow YAML
+        url: /docs/guides/workflows/
+
+    - title: Dark mode docs
+      icon: dark_mode
+      description: Read comfortably with Lotus Docs dark mode and Heimdall's cyan accent palette inspired by the brand mark.
+      ctaLink:
+        text: Get started
+        url: /docs/getting-started/
