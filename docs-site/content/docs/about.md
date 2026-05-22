@@ -29,40 +29,11 @@ Heimdall makes that process **explicit**. Workflows are versioned, reviewable ar
 
 ## What Heimdall provides
 
-| Capability | Description |
-| ---------- | ----------- |
-| **Deterministic structure** | YAML workflows define phases, gates, and artifacts |
-| **Feedback loops** | Review, validation, correction, and retry paths are first-class |
-| **Isolated execution** | Separate git worktrees per run for parallel work |
-| **PR-ready paths** | Model flows from ticket intake through implementation, validation, review, and PR creation |
-| **Complex process modeling** | Branching, iteration, and explicit handoffs — not just linear prompts |
-
-## Design principles
-
-Heimdall's implementation follows a small set of constraints:
-
-- **YAGNI** — no speculative config or stubs without a concrete use case
-- **KISS** — explicit control flow over clever meta-programming
-- **Fail fast** — expected failures surface clearly; nothing is silently swallowed
-- **Reversibility** — small, mergeable changes with an obvious rollback path
-
-## Architecture (CLI)
-
-The CLI is organized in layers:
-
-```text
-src/
-  index.ts              # Entrypoint: argv parse + top-level error mapping
-  cli/                  # Commander setup, context, middleware
-  commands/<command>/   # Per-command parse + run
-  core/                 # Domain logic (no CLI dependencies)
-  services/             # Side-effect adapters (fs, process, api)
-  config/               # Schemas and config loading
-  output/               # Human/json output plumbing
-  errors/               # Typed app errors
-```
-
-Commands parse and validate locally, then pass normalized input to `run(ctx, input)`. Shared runtime config is resolved once as `ctx.config`.
+- **Deterministic structure** — YAML workflows define phases, gates, and artifacts
+- **Feedback loops** — Review, validation, correction, and retry paths are first-class
+- **Isolated execution** — Separate git worktrees per run for parallel work
+- **PR-ready paths** — Model flows from ticket intake through implementation, validation, review, and PR creation
+- **Complex process modeling** — Branching, iteration, and explicit handoffs — not just linear prompts
 
 ## Status
 
