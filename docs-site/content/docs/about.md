@@ -23,6 +23,10 @@ AI agents are powerful, but the process around them is often implicit:
 
 Heimdall makes that process **explicit**. Workflows are versioned, reviewable artifacts — not tribal knowledge buried in chat logs.
 
+<div style="margin: 1.75rem 0; border-radius: 8px; overflow: hidden; border: 1px solid #21262d;">
+  <iframe src="/workflow-demo.html" style="width:100%; height:620px; border:none; display:block;" title="Heimdall workflow simulation" loading="lazy"></iframe>
+</div>
+
 ## What Heimdall provides
 
 | Capability | Description |

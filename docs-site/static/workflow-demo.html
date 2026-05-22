@@ -1,0 +1,439 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Heimdall Workflow Demo</title>
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+html, body {
+  width: 100%; height: 100%;
+  background: #0d1117;
+  font-family: ui-monospace, 'Cascadia Code', 'Source Code Pro', Menlo, monospace;
+  overflow: hidden;
+  color: #e6edf3;
+}
+
+.wrapper {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  padding: 4px 16px 8px;
+}
+
+.run-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+  font-size: 11px;
+  color: #7d8590;
+}
+.run-header .run-id  { color: #58a6ff; font-weight: 700; }
+.run-header .branch  { color: #a5d6ff; }
+.run-header .sep     { color: #30363d; }
+.run-header .elapsed { color: #7d8590; min-width: 36px; }
+
+.graph {
+  position: relative;
+  width: 660px;
+  height: 596px;
+  flex-shrink: 0;
+}
+
+svg.connectors {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
+/* ── nodes ─────────────────────────────────────────────────────────────── */
+
+.node {
+  position: absolute;
+  width: 148px;
+  height: 44px;
+  transform: translateX(-50%);
+  border-radius: 6px;
+  border: 1.5px solid #21262d;
+  background: #161b22;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 11px 0 9px;
+  font-size: 12px;
+  font-weight: 500;
+  color: #484f58;
+  transition: border-color 0.4s ease, background 0.4s ease,
+              box-shadow 0.4s ease, color 0.4s ease;
+}
+.node .icon  { width:15px; height:15px; flex-shrink:0; display:flex; align-items:center; justify-content:center; }
+.node .label { flex:1; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.node .tmr   { font-size:10px; font-variant-numeric:tabular-nums; white-space:nowrap; min-width:28px; text-align:right; color:#484f58; }
+
+.node.active {
+  color: #cae8ff;
+  border-color: #0ea5e9;
+  background: #051d2c;
+  box-shadow: 0 0 0 3px rgba(14,165,233,.12), 0 2px 16px rgba(14,165,233,.07);
+}
+.node.active .tmr { color: #38bdf8; }
+
+.node.done {
+  color: #aff5b4;
+  border-color: #2ea043;
+  background: #0d1f0f;
+}
+.node.done .tmr { color: #3fb950; }
+
+/* ── icon shapes ────────────────────────────────────────────────────────── */
+
+.spinner {
+  width:13px; height:13px;
+  border: 2px solid rgba(14,165,233,.2);
+  border-top-color: #0ea5e9;
+  border-radius: 50%;
+  animation: spin .75s linear infinite;
+}
+@keyframes spin { to { transform:rotate(360deg); } }
+
+.clock-icon {
+  width:13px; height:13px;
+  border: 1.5px solid #3d444d;
+  border-radius: 50%;
+  position: relative;
+}
+.clock-icon::before {
+  content:'';
+  position:absolute; top:50%; left:50%;
+  width:1.5px; height:4px;
+  background:#3d444d;
+  transform-origin:50% 100%;
+  transform: translateX(-50%) translateY(-100%);
+}
+
+.check-icon {
+  width:13px; height:13px;
+  background:#238636;
+  border-radius:50%;
+  display:flex; align-items:center; justify-content:center;
+}
+.check-icon::after {
+  content:'';
+  width:4px; height:7px;
+  border:1.5px solid #fff;
+  border-top:none; border-left:none;
+  transform: rotate(42deg) translate(-1px,-1px);
+}
+
+/* ── parallel label ─────────────────────────────────────────────────────── */
+
+.parallel-label {
+  position: absolute;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 9.5px;
+  color: #3d444d;
+  text-transform: uppercase;
+  letter-spacing: .07em;
+  pointer-events: none;
+}
+.parallel-label::before,
+.parallel-label::after {
+  content:'';
+  display:block;
+  height:1px;
+  width:20px;
+  background:#21262d;
+}
+
+/* ── status bar ─────────────────────────────────────────────────────────── */
+
+.status-bar {
+  margin-top: 10px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  color: #7d8590;
+  height: 16px;
+}
+.sdot {
+  width:6px; height:6px;
+  border-radius:50%;
+  background:#3d444d;
+  flex-shrink:0;
+  transition: background .3s;
+}
+.sdot.running { background:#0ea5e9; animation: dpulse 1.4s ease-in-out infinite; }
+.sdot.done    { background:#2ea043; animation:none; }
+@keyframes dpulse { 0%,100%{opacity:1} 50%{opacity:.3} }
+
+/* ── fade overlay ───────────────────────────────────────────────────────── */
+
+#overlay {
+  position:fixed; inset:0;
+  background:#0d1117;
+  opacity:0;
+  pointer-events:none;
+  transition: opacity 1s ease;
+  z-index:99;
+}
+#overlay.show { opacity:1; }
+</style>
+</head>
+<body>
+<div id="overlay"></div>
+<div class="wrapper">
+
+  <div class="run-header">
+    <span>heimdall run</span>
+    <span class="sep">·</span>
+    <span class="run-id">#42</span>
+    <span class="sep">·</span>
+    <span class="branch">fix/auth-token-expiry</span>
+    <span class="sep">·</span>
+    <span class="elapsed" id="elapsed">0.0s</span>
+  </div>
+
+  <div class="graph" id="graph">
+    <svg class="connectors" id="svg"></svg>
+  </div>
+
+  <div class="status-bar">
+    <div class="sdot" id="sdot"></div>
+    <span id="stext">Waiting to start…</span>
+  </div>
+
+</div>
+<script>
+// ── graph definition ────────────────────────────────────────────────────────
+
+const NW = 148, NH = 44;
+
+const NODES = [
+  { id:'intake',    label:'Ticket Intake', cx:330, cy: 44 },
+  { id:'plan',      label:'Plan',          cx:330, cy:140 },
+  { id:'impl',      label:'Implement',     cx:178, cy:270 },
+  { id:'tests',     label:'Write Tests',   cx:482, cy:270 },
+  { id:'validate',  label:'Validate',      cx:330, cy:392 },
+  { id:'review',    label:'Review',        cx:330, cy:476 },
+  { id:'pr',        label:'Create PR',     cx:330, cy:560 },
+];
+
+const EDGES = [
+  ['intake','plan'],
+  ['plan','impl'],
+  ['plan','tests'],
+  ['impl','validate'],
+  ['tests','validate'],
+  ['validate','review'],
+  ['review','pr'],
+];
+
+// [ms, id, 'active'|'done']
+const TIMELINE = [
+  [500,   'intake',   'active'],
+  [4000,  'intake',   'done'],
+  [4000,  'plan',     'active'],
+  [8600,  'plan',     'done'],
+  [8600,  'impl',     'active'],
+  [8600,  'tests',    'active'],
+  [15200, 'tests',    'done'],
+  [19800, 'impl',     'done'],
+  [19800, 'validate', 'active'],
+  [24300, 'validate', 'done'],
+  [24300, 'review',   'active'],
+  [31800, 'review',   'done'],
+  [31800, 'pr',       'active'],
+  [38600, 'pr',       'done'],
+];
+
+const STATUS_UPDATES = [
+  [500,   'Running…',                   'running'],
+  [8600,  'Running in parallel…',       'running'],
+  [19800, 'Validating…',                'running'],
+  [24300, 'Reviewing…',                 'running'],
+  [38600, 'Completed — 38.6s',          'done'],
+];
+
+const TOTAL_MS = 45000;
+
+// ── build DOM ────────────────────────────────────────────────────────────────
+
+const graph   = document.getElementById('graph');
+const svgEl   = document.getElementById('svg');
+const nodeEls = {};
+const edgeEls = {};
+
+function buildGraph () {
+  // arrowhead markers
+  const defs = document.createElementNS('http://www.w3.org/2000/svg','defs');
+  [['def','#30363d'],['act','#0ea5e9'],['done','#2ea043']].forEach(([k,fill]) => {
+    const mk = document.createElementNS('http://www.w3.org/2000/svg','marker');
+    mk.setAttribute('id',`arr-${k}`);
+    mk.setAttribute('markerWidth','7');
+    mk.setAttribute('markerHeight','7');
+    mk.setAttribute('refX','6');
+    mk.setAttribute('refY','3.5');
+    mk.setAttribute('orient','auto');
+    const poly = document.createElementNS('http://www.w3.org/2000/svg','polygon');
+    poly.setAttribute('points','0 0,6 3.5,0 7');
+    poly.setAttribute('fill',fill);
+    mk.appendChild(poly); defs.appendChild(mk);
+  });
+  svgEl.appendChild(defs);
+
+  // edges
+  const byId = id => NODES.find(n => n.id === id);
+  EDGES.forEach(([fid,tid]) => {
+    const f = byId(fid), t = byId(tid);
+    const x1=f.cx, y1=f.cy+NH/2+1, x2=t.cx, y2=t.cy-NH/2-1;
+    const mid = y1 + (y2-y1)*0.5;
+    const path = document.createElementNS('http://www.w3.org/2000/svg','path');
+    path.setAttribute('d',`M${x1} ${y1} C${x1} ${mid},${x2} ${mid},${x2} ${y2}`);
+    path.setAttribute('stroke','#21262d');
+    path.setAttribute('stroke-width','1.5');
+    path.setAttribute('fill','none');
+    path.setAttribute('marker-end','url(#arr-def)');
+    svgEl.appendChild(path);
+    edgeEls[`${fid}-${tid}`] = path;
+  });
+
+  // parallel label
+  const pl = document.createElement('div');
+  pl.className = 'parallel-label';
+  pl.style.left = '330px';
+  pl.style.top  = '249px';
+  pl.textContent = 'parallel';
+  graph.appendChild(pl);
+
+  // nodes
+  NODES.forEach(n => {
+    const el = document.createElement('div');
+    el.className = 'node';
+    el.style.left = `${n.cx}px`;
+    el.style.top  = `${n.cy - NH/2}px`;
+    el.innerHTML =
+      `<div class="icon" id="ico-${n.id}"><div class="clock-icon"></div></div>` +
+      `<div class="label">${n.label}</div>` +
+      `<div class="tmr"  id="tmr-${n.id}"></div>`;
+    graph.appendChild(el);
+    nodeEls[n.id] = el;
+  });
+}
+
+// ── state helpers ─────────────────────────────────────────────────────────────
+
+const timers = {}, starts = {};
+
+function ico(id)  { return document.getElementById(`ico-${id}`); }
+function tmr(id)  { return document.getElementById(`tmr-${id}`); }
+
+function setEdge(fid, tid, style) {
+  const p = edgeEls[`${fid}-${tid}`];
+  if (!p) return;
+  if (style === 'act')  { p.setAttribute('stroke','#0ea5e9'); p.setAttribute('marker-end','url(#arr-act)'); }
+  if (style === 'done') { p.setAttribute('stroke','#2ea043'); p.setAttribute('marker-end','url(#arr-done)'); }
+  if (style === 'def')  { p.setAttribute('stroke','#21262d'); p.setAttribute('marker-end','url(#arr-def)'); }
+}
+
+function activate(id) {
+  nodeEls[id].className = 'node active';
+  ico(id).innerHTML = '<div class="spinner"></div>';
+  starts[id] = Date.now();
+  timers[id] = setInterval(() => {
+    tmr(id).textContent = ((Date.now()-starts[id])/1000).toFixed(1)+'s';
+  }, 100);
+  EDGES.forEach(([f,t]) => { if (t===id) setEdge(f,t,'act'); });
+}
+
+function complete(id) {
+  clearInterval(timers[id]);
+  nodeEls[id].className = 'node done';
+  ico(id).innerHTML = '<div class="check-icon"></div>';
+  tmr(id).textContent = ((Date.now()-starts[id])/1000).toFixed(1)+'s';
+  EDGES.forEach(([f,t]) => { if (t===id) setEdge(f,t,'done'); });
+}
+
+function setStatus(text, cls) {
+  document.getElementById('stext').textContent = text;
+  document.getElementById('sdot').className = 'sdot '+cls;
+}
+
+// ── run timer ─────────────────────────────────────────────────────────────────
+
+let runStart, runInterval;
+
+function startRunTimer() {
+  runStart = Date.now();
+  runInterval = setInterval(() => {
+    document.getElementById('elapsed').textContent =
+      ((Date.now()-runStart)/1000).toFixed(1)+'s';
+  }, 100);
+}
+
+function stopRunTimer(finalText) {
+  clearInterval(runInterval);
+  if (finalText) document.getElementById('elapsed').textContent = finalText;
+}
+
+// ── animation ─────────────────────────────────────────────────────────────────
+
+let pending = [];
+
+function resetAll() {
+  pending.forEach(clearTimeout); pending = [];
+  Object.values(timers).forEach(clearInterval);
+  stopRunTimer();
+
+  NODES.forEach(({id}) => {
+    nodeEls[id].className = 'node';
+    ico(id).innerHTML = '<div class="clock-icon"></div>';
+    tmr(id).textContent = '';
+  });
+  EDGES.forEach(([f,t]) => setEdge(f,t,'def'));
+  document.getElementById('elapsed').textContent = '0.0s';
+  setStatus('Waiting to start…','');
+}
+
+function run() {
+  resetAll();
+  startRunTimer();
+
+  TIMELINE.forEach(([ms,id,state]) => {
+    pending.push(setTimeout(() => {
+      if (state==='active') activate(id);
+      else complete(id);
+    }, ms));
+  });
+
+  STATUS_UPDATES.forEach(([ms,text,cls]) => {
+    pending.push(setTimeout(() => {
+      setStatus(text, cls);
+      if (cls==='done') stopRunTimer('38.6s');
+    }, ms));
+  });
+
+  pending.push(setTimeout(() => {
+    document.getElementById('overlay').classList.add('show');
+  }, 43500));
+
+  pending.push(setTimeout(() => {
+    document.getElementById('overlay').classList.remove('show');
+    run();
+  }, TOTAL_MS));
+}
+
+buildGraph();
+setTimeout(run, 80);
+</script>
+</body>
+</html>
