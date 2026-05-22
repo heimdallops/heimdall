@@ -5,6 +5,8 @@ icon: menu_book
 weight: 1
 ---
 
-Welcome to the Heimdall documentation. These pages describe what Heimdall is, how workflows are modeled, and how you will run them once the CLI is published.
+Heimdall is a CLI for building deterministic agentic workflows from YAML. AI agents are powerful, but the process around them is often implicit — planning gets skipped, validation drifts, and handoffs miss team standards. Heimdall makes that process explicit: user-defined workflows describe the phases, gates, feedback loops, artifacts, and completion criteria that guide agentic work. Agents provide the intelligence; Heimdall owns the structure.
+
+---
 
 Start with [About Heimdall](/docs/about/) for the product overview, then explore [Getting started](/docs/getting-started/) and [Workflows](/docs/guides/workflows/) for illustrative examples.
