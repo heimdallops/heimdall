@@ -38,6 +38,9 @@ hero:
 
   info: "**Open source** · MIT Licensed · Documentation preview"
 
+imageCompare:
+  enable: false
+
 featureGrid:
   enable: true
   weight: 20

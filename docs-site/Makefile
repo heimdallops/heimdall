@@ -11,6 +11,9 @@ PROJECT_PROD ?= heimdall-docs-prod
 
 .PHONY: build deploy-dev deploy-prod
 
+serve:
+	$(HUGO) server -D -p 1413
+
 build:
 	$(HUGO) --minify --baseURL "$(HUGO_BASEURL)"
 
