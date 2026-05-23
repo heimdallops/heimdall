@@ -4,8 +4,12 @@ type: object
 properties:
   id:
     type: string
-    description: Unique identifier for this node.
+    description: Unique identifier for this node. Must contain only alphanumeric characters and underscores.
     minLength: 1
+    pattern: '^[a-zA-Z0-9_]+$'
+  name:
+    type: string
+    description: Human-readable display name for this node. Optional; if omitted, the id is used.
   depends_on:
     type: array
     description: >-
