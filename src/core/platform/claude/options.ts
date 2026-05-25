@@ -1,0 +1,20 @@
+import { z } from 'zod';
+
+export const claudeOptionsSchema = z
+  .object({
+    model: z.string().optional(),
+    reasoning_effort: z.enum(['low', 'medium', 'high', 'max']).optional(),
+    disable_tool_search: z.boolean().optional(),
+    allowed_tools: z.array(z.string()).optional(),
+    denied_tools: z.array(z.string()).optional(),
+    hooks: z.record(z.string(), z.unknown()).optional(),
+    mcps: z.union([z.string(), z.record(z.string(), z.unknown())]).optional(),
+    skills: z.array(z.string()).optional(),
+    agents: z.array(z.string()).optional(),
+    max_budget_usd: z.number().min(0).optional(),
+    system_prompt: z.string().optional(),
+    sandbox: z.record(z.string(), z.unknown()).optional(),
+  })
+  .strip();
+
+export type ClaudeOptions = z.infer<typeof claudeOptionsSchema>;
