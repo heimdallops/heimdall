@@ -1,4 +1,7 @@
+import process from 'node:process';
+
 import type { PlatformAdapter, PlatformStream } from '../types.ts';
+import { findAgent as findAgentFn } from './find-agent.ts';
 import type { ClaudeOptions } from './options.ts';
 import { ClaudeStream } from './stream.ts';
 
@@ -7,8 +10,8 @@ export class ClaudeCodeAdapter implements PlatformAdapter<ClaudeOptions> {
     return new ClaudeStream(prompt, options, sessionId);
   }
 
-  findAgent(_name: string): Promise<string> {
-    throw new Error('Not implemented yet');
+  findAgent(name: string): Promise<string> {
+    return findAgentFn(name, process.cwd());
   }
 
   parseAgent(_content: string): { prompt: string; options: ClaudeOptions } {
