@@ -82,7 +82,7 @@ Produce a `specs/<feature-dir>/research.md` with this format per decision:
 
 Create `specs/<feature-dir>/plan.md`:
 
-````markdown
+`````markdown
 # Implementation Plan: [FEATURE NAME]
 
 **Feature Directory**: `specs/<feature-dir>`
@@ -119,7 +119,6 @@ src/
 test/
   [path/to/test.ts]       — [what it covers]
 ```
-````
 
 ## Design Decisions
 
@@ -130,7 +129,7 @@ important choices and why they were made]
 
 [Technical constraints, known unknowns, and risks that implementation should account for]
 
-```
+`````
 
 ### 6. Validate against CLAUDE.md principles
 
@@ -156,4 +155,3 @@ Output:
 - Do not create abstractions that don't have a concrete current use case.
 - The plan must be specific enough that `/tasks` can generate file-level tasks from it.
 - If the spec has unresolved `[NEEDS CLARIFICATION]` markers, run `/clarify` first.
-```

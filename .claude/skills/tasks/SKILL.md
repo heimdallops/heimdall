@@ -49,7 +49,7 @@ Load:
 - **Optional**: `specs/<feature-dir>/data-model.md`, `specs/<feature-dir>/contracts/`,
   `specs/<feature-dir>/research.md`, `specs/<feature-dir>/quickstart.md`
 
-If `plan.md` or `spec.md` are missing, tell the user to run `/plan` first.
+If `spec.md` is missing, tell the user to run `/specify` first, then `/plan`. If `plan.md` is missing but `spec.md` exists, tell the user to run `/plan` first.
 
 ### 2. Extract task inputs
 

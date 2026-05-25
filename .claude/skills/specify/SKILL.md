@@ -10,7 +10,7 @@ description: >
 # Specify
 
 Create a structured feature specification from a natural language description. Specs live in
-`specs/<NNN>-<short-name>/spec.md`. This is the first step in the plan → tasks → implement
+`specs/<NNN>-<short-name>/spec.md`. This is the first step in the specify → plan → tasks → implement
 workflow.
 
 ## User Input
