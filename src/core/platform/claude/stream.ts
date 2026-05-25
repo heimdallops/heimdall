@@ -67,6 +67,7 @@ export class ClaudeStream extends EventEmitter implements PlatformStream {
   }
 
   private async execute(prompt: string, options: ClaudeOptions, sessionId?: string): Promise<void> {
+    let terminated = false;
     try {
       const sdkOptions = buildSdkOptions(options, this.abortController, sessionId);
       const stream = query({ prompt, options: sdkOptions });
@@ -87,17 +88,31 @@ export class ClaudeStream extends EventEmitter implements PlatformStream {
         }
       }
 
-      this.emit('done');
+      if (!sessionResolved) {
+        terminated = true;
+        const err = new PlatformError('PLATFORM_ERROR', 'Stream ended without a session ID');
+        this.rejectSessionId(err);
+        this.emit('error', err);
+      }
     } catch (err) {
+      terminated = true;
       if (err instanceof AbortError) {
         const cancellation = new PlatformCancellationError({ cause: err });
         this.rejectSessionId(cancellation);
         this.emit('error', cancellation);
       } else {
-        const platformErr = new PlatformError('PLATFORM_ERROR', String(err), { cause: err });
+        const platformErr = new PlatformError(
+          'PLATFORM_ERROR',
+          'An unexpected error occurred during stream execution',
+          { cause: err }
+        );
         this.rejectSessionId(platformErr);
         this.emit('error', platformErr);
       }
+    }
+
+    if (!terminated) {
+      this.emit('done');
     }
   }
 }
@@ -116,5 +131,6 @@ const buildSdkOptions = (
   ...(options.skills !== undefined && { skills: options.skills }),
   ...(options.max_budget_usd !== undefined && { maxBudgetUsd: options.max_budget_usd }),
   ...(options.system_prompt !== undefined && { systemPrompt: options.system_prompt }),
+  ...(options.sandbox !== undefined && { sandbox: options.sandbox }),
   ...(sessionId !== undefined && { resume: sessionId }),
 });

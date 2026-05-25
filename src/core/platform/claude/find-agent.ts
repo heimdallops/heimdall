@@ -1,6 +1,6 @@
-import { access } from 'node:fs/promises';
+import { realpath } from 'node:fs/promises';
 import os from 'node:os';
-import { isAbsolute, resolve } from 'node:path';
+import { isAbsolute, resolve, sep } from 'node:path';
 
 import { PlatformAgentNotFoundError } from '../errors.ts';
 
@@ -9,18 +9,27 @@ export const findAgent = async (name: string, cwd: string): Promise<string> => {
     return isAbsolute(name) ? name : resolve(cwd, name);
   }
 
-  const searchPaths = [
-    resolve(cwd, '.claude', 'agents', `${name}.md`),
-    resolve(os.homedir(), '.claude', 'agents', `${name}.md`),
+  const cwdBase = resolve(cwd, '.claude', 'agents');
+  const homeBase = resolve(os.homedir(), '.claude', 'agents');
+
+  const [resolvedCwdBase, resolvedHomeBase] = await Promise.all([
+    realpath(cwdBase).catch(() => cwdBase),
+    realpath(homeBase).catch(() => homeBase),
+  ]);
+
+  const searchPaths: [string, string][] = [
+    [resolve(cwdBase, `${name}.md`), resolvedCwdBase],
+    [resolve(homeBase, `${name}.md`), resolvedHomeBase],
   ];
 
-  for (const candidate of searchPaths) {
+  for (const [candidate, resolvedBase] of searchPaths) {
     try {
-      await access(candidate);
-
-      return candidate;
+      const real = await realpath(candidate); // throws on ENOENT; no access() needed
+      if (real.startsWith(resolvedBase + sep) || real === resolvedBase) {
+        return real;
+      }
     } catch {
-      // not found at this path, continue
+      // continue to next candidate
     }
   }
 

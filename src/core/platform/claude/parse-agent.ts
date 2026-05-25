@@ -8,6 +8,8 @@ const FIELD_ALIASES: Record<string, string> = {
   tools: 'allowed_tools',
 };
 
+const ARRAY_COERCE_KEYS = new Set(['allowed_tools', 'denied_tools']);
+
 export const parseAgent = (content: string): { prompt: string; options: ClaudeOptions } => {
   const { data: rawFrontmatter, content: body } = matter(content);
 
@@ -18,13 +20,23 @@ export const parseAgent = (content: string): { prompt: string; options: ClaudeOp
     aliased[canonical] = value;
   }
 
+  for (const key of ARRAY_COERCE_KEYS) {
+    if (typeof aliased[key] === 'string') {
+      aliased[key] = aliased[key]
+        .split(',')
+        .map((s) => s.trim())
+        .filter(Boolean);
+    }
+  }
+
   const result = claudeOptionsSchema.partial().safeParse(aliased);
 
   if (!result.success) {
     const [issue] = result.error.issues;
+    const fieldPath = issue?.path.join('.') ?? 'unknown';
     throw new PlatformError(
       'PLATFORM_ERROR',
-      `Invalid agent frontmatter: ${issue?.path.join('.') ?? 'unknown'}: ${issue?.message ?? 'validation error'}`
+      `Invalid agent frontmatter at '${fieldPath}': ${issue?.code ?? 'validation error'}`
     );
   }
 
