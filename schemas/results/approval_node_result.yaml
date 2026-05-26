@@ -1,0 +1,18 @@
+$schema: 'https://json-schema.org/draft/2020-12/schema'
+description: >-
+  Output produced by an approval_node. Available to downstream nodes via
+  needs.<id>.output. When exit_on_no is true, a "no" response exits the
+  workflow immediately and produces no output; otherwise approved is false
+  and downstream nodes can route accordingly.
+type: object
+properties:
+  approved:
+    type: boolean
+    description: True if the user approved, false if they declined.
+  feedback:
+    type: string
+    description: >-
+      The user's feedback string. Only present when enable_feedback is true
+      and the user chose to provide feedback rather than approving or declining.
+required:
+  - approved

@@ -1,0 +1,89 @@
+$schema: 'https://json-schema.org/draft/2020-12/schema'
+description: >-
+  Built-in keywords available in expression contexts throughout a workflow.
+type: object
+properties:
+  inputs:
+    type: object
+    description: >-
+      Resolved values of the workflow's declared inputs. Each key corresponds
+      to an input name declared in the top-level inputs map; the value is the
+      resolved runtime value (after applying defaults). The shape of each value
+      matches the declared type (string, number, integer, or boolean).
+    additionalProperties:
+      oneOf:
+        - type: string
+        - type: number
+        - type: integer
+        - type: boolean
+  vars:
+    type: object
+    description: >-
+      Resolved values of the workflow's declared variables. Each key corresponds
+      to a variable name declared in the top-level variables map; the value is
+      the resolved runtime value (string, number, integer, or boolean).
+    additionalProperties:
+      oneOf:
+        - type: string
+        - type: number
+        - type: integer
+        - type: boolean
+  scope:
+    type: object
+    description: >-
+      Internal context of the enclosing loop_node, available within the loop body,
+      until expression, and outputs expressions. Not available outside a loop
+      (use needs.<loop_id> there instead).
+    properties:
+      iteration:
+        type: integer
+        description: >-
+          Number of iterations completed so far. Starts at 0 and increments by 1
+          after each iteration finishes — so it reads 0 while the first iteration
+          is running, 1 while the second is running, and so on.
+        minimum: 0
+      nodes:
+        type: object
+        description: >-
+          Merged output of child nodes keyed by node id. Reflects the last
+          fully-completed iteration's state overlaid with any child nodes that
+          completed in the current iteration so far. On break, includes all work
+          that completed before the break fired.
+        additionalProperties:
+          description: The output of the child node with the matching id.
+      needs:
+        type: object
+        description: >-
+          Outputs of nodes that the loop itself depends on (via depends_on),
+          scoped to within the loop body. Nodes inside a loop cannot directly
+          depend on nodes outside the loop; use scope.needs.<id> instead.
+        additionalProperties:
+          type: object
+          description: The output of the dependency node with the matching id.
+          properties:
+            output:
+              type: object
+              description: Key/value pairs declared in the dependency node's outputs map.
+              additionalProperties: true
+      outer:
+        description: >-
+          Context of the immediately enclosing loop, available inside nested
+          loops. Chains arbitrarily deep — e.g. scope.outer.outer.needs or
+          scope.outer.outer.iteration — with each .outer stepping one loop
+          level outward.
+        $ref: '#/properties/scope'
+    required:
+      - iteration
+      - nodes
+  heimdall:
+    type: object
+    description: Workflow-scoped runtime variables provided by Heimdall.
+    properties:
+      session_dir:
+        type: string
+        description: >-
+          Absolute path to a temporary directory scoped to this workflow run.
+          Persists for the lifetime of the run. Use it to share files between
+          nodes (e.g. spec.md, progress.txt) without polluting the workspace.
+    required:
+      - session_dir

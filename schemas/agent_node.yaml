@@ -1,0 +1,20 @@
+$schema: 'https://json-schema.org/draft/2020-12/schema'
+description: Runs a named or file-based agent with optional instructions. Extends agentic_node.yaml.
+allOf:
+  - $ref: agentic_node.yaml
+  - type: object
+    properties:
+      agent:
+        type: string
+        description: >-
+          Name or path of the agent to run. Bare names are resolved using the
+          same search path as the configured platform. Frontmatter is stripped
+          and used as config for this node; config provided on the node directly
+          takes precedence.
+      instructions:
+        type: string
+        description: >-
+          Specific instructions to provide the agent. Supports ${{ <expression> }}
+          interpolation using CEL expressions.
+    required:
+      - agent

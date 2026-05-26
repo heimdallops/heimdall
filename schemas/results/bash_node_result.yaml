@@ -1,0 +1,21 @@
+$schema: 'https://json-schema.org/draft/2020-12/schema'
+description: >-
+  Output produced by a bash_node. Available to downstream nodes via needs.<id>.output.
+  The source is the contents of the HEIMDALL_OUTPUT file injected by the engine; if
+  nothing was written to it, output is empty. When output_format is "text" (default),
+  output is a plain string with trailing newlines stripped. When output_format is "json",
+  the contents are parsed as JSON and its properties are accessible directly
+  (e.g. needs.<id>.output.some_field). The node fails immediately if the contents are
+  not valid JSON when output_format is "json".
+type: object
+properties:
+  output:
+    description: >-
+      The contents of HEIMDALL_OUTPUT, with trailing newlines stripped. A plain string
+      when output_format is "text". A structured object matching the parsed JSON when
+      output_format is "json". Empty string if nothing was written to HEIMDALL_OUTPUT.
+    oneOf:
+      - type: string
+      - type: object
+required:
+  - output

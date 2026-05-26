@@ -1,0 +1,37 @@
+$schema: 'https://json-schema.org/draft/2020-12/schema'
+description: Pauses the workflow and prompts the user for approval before continuing.
+allOf:
+  - $ref: node.yaml
+  - type: object
+    properties:
+      approval:
+        type: object
+        description: >-
+          Request human approval before continuing. The result is available to
+          downstream nodes via needs.<id>.output. Use exit_on_no: true to
+          exit the workflow immediately when the user declines.
+        properties:
+          message:
+            type: string
+            description: >-
+              Message to display to the user. Supports ${{ <expression> }}
+              interpolation using CEL expressions.
+          exit_on_no:
+            type: boolean
+            default: false
+            description: >-
+              When true, a "no" response immediately exits the workflow.
+              When false (default), the workflow continues and downstream
+              nodes can route on needs.<id>.output.approved.
+          enable_feedback:
+            type: boolean
+            description: Enable a third option to gather user feedback.
+          feedback_message:
+            type: string
+            description: >-
+              Message to display when prompting for feedback.
+              Defaults to "Other".
+        required:
+          - message
+    required:
+      - approval
