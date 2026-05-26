@@ -82,7 +82,7 @@ Produce a `specs/<feature-dir>/research.md` with this format per decision:
 
 Create `specs/<feature-dir>/plan.md`:
 
-`````markdown
+````markdown
 # Implementation Plan: [FEATURE NAME]
 
 **Feature Directory**: `specs/<feature-dir>`
@@ -128,12 +128,12 @@ important choices and why they were made]
 ## Constraints & Risks
 
 [Technical constraints, known unknowns, and risks that implementation should account for]
-
-`````
+````
 
 ### 6. Validate against CLAUDE.md principles
 
 Check the plan against all principles in `CLAUDE.md`:
+
 - YAGNI: No speculative abstractions, flags, or config keys
 - KISS: No clever meta-programming where explicit control flow works
 - SRP: Each new module has one clear responsibility
@@ -144,6 +144,7 @@ Flag any violations. Do not proceed with a plan that violates a MUST principle â
 ### 7. Report
 
 Output:
+
 - Paths to all generated artifacts (`plan.md`, `research.md`, `data-model.md`, `contracts/`, `quickstart.md`)
 - Summary of architectural decisions
 - Any open risks or constraints to watch during implementation

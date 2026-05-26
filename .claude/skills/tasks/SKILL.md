@@ -85,6 +85,7 @@ Before writing any tasks, map out the workstreams for each phase:
    workstream A to compile, they cannot be in the same phase — A belongs in an earlier phase.
 
 Common workstream splits within a user story phase:
+
 - `Data model` (entities, schema migrations) → `Service layer` → `Command / handler` are
   often three sequential phases, not one, because each layer imports the previous
 - `Tests` can be a parallel workstream within a phase if they only import stable interfaces
@@ -214,6 +215,7 @@ Within each phase, workstreams are independent and can be assigned to different 
 agents simultaneously. A workstream's tasks must be completed in listed order.
 
 **Example parallel execution for Phase 3:**
+
 - Engineer A takes "Data model" workstream
 - Engineer B takes "CLI command" workstream
 - Both finish, then either can tackle "Tests" workstream if it appears in the same phase

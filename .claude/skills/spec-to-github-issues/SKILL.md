@@ -43,11 +43,13 @@ Read `tasks.md` and map each phase to its issue structure:
 **Single-workstream phase** → one flat issue. All tasks go inline in the issue body.
 
 **Multi-workstream phase** → one parent issue + one child sub-issue per workstream.
+
 - The parent holds everything that doesn't belong to any individual workstream: the phase
   goal, independent test, checkpoint, and a list of links to the child sub-issues.
 - Each child sub-issue holds only the tasks for its workstream.
 
 For each phase, record:
+
 - Phase title and description
 - Whether it is single- or multi-workstream
 - For multi-workstream: list of workstream names and their tasks
