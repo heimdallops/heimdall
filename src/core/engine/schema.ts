@@ -108,7 +108,11 @@ export const ExitNodeSchema = BaseNodeSchema.extend({
 });
 
 export const BreakNodeSchema = BaseNodeSchema.extend({
-  break: z.any(),
+  break: z.unknown(),
+}).superRefine((data, ctx) => {
+  if (!('break' in data)) {
+    ctx.addIssue({ code: 'custom', path: ['break'], message: "'break' field is required" });
+  }
 });
 
 export type LoopNode = z.infer<typeof BaseNodeSchema> & {
