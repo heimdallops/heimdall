@@ -9,24 +9,26 @@ properties:
       Resolved values of the workflow's declared inputs. Each key corresponds
       to an input name declared in the top-level inputs map; the value is the
       resolved runtime value (after applying defaults). The shape of each value
-      matches the declared type (string, number, or boolean).
+      matches the declared type (string, number, integer, or boolean).
     additionalProperties:
       oneOf:
         - type: string
         - type: number
+        - type: integer
         - type: boolean
   vars:
     type: object
     description: >-
       Resolved values of the workflow's declared variables. Each key corresponds
       to a variable name declared in the top-level variables map; the value is
-      the resolved runtime value (string, number, or boolean).
+      the resolved runtime value (string, number, integer, or boolean).
     additionalProperties:
       oneOf:
         - type: string
         - type: number
+        - type: integer
         - type: boolean
-  loop:
+  scope:
     type: object
     description: >-
       Internal context of the enclosing loop_node, available within the loop body,
@@ -54,7 +56,7 @@ properties:
         description: >-
           Outputs of nodes that the loop itself depends on (via depends_on),
           scoped to within the loop body. Nodes inside a loop cannot directly
-          depend on nodes outside the loop; use loop.needs.<id> instead.
+          depend on nodes outside the loop; use scope.needs.<id> instead.
         additionalProperties:
           type: object
           description: The output of the dependency node with the matching id.
@@ -66,10 +68,10 @@ properties:
       outer:
         description: >-
           Context of the immediately enclosing loop, available inside nested
-          loops. Chains arbitrarily deep — e.g. loop.outer.outer.needs or
-          loop.outer.outer.iteration — with each .outer stepping one loop
+          loops. Chains arbitrarily deep — e.g. scope.outer.outer.needs or
+          scope.outer.outer.iteration — with each .outer stepping one loop
           level outward.
-        $ref: '#/properties/loop'
+        $ref: '#/properties/scope'
     required:
       - iteration
       - nodes

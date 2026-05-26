@@ -13,14 +13,7 @@ const evalCelWithContext = (expr: string, celContext: Record<string, unknown>): 
   try {
     return evaluate(expr, celContext) as unknown;
   } catch (error) {
-    let detail: string;
-    if (error instanceof Error) {
-      detail = error.message;
-    } else {
-      detail = 'unknown error';
-    }
-
-    throw new EngineError(`CEL evaluation failed: ${detail}`, 'ENGINE_CEL_ERROR', { cause: error });
+    throw new EngineError('CEL evaluation failed', 'ENGINE_CEL_ERROR', { cause: error });
   }
 };
 

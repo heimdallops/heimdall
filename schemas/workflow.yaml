@@ -29,6 +29,7 @@ properties:
           enum:
             - string
             - number
+            - integer
             - boolean
           description: The value type for this input.
         description:
@@ -58,6 +59,14 @@ properties:
         - if:
             properties:
               type:
+                const: integer
+          then:
+            properties:
+              default:
+                type: integer
+        - if:
+            properties:
+              type:
                 const: boolean
           then:
             properties:
@@ -70,6 +79,7 @@ properties:
       oneOf:
         - type: string
         - type: number
+        - type: integer
         - type: boolean
   workspace:
     $ref: workspace.yaml

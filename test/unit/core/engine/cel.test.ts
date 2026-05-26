@@ -35,8 +35,8 @@ describe('interpolate', () => {
     }
 
     expect(thrown?.code).toBe('ENGINE_CEL_ERROR');
-    expect(thrown?.message).toMatch(/CEL/i);
-    expect(thrown?.message).toContain('missing');
+    expect(thrown?.message).toBe('CEL evaluation failed');
+    expect(thrown?.cause).toBeInstanceOf(Error);
   });
 
   it('returns the original string unchanged when there are no ${{ }} blocks', () => {
