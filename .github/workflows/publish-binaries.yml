@@ -1,0 +1,217 @@
+name: Publish binaries
+
+on:
+  workflow_call:
+    inputs:
+      ref:
+        description: Git ref to checkout (branch, tag, or commit SHA)
+        type: string
+        required: true
+      release_tag:
+        description: GitHub release tag to upload binaries to
+        type: string
+        required: true
+      dry_run:
+        description: When true, prints what would be uploaded but does not upload
+        type: boolean
+        required: false
+        default: false
+
+permissions:
+  contents: read
+  actions: write
+
+jobs:
+  build:
+    name: Build SEA binary (${{ matrix.target }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: linux-x64
+            runner: ubuntu-latest
+            binary_name: heimdall-linux-x64
+          - target: linux-arm64
+            runner: ubuntu-24.04-arm
+            binary_name: heimdall-linux-arm64
+          - target: macos-x64
+            runner: macos-13
+            binary_name: heimdall-macos-x64
+          - target: macos-arm64
+            runner: macos-latest
+            binary_name: heimdall-macos-arm64
+          - target: windows-x64
+            runner: windows-latest
+            binary_name: heimdall-windows-x64.exe
+
+    runs-on: ${{ matrix.runner }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6.0.2
+        with:
+          ref: ${{ inputs.ref }}
+
+      - name: Setup Node
+        uses: actions/setup-node@v6.4.0
+        with:
+          node-version-file: package.json
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build SEA blob
+        run: npm run build:sea
+
+      - name: Copy node binary (Unix)
+        if: runner.os != 'Windows'
+        shell: bash
+        run: cp "$(which node)" "${{ matrix.binary_name }}"
+
+      - name: Copy node binary (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $nodePath = (Get-Command node).Source
+          Copy-Item $nodePath "${{ matrix.binary_name }}"
+
+      - name: Remove signature (macOS)
+        if: runner.os == 'macOS'
+        shell: bash
+        run: codesign --remove-signature "${{ matrix.binary_name }}"
+
+      - name: Remove signature (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: signtool remove /s "${{ matrix.binary_name }}"
+
+      - name: Inject blob into binary (Linux)
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          npx postject "${{ matrix.binary_name }}" NODE_SEA_BLOB dist/heimdall.blob \
+            --sentinel-fuse NODE_SEA_FUSE_fce680ab2cc467b6e072b8b5df1996b2
+
+      - name: Inject blob into binary (macOS)
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          npx postject "${{ matrix.binary_name }}" NODE_SEA_BLOB dist/heimdall.blob \
+            --sentinel-fuse NODE_SEA_FUSE_fce680ab2cc467b6e072b8b5df1996b2 \
+            --macho-segment-name NODE_SEA
+
+      - name: Inject blob into binary (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          npx postject "${{ matrix.binary_name }}" NODE_SEA_BLOB dist/heimdall.blob `
+            --sentinel-fuse NODE_SEA_FUSE_fce680ab2cc467b6e072b8b5df1996b2
+
+      - name: Codesign (macOS)
+        if: runner.os == 'macOS'
+        shell: bash
+        run: codesign --sign - "${{ matrix.binary_name }}"
+
+      - name: Test binary (Unix)
+        if: runner.os != 'Windows'
+        shell: bash
+        run: ./${{ matrix.binary_name }} --help
+
+      - name: Test binary (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: .\${{ matrix.binary_name }} --help
+
+      - name: Upload SEA binary artifact
+        uses: actions/upload-artifact@v5
+        with:
+          name: sea-binary-${{ matrix.target }}
+          path: ${{ matrix.binary_name }}
+          if-no-files-found: error
+
+  publish:
+    name: Publish binaries to release
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      actions: read
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6.0.2
+        with:
+          ref: ${{ inputs.ref }}
+
+      - name: Download Linux x64 binary
+        uses: actions/download-artifact@v5
+        with:
+          name: sea-binary-linux-x64
+          path: ./binaries/linux-x64
+
+      - name: Download Linux arm64 binary
+        uses: actions/download-artifact@v5
+        with:
+          name: sea-binary-linux-arm64
+          path: ./binaries/linux-arm64
+
+      - name: Download macOS x64 binary
+        uses: actions/download-artifact@v5
+        with:
+          name: sea-binary-macos-x64
+          path: ./binaries/macos-x64
+
+      - name: Download macOS arm64 binary
+        uses: actions/download-artifact@v5
+        with:
+          name: sea-binary-macos-arm64
+          path: ./binaries/macos-arm64
+
+      - name: Download Windows x64 binary
+        uses: actions/download-artifact@v5
+        with:
+          name: sea-binary-windows-x64
+          path: ./binaries/windows-x64
+
+      - name: Mark Unix binaries executable
+        run: |
+          chmod +x \
+            binaries/linux-x64/heimdall-linux-x64 \
+            binaries/linux-arm64/heimdall-linux-arm64 \
+            binaries/macos-x64/heimdall-macos-x64 \
+            binaries/macos-arm64/heimdall-macos-arm64
+
+      - name: Generate checksums.txt
+        run: |
+          cd binaries
+          sha256sum \
+            linux-x64/heimdall-linux-x64 \
+            linux-arm64/heimdall-linux-arm64 \
+            macos-x64/heimdall-macos-x64 \
+            macos-arm64/heimdall-macos-arm64 \
+            windows-x64/heimdall-windows-x64.exe \
+            | sed 's|[^/]*/||' > checksums.txt
+          cat checksums.txt
+
+      - name: Upload binaries to GitHub release (dry run)
+        if: inputs.dry_run
+        run: |
+          echo "DRY RUN: would upload these files to release ${{ inputs.release_tag }}:"
+          find binaries -type f | sort
+          echo "---"
+          cat binaries/checksums.txt
+
+      - name: Upload binaries to GitHub release
+        if: ${{ !inputs.dry_run }}
+        run: |
+          gh release upload "${{ inputs.release_tag }}" \
+            binaries/linux-x64/heimdall-linux-x64 \
+            binaries/linux-arm64/heimdall-linux-arm64 \
+            binaries/macos-x64/heimdall-macos-x64 \
+            binaries/macos-arm64/heimdall-macos-arm64 \
+            binaries/windows-x64/heimdall-windows-x64.exe \
+            binaries/checksums.txt \
+            scripts/install.sh \
+            --clobber
