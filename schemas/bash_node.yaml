@@ -1,5 +1,11 @@
 $schema: 'https://json-schema.org/draft/2020-12/schema'
-description: Executes a bash script and exposes its stdout as the node output.
+description: >-
+  Executes a bash script and exposes its output to downstream nodes via needs.<id>.output.
+  The engine injects a HEIMDALL_OUTPUT environment variable containing the path to a
+  temporary file. Write to that file to control exactly what is exposed as output —
+  only its contents are read, so incidental stdout from commands like apt or curl does
+  not contaminate the result. If nothing is written to HEIMDALL_OUTPUT, the node's
+  output is empty.
 allOf:
   - $ref: node.yaml
   - type: object
@@ -24,10 +30,10 @@ allOf:
           - json
         default: text
         description: >-
-          Controls how stdout is parsed. "text" (default) exposes stdout as a
-          plain string on needs.<id>.output. "json" parses stdout as JSON and
-          exposes the parsed structure on needs.<id>.output, making fields
-          accessible as needs.<id>.output.<field>. If "json" is set and stdout
-          is not valid JSON, the node fails immediately.
+          Controls how the contents of HEIMDALL_OUTPUT are parsed. "text" (default)
+          exposes the contents as a plain string on needs.<id>.output. "json" parses
+          the contents as JSON and exposes the parsed structure on needs.<id>.output,
+          making fields accessible as needs.<id>.output.<field>. If "json" is set and
+          the contents are not valid JSON, the node fails immediately.
     required:
       - bash
