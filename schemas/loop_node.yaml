@@ -31,11 +31,7 @@ allOf:
               Declares the values exposed to downstream nodes after the loop exits.
               Each key becomes a field on needs.<loop_id>.output. Values are CEL
               expressions evaluated in the loop's final iteration context, where
-<<<<<<< chore/engine-errors
-              loop.nodes.<id> and loop.iteration are available.
-=======
               scope.nodes.<id> and scope.iteration are available.
->>>>>>> main
             additionalProperties:
               type: string
         required:
