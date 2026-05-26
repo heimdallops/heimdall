@@ -144,3 +144,4 @@ vite.config.ts.timestamp-*
 
 # Private Local Resources
 .local/
+backlog/
