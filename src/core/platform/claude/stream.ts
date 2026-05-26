@@ -88,7 +88,13 @@ export class ClaudeStream extends EventEmitter implements PlatformStream {
         }
       }
 
-      if (!sessionResolved) {
+      // The SDK may return early on abort without throwing AbortError.
+      if (this.abortController.signal.aborted) {
+        terminated = true;
+        const cancellation = new PlatformCancellationError();
+        this.rejectSessionId(cancellation);
+        this.emit('error', cancellation);
+      } else if (!sessionResolved) {
         terminated = true;
         const err = new PlatformError('PLATFORM_ERROR', 'Stream ended without a session ID');
         this.rejectSessionId(err);

@@ -275,6 +275,26 @@ describe('ClaudeStream', () => {
 
       await expect(stream.sessionId()).rejects.toBeInstanceOf(PlatformCancellationError);
     });
+
+    it('emits PlatformCancellationError when SDK returns early without throwing on abort', async () => {
+      // SDK may silently terminate the generator instead of throwing AbortError
+      mockGeneratorFactory = async function* (): AsyncGenerator<SDKMessage, void> {
+        await Promise.resolve();
+        // returns without yielding or throwing — simulates silent abort
+      };
+
+      const stream = new ClaudeStream('test prompt', {});
+      const captured = captureEvents(stream);
+      stream.sessionId().catch(() => undefined);
+      stream.cancel();
+
+      await flushMicrotasks();
+
+      expect(captured.errors).toHaveLength(1);
+      expect(captured.errors[0]).toBeInstanceOf(PlatformCancellationError);
+      expect(captured.errors[0]!.code).toBe('PLATFORM_CANCELLED');
+      expect(captured.done).toBe(false);
+    });
   });
 
   describe('SDK failure', () => {
