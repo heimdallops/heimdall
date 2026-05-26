@@ -43,6 +43,9 @@ export class ClaudeStream extends EventEmitter implements PlatformStream {
 
   constructor(prompt: string, options: ClaudeOptions, sessionId?: string) {
     super();
+    // Prevent Node from throwing on unhandled 'error' events for callers
+    // that only await sessionId() without registering an error listener.
+    this.on('error', () => undefined);
     this.abortController = new AbortController();
     this.sessionIdPromise = new Promise((resolve, reject) => {
       this.resolveSessionId = resolve;

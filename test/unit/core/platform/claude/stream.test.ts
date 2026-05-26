@@ -228,8 +228,7 @@ describe('ClaudeStream', () => {
 
       const stream = new ClaudeStream('test prompt', {});
       const captured = captureEvents(stream);
-      // Suppress unhandled rejection on the sessionId promise — error is captured via 'error' event
-      stream.sessionId().catch(() => undefined);
+      stream.sessionId().catch(() => undefined); // suppress unhandled promise rejection
       stream.cancel();
 
       await flushMicrotasks();
@@ -250,7 +249,7 @@ describe('ClaudeStream', () => {
 
       const stream = new ClaudeStream('test prompt', {});
       const captured = captureEvents(stream);
-      stream.sessionId().catch(() => undefined);
+      stream.sessionId().catch(() => undefined); // suppress unhandled promise rejection
       stream.cancel();
 
       await flushMicrotasks();
@@ -268,9 +267,6 @@ describe('ClaudeStream', () => {
       };
 
       const stream = new ClaudeStream('test prompt', {});
-      stream.on('error', () => {
-        // prevent unhandled error event crash in Node
-      });
       stream.cancel();
 
       await expect(stream.sessionId()).rejects.toBeInstanceOf(PlatformCancellationError);
