@@ -85,12 +85,12 @@ export abstract class BaseNode<R extends NodeRunResult = NodeRunResult> {
     this.name = data.name;
     this.timeout = data.timeout;
     this.retries = data.retries;
-    this.depends_on = data.depends_on ?? [];
+    this.depends_on = [...(data.depends_on ?? [])];
     this.ifExpr = data.if;
   }
 
   public getDependencies(): string[] {
-    return this.depends_on;
+    return [...this.depends_on];
   }
 
   // Both default to false; subclasses opt in. False is the safe default for the engine's
