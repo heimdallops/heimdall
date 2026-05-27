@@ -6,8 +6,54 @@ const INTERPOLATION_PATTERN = /\$\{\{\s*([\s\S]+?)\s*\}\}/g;
 
 const BLOCKED_KEYS = new Set(['__proto__', 'constructor', 'prototype']);
 
+const mapToObj = (map: Map<unknown, unknown>): Record<string, unknown> => {
+  const result = Object.create(null) as Record<string, unknown>;
+  for (const [k, v] of map) {
+    if (typeof k === 'string' && !BLOCKED_KEYS.has(k)) {
+      result[k] = v;
+    }
+  }
+
+  return result;
+};
+
+const sanitizeValue = (value: unknown, ancestors = new WeakSet<object>()): unknown => {
+  if (value === null || typeof value !== 'object') {
+    return value;
+  }
+
+  if (ancestors.has(value)) {
+    return Object.create(null) as Record<string, unknown>;
+  }
+
+  try {
+    ancestors.add(value);
+
+    if (Array.isArray(value)) {
+      return value.map((item: unknown) => sanitizeValue(item, ancestors));
+    }
+
+    const obj =
+      value instanceof Map
+        ? mapToObj(value as Map<unknown, unknown>)
+        : (value as Record<string, unknown>);
+
+    const result = Object.create(null) as Record<string, unknown>;
+
+    for (const [k, v] of Object.entries(obj)) {
+      if (!BLOCKED_KEYS.has(k)) {
+        result[k] = sanitizeValue(v, ancestors);
+      }
+    }
+
+    return result;
+  } finally {
+    ancestors.delete(value);
+  }
+};
+
 const sanitize = (ctx: Record<string, unknown>): Record<string, unknown> =>
-  Object.fromEntries(Object.entries(ctx).filter(([k]) => !BLOCKED_KEYS.has(k)));
+  sanitizeValue(ctx) as Record<string, unknown>;
 
 const evalCelWithContext = (expr: string, celContext: Record<string, unknown>): unknown => {
   try {
