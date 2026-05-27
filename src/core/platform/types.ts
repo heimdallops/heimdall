@@ -1,7 +1,7 @@
 import type { PlatformError } from './errors.ts';
 
 export interface BasePlatformOptions {
-  model?: string;
+  model?: string | undefined;
 }
 
 export interface StreamEventMap {

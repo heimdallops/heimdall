@@ -38,6 +38,7 @@ import type { ClaudeOptions } from './options.ts';
 export class ClaudeStream extends EventEmitter implements PlatformStream {
   private readonly abortController: AbortController;
   private readonly sessionIdPromise: Promise<string>;
+  private readonly executePromise: Promise<void>;
   private resolveSessionId!: (id: string) => void;
   private rejectSessionId!: (err: unknown) => void;
 
@@ -51,7 +52,7 @@ export class ClaudeStream extends EventEmitter implements PlatformStream {
       this.resolveSessionId = resolve;
       this.rejectSessionId = reject;
     });
-    void this.execute(prompt, options, sessionId);
+    this.executePromise = this.execute(prompt, options, sessionId);
   }
 
   override on<K extends keyof StreamEventMap>(
