@@ -5,12 +5,7 @@ import { isAbsolute, resolve, sep } from 'node:path';
 import { PlatformAgentNotFoundError } from '../errors.ts';
 
 export const findAgent = async (name: string, cwd: string): Promise<string> => {
-  if (
-    isAbsolute(name) ||
-    name.includes('/') ||
-    name.includes('\\') ||
-    name.startsWith('.')
-  ) {
+  if (isAbsolute(name) || name.includes('/') || name.includes('\\') || name.startsWith('.')) {
     return isAbsolute(name) ? name : resolve(cwd, name);
   }
 
@@ -27,10 +22,15 @@ export const findAgent = async (name: string, cwd: string): Promise<string> => {
       reachedHome = true;
       break;
     }
+
     const parent = resolve(dir, '..');
-    if (parent === dir) break; // filesystem root
+    if (parent === dir) {
+      break;
+    } // filesystem root
+
     dir = parent;
   }
+
   if (!reachedHome) {
     searchDirs.push(home);
   }

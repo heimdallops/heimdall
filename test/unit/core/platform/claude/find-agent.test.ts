@@ -126,9 +126,7 @@ describe('findAgent', () => {
 
       const result = await findAgent('layered-agent', childDir);
 
-      expect(result).toBe(
-        await realpath(join(childDir, '.claude', 'agents', 'layered-agent.md'))
-      );
+      expect(result).toBe(await realpath(join(childDir, '.claude', 'agents', 'layered-agent.md')));
     });
 
     it('skips a symlink inside .claude/agents/ that points outside the trusted base directory', async () => {
