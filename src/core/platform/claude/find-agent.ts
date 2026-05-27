@@ -14,27 +14,38 @@ export const findAgent = async (name: string, cwd: string): Promise<string> => {
     return isAbsolute(name) ? name : resolve(cwd, name);
   }
 
-  const cwdBase = resolve(cwd, '.claude', 'agents');
-  const homeBase = resolve(os.homedir(), '.claude', 'agents');
+  const home = os.homedir();
 
-  const [resolvedCwdBase, resolvedHomeBase] = await Promise.all([
-    realpath(cwdBase).catch(() => cwdBase),
-    realpath(homeBase).catch(() => homeBase),
-  ]);
+  // Walk up from cwd to (and including) home, collecting each directory to probe.
+  // If cwd is not under home, home is still appended as a final fallback.
+  const searchDirs: string[] = [];
+  let dir = resolve(cwd);
+  let reachedHome = false;
+  while (true) {
+    searchDirs.push(dir);
+    if (dir === home) {
+      reachedHome = true;
+      break;
+    }
+    const parent = resolve(dir, '..');
+    if (parent === dir) break; // filesystem root
+    dir = parent;
+  }
+  if (!reachedHome) {
+    searchDirs.push(home);
+  }
 
-  const searchPaths: [string, string][] = [
-    [resolve(cwdBase, `${name}.md`), resolvedCwdBase],
-    [resolve(homeBase, `${name}.md`), resolvedHomeBase],
-  ];
-
-  for (const [candidate, resolvedBase] of searchPaths) {
+  for (const searchDir of searchDirs) {
+    const base = resolve(searchDir, '.claude', 'agents');
+    const candidate = resolve(base, `${name}.md`);
     try {
-      const real = await realpath(candidate); // throws on ENOENT; no access() needed
+      const resolvedBase = await realpath(base).catch(() => base);
+      const real = await realpath(candidate);
       if (real.startsWith(resolvedBase + sep) || real === resolvedBase) {
         return real;
       }
     } catch {
-      // continue to next candidate
+      // file does not exist at this level; try the next ancestor
     }
   }
 

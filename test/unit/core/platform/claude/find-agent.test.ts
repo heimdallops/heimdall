@@ -96,6 +96,41 @@ describe('findAgent', () => {
       });
     });
 
+    it('finds agent placed in an ancestor directory of cwd', async () => {
+      // directory layout: fakeHome/project/subdir  (cwd = subdir, agent only in project)
+      const fakeHome = await makeTempDir();
+      vi.spyOn(os, 'homedir').mockReturnValue(fakeHome);
+
+      const projectDir = join(fakeHome, 'project');
+      const cwd = join(projectDir, 'subdir');
+      await mkdir(cwd, { recursive: true });
+      await createAgentFile(projectDir, 'ancestor-agent');
+
+      const result = await findAgent('ancestor-agent', cwd);
+
+      expect(result).toBe(
+        await realpath(join(projectDir, '.claude', 'agents', 'ancestor-agent.md'))
+      );
+    });
+
+    it('prefers a closer ancestor over a farther one', async () => {
+      // layout: fakeHome/parent/child  (cwd = child, agent in both parent and child)
+      const fakeHome = await makeTempDir();
+      vi.spyOn(os, 'homedir').mockReturnValue(fakeHome);
+
+      const parentDir = join(fakeHome, 'parent');
+      const childDir = join(parentDir, 'child');
+      await mkdir(childDir, { recursive: true });
+      await createAgentFile(parentDir, 'layered-agent');
+      await createAgentFile(childDir, 'layered-agent');
+
+      const result = await findAgent('layered-agent', childDir);
+
+      expect(result).toBe(
+        await realpath(join(childDir, '.claude', 'agents', 'layered-agent.md'))
+      );
+    });
+
     it('skips a symlink inside .claude/agents/ that points outside the trusted base directory', async () => {
       const cwd = await makeTempDir();
       const outsideDir = await makeTempDir();
