@@ -1,6 +1,6 @@
 import { evalCel } from '../cel.ts';
 import type { EngineEmitter, NodeResult } from '../emitter.ts';
-import { EngineError } from '../errors.ts';
+import { NodeError } from '../errors.ts';
 import type { RetryPolicy } from '../schema.ts';
 
 export type { NodeResult, RetryPolicy };
@@ -13,7 +13,7 @@ export interface NodeRunCompleted {
 
 export interface NodeRunExited {
   status: 'exited';
-  reason: string | undefined;
+  reason?: string | undefined;
   failure: boolean;
 }
 
@@ -108,22 +108,14 @@ export abstract class BaseNode<R extends NodeRunResult = NodeRunResult> {
       return true;
     }
 
-    const celCtx: Record<string, unknown> = {
-      inputs: ctx.inputs,
-      vars: ctx.vars,
-      needs: Object.fromEntries(ctx.needs),
-    };
-
-    if (ctx.scope !== undefined) {
-      celCtx['scope'] = ctx.scope;
-    }
-
-    const result = evalCel(this.ifExpr, celCtx);
+    const result = evalCel(this.ifExpr, ctx as unknown as Record<string, unknown>);
 
     if (typeof result !== 'boolean') {
-      throw new EngineError(
+      throw new NodeError(
         `if expression must evaluate to a boolean, got ${typeof result}`,
-        'ENGINE_CEL_ERROR'
+        'ENGINE_CEL_ERROR',
+        this.id,
+        { nodeName: this.name }
       );
     }
 

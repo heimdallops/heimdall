@@ -28,3 +28,25 @@ export class EngineConfigError extends EngineError {
     this.name = 'EngineConfigError';
   }
 }
+
+export interface NodeErrorOptions extends EngineCauseOptions {
+  readonly nodeName?: string | undefined;
+}
+
+/** Thrown when a node fails during execution. Includes the node's id and display name for diagnosis. */
+export class NodeError extends EngineError {
+  public readonly nodeId: string;
+  public readonly nodeName: string | undefined;
+
+  public constructor(message: string, code: string, nodeId: string, options?: NodeErrorOptions) {
+    const displayName = options?.nodeName ?? nodeId;
+    super(`${message} (node: "${displayName}")`, code, { cause: options?.cause });
+    this.name = 'NodeError';
+    this.nodeId = nodeId;
+    this.nodeName = options?.nodeName;
+  }
+
+  public displayName(): string {
+    return this.nodeName ?? this.nodeId;
+  }
+}
