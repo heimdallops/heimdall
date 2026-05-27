@@ -123,7 +123,7 @@ describe('findAgent', () => {
       const result = await findAgent('custom/agent.md', cwd);
 
       // Relative path should resolve relative to cwd
-      expect(result).toBe(`${cwd}/custom/agent.md`);
+      expect(result).toBe(join(cwd, 'custom', 'agent.md'));
     });
 
     it('treats names starting with "." as a path and skips search', async () => {
@@ -132,7 +132,7 @@ describe('findAgent', () => {
 
       const result = await findAgent('./agent.md', cwd);
 
-      expect(result).toBe(`${cwd}/agent.md`);
+      expect(result).toBe(join(cwd, 'agent.md'));
     });
 
     it('returns an absolute path unchanged when it starts with "/"', async () => {
@@ -153,7 +153,7 @@ describe('findAgent', () => {
 
       const result = await findAgent('agents/special.md', cwd);
 
-      expect(result).toBe(`${cwd}/agents/special.md`);
+      expect(result).toBe(join(cwd, 'agents', 'special.md'));
     });
   });
 });
