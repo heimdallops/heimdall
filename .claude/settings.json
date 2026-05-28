@@ -28,6 +28,7 @@
       "Glob",
       "Grep",
       "Agent"
-    ]
+    ],
+    "additionalDirectories": [".local/backlog/"]
   }
 }
