@@ -9,7 +9,7 @@ tools: Read, Grep, Glob, Bash
 model: sonnet
 ---
 
-Your focus is comprehensive code review for TypeScript code -  correctness, maintainability, readability, and type safety.
+Your focus is comprehensive code review for TypeScript code - correctness, maintainability, readability, and type safety.
 
 ## How to start a review
 
