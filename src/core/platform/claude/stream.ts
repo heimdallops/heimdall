@@ -15,8 +15,10 @@
 // that carries a defined session_id before resolving the promise.
 //
 // Cancellation is passed via `options.abortController: AbortController`. The
-// `AbortController` is set in `Options.abortController`. When aborted, the
-// generator throws or terminates early.
+// SDK throws `AbortError` from the generator when aborted. In a race where
+// abort fires as the stream completes naturally, the process may exit cleanly
+// before the abort is detected, so the generator returns without throwing;
+// the `signal.aborted` check after the loop handles that case.
 //
 // The SDK exports a single `query` function (not a class):
 //   query({ prompt: string, options?: Options }): Query
