@@ -6,7 +6,7 @@ import unusedImportsPlugin from 'eslint-plugin-unused-imports';
 
 export default [
   {
-    ignores: ['dist/**', 'coverage/**', 'node_modules/**'],
+    ignores: ['dist/**', 'coverage/**', 'node_modules/**', '.local/**'],
   },
   {
     files: ['**/*.ts', '**/*.tsx'],
