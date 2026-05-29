@@ -4,7 +4,7 @@ import { join } from 'node:path';
 
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import { findAgent } from '../../../../../src/core/platform/claude/find-agent.ts';
+import { findAgent } from '../../../../../src/core/platform/claude/adapter.ts';
 import { PlatformAgentNotFoundError } from '../../../../../src/core/platform/errors.ts';
 
 // ---------------------------------------------------------------------------

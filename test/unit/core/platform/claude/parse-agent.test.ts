@@ -4,7 +4,7 @@ import { fileURLToPath } from 'node:url';
 
 import { describe, expect, it } from 'vitest';
 
-import { parseAgent } from '../../../../../src/core/platform/claude/parse-agent.ts';
+import { parseAgent } from '../../../../../src/core/platform/claude/adapter.ts';
 
 // ---------------------------------------------------------------------------
 // Tests
