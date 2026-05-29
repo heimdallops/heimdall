@@ -96,7 +96,6 @@ export const ApprovalNodeSchema = BaseNodeSchema.extend({
     message: z.string(),
     exit_on_no: z.boolean().optional(),
     enable_feedback: z.boolean().optional(),
-    feedback_message: z.string().optional(),
   }),
 });
 
