@@ -12,6 +12,13 @@ export interface StreamEventMap {
 
 export interface PlatformStream {
   on<K extends keyof StreamEventMap>(event: K, handler: (...args: StreamEventMap[K]) => void): this;
+  /**
+   * Begins async execution. Must be called after listeners are registered.
+   * Idempotent — subsequent calls return the same promise.
+   * The returned promise resolves when the stream ends; errors are delivered
+   * via the `error` event, not as rejections.
+   */
+  start(): Promise<void>;
   cancel(): void;
   sessionId(): Promise<string>;
 }

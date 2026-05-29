@@ -41,9 +41,13 @@ import type { ClaudeOptions } from './options.ts';
 export class ClaudeStream extends EventEmitter implements PlatformStream {
   private readonly abortController: AbortController;
   private readonly sessionIdPromise: Promise<string>;
-  private readonly executePromise: Promise<void>;
+  private executePromise: Promise<void> | undefined;
+  private preStartRejection: Promise<string> | undefined;
   private resolveSessionId!: (id: string) => void;
   private rejectSessionId!: (err: unknown) => void;
+  private readonly prompt: string;
+  private readonly options: ClaudeOptions;
+  private readonly initialSessionId: string | undefined;
 
   constructor(prompt: string, options: ClaudeOptions, sessionId?: string) {
     super();
@@ -55,7 +59,18 @@ export class ClaudeStream extends EventEmitter implements PlatformStream {
       this.resolveSessionId = resolve;
       this.rejectSessionId = reject;
     });
-    this.executePromise = this.execute(prompt, options, sessionId);
+    this.prompt = prompt;
+    this.options = options;
+    this.initialSessionId = sessionId;
+  }
+
+  // Must be called after listeners are registered. Idempotent — subsequent calls return the same promise.
+  start(): Promise<void> {
+    if (this.executePromise !== undefined) {
+      return this.executePromise;
+    }
+    this.executePromise = this.execute(this.prompt, this.options, this.initialSessionId);
+    return this.executePromise;
   }
 
   override on<K extends keyof StreamEventMap>(
@@ -70,6 +85,17 @@ export class ClaudeStream extends EventEmitter implements PlatformStream {
   }
 
   sessionId(): Promise<string> {
+    if (this.executePromise === undefined) {
+      if (this.preStartRejection === undefined) {
+        const err = new PlatformError('PLATFORM_ERROR', 'start() must be called before awaiting sessionId()');
+        this.preStartRejection = Promise.reject(err) as Promise<string>;
+        // preStartRejection is a plain Promise, not an EventEmitter event, so Node's
+        // unhandled-rejection detector fires independently of the 'error' listener
+        // registered in the constructor. Attach a no-op catch to silence it.
+        this.preStartRejection.catch(() => undefined);
+      }
+      return this.preStartRejection;
+    }
     return this.sessionIdPromise;
   }
 
@@ -100,11 +126,13 @@ export class ClaudeStream extends EventEmitter implements PlatformStream {
         }
       }
 
-      // The SDK may return early on abort without throwing AbortError.
+      // The SDK may return without throwing AbortError when abort races a natural
+      // completion. If a terminal `result` message was already observed, treat this
+      // as a clean finish and fall through to emit `"done"`.
       if (!streamCompleted && this.abortController.signal.aborted) {
         terminated = true;
         const cancellation = new PlatformCancellationError();
-        this.rejectSessionId(cancellation);
+        if (!sessionResolved) this.rejectSessionId(cancellation);
         this.emit('error', cancellation);
       } else if (!sessionResolved) {
         terminated = true;

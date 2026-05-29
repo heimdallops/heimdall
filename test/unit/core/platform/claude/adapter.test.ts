@@ -47,6 +47,7 @@ describe('ClaudeCodeAdapter', () => {
         doneEmitted = true;
       });
 
+      stream.start(); // callers are responsible for starting the stream
       // Wait for the mock generator to complete
       await stream.sessionId();
       // Flush remaining microtasks so the done event has time to fire
@@ -59,6 +60,7 @@ describe('ClaudeCodeAdapter', () => {
       const adapter = new ClaudeCodeAdapter();
       const stream = adapter.run('hello', {});
 
+      stream.start(); // callers are responsible for starting the stream
       await expect(stream.sessionId()).resolves.toBe('adapter-session');
     });
 
@@ -68,7 +70,8 @@ describe('ClaudeCodeAdapter', () => {
       queryMock.mockClear();
 
       const adapter = new ClaudeCodeAdapter();
-      adapter.run('test prompt', { model: 'claude-opus-4-5', allowed_tools: ['Read', 'Write'] });
+      const stream = adapter.run('test prompt', { model: 'claude-opus-4-5', allowed_tools: ['Read', 'Write'] });
+      await stream.start(); // callers are responsible for starting the stream
 
       expect(queryMock).toHaveBeenCalledOnce();
       interface MockCallArg {
@@ -89,7 +92,7 @@ describe('ClaudeCodeAdapter', () => {
       queryMock.mockClear();
 
       const adapter = new ClaudeCodeAdapter();
-      adapter.run('continue prompt', {}, 'resume-session-id');
+      await adapter.run('continue prompt', {}, 'resume-session-id').start(); // callers are responsible for starting the stream
 
       expect(queryMock).toHaveBeenCalledOnce();
       const opts = queryMock.mock.calls[0]![0].options as Record<string, unknown>;
@@ -102,7 +105,7 @@ describe('ClaudeCodeAdapter', () => {
       queryMock.mockClear();
 
       const adapter = new ClaudeCodeAdapter();
-      adapter.run('fresh prompt', {});
+      await adapter.run('fresh prompt', {}).start(); // callers are responsible for starting the stream
 
       const opts = queryMock.mock.calls[0]![0].options as Record<string, unknown>;
       expect(opts['resume']).toBeUndefined();
@@ -114,7 +117,7 @@ describe('ClaudeCodeAdapter', () => {
       queryMock.mockClear();
 
       const adapter = new ClaudeCodeAdapter();
-      adapter.run('any prompt', {});
+      await adapter.run('any prompt', {}).start(); // callers are responsible for starting the stream
 
       const opts = queryMock.mock.calls[0]![0].options as Record<string, unknown>;
       expect(opts['includePartialMessages']).toBe(true);
