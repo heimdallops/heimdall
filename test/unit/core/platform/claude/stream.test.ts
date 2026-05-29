@@ -55,6 +55,24 @@ const makeAssistantMessage = (sessionId = 'sess-1'): SDKMessage => ({
   uuid: 'uuid-1',
 });
 
+// Utility: build a minimal SDKResultSuccess (terminal completion)
+const makeResultMessage = (sessionId = 'sess-1'): SDKMessage => ({
+  type: 'result',
+  subtype: 'success',
+  session_id: sessionId,
+  duration_ms: 1,
+  duration_api_ms: 1,
+  is_error: false,
+  num_turns: 1,
+  result: 'done',
+  stop_reason: null,
+  total_cost_usd: 0,
+  usage: {},
+  modelUsage: {},
+  permission_denials: [],
+  uuid: 'uuid-2',
+});
+
 // Utility: wait for all pending microtasks / promises to settle
 const flushMicrotasks = (): Promise<void> => new Promise<void>((resolve) => setImmediate(resolve));
 
@@ -290,6 +308,27 @@ describe('ClaudeStream', () => {
       expect(captured.errors[0]).toBeInstanceOf(PlatformCancellationError);
       expect(captured.errors[0]!.code).toBe('PLATFORM_CANCELLED');
       expect(captured.done).toBe(false);
+    });
+
+    it("emits 'done' when stream receives a result message even if abort signal is set (race)", async () => {
+      mockGeneratorFactory = async function* (): AsyncGenerator<SDKMessage, void> {
+        await Promise.resolve();
+        yield makeChunk('hello');
+        yield makeResultMessage();
+      };
+
+      const stream = new ClaudeStream('test prompt', {});
+      const captured = captureEvents(stream);
+
+      await flushMicrotasks();
+      stream.cancel();
+
+      await flushMicrotasks();
+
+      expect(captured.chunks).toEqual(['hello']);
+      expect(captured.done).toBe(true);
+      expect(captured.errors).toHaveLength(0);
+      await expect(stream.sessionId()).resolves.toBe('sess-1');
     });
   });
 

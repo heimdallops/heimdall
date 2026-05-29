@@ -15,10 +15,11 @@
 // that carries a defined session_id before resolving the promise.
 //
 // Cancellation is passed via `options.abortController: AbortController`. The
-// SDK throws `AbortError` from the generator when aborted. In a race where
-// abort fires as the stream completes naturally, the process may exit cleanly
-// before the abort is detected, so the generator returns without throwing;
-// the `signal.aborted` check after the loop handles that case.
+// SDK throws `AbortError` from the generator when aborted mid-stream. In a race
+// where abort fires as the stream completes naturally, the generator may return
+// without throwing while `signal.aborted` is already true; a terminal `result`
+// message means the run finished successfully and we emit `"done"` like any other
+// clean completion.
 //
 // The SDK exports a single `query` function (not a class):
 //   query({ prompt: string, options?: Options }): Query
@@ -78,11 +79,16 @@ export class ClaudeStream extends EventEmitter implements PlatformStream {
       const sdkOptions = buildSdkOptions(options, this.abortController, sessionId);
       const stream = query({ prompt, options: sdkOptions });
       let sessionResolved = false;
+      let streamCompleted = false;
 
       for await (const message of stream) {
         if (!sessionResolved && message.session_id !== undefined) {
           this.resolveSessionId(message.session_id);
           sessionResolved = true;
+        }
+
+        if (message.type === 'result') {
+          streamCompleted = true;
         }
 
         if (message.type === 'stream_event') {
@@ -95,7 +101,7 @@ export class ClaudeStream extends EventEmitter implements PlatformStream {
       }
 
       // The SDK may return early on abort without throwing AbortError.
-      if (this.abortController.signal.aborted) {
+      if (!streamCompleted && this.abortController.signal.aborted) {
         terminated = true;
         const cancellation = new PlatformCancellationError();
         this.rejectSessionId(cancellation);
