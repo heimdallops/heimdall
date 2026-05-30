@@ -183,7 +183,7 @@ const buildSdkOptions = (
   ...(options.model !== undefined && { model: options.model }),
   ...(options.reasoning_effort !== undefined && { effort: options.reasoning_effort }),
   ...(options.allowed_tools !== undefined && { allowedTools: options.allowed_tools }),
-  ...(options.denied_tools !== undefined && { disallowedTools: options.denied_tools }),
+  ...(options.disallowed_tools !== undefined && { disallowedTools: options.disallowed_tools }),
   ...(options.skills !== undefined && { skills: options.skills }),
   ...(options.max_budget_usd !== undefined && { maxBudgetUsd: options.max_budget_usd }),
   ...(options.system_prompt !== undefined && { systemPrompt: options.system_prompt }),

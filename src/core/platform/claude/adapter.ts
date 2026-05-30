@@ -34,7 +34,7 @@ const enumerateMdFiles = async (dir: string): Promise<string[]> => {
 };
 
 const FIELD_ALIASES: Record<string, string> = { tools: 'allowed_tools' };
-const ARRAY_COERCE_KEYS = new Set(['allowed_tools', 'denied_tools']);
+const ARRAY_COERCE_KEYS = new Set(['allowed_tools', 'disallowed_tools']);
 
 export class ClaudeCodeAdapter implements PlatformAdapter<ClaudeOptions> {
   private readonly cwd: string;

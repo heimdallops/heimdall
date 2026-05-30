@@ -5,7 +5,7 @@ export const claudeOptionsSchema = z
     model: z.string().optional(),
     reasoning_effort: z.enum(['low', 'medium', 'high', 'xhigh', 'max']).optional(),
     allowed_tools: z.array(z.string()).optional(),
-    denied_tools: z.array(z.string()).optional(),
+    disallowed_tools: z.array(z.string()).optional(),
     skills: z.array(z.string()).optional(),
     max_budget_usd: z.number().min(0).optional(),
     system_prompt: z.string().optional(),

@@ -132,7 +132,7 @@ model: claude-opus-4-5
 reasoning_effort: high
 allowed_tools:
   - Read
-denied_tools:
+disallowed_tools:
   - Bash
 max_budget_usd: 5.0
 system_prompt: "You are helpful."
@@ -144,7 +144,7 @@ Prompt body here.`;
       expect(options.model).toBe('claude-opus-4-5');
       expect(options.reasoning_effort).toBe('high');
       expect(options.allowed_tools).toEqual(['Read']);
-      expect(options.denied_tools).toEqual(['Bash']);
+      expect(options.disallowed_tools).toEqual(['Bash']);
       expect(options.max_budget_usd).toBe(5.0);
       expect(options.system_prompt).toBe('You are helpful.');
     });

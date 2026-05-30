@@ -41,7 +41,7 @@ describe('ClaudeCodeAdapter', () => {
         model: 'claude-opus-4-5',
         reasoning_effort: 'high',
         allowed_tools: ['Read'],
-        denied_tools: ['Bash'],
+        disallowed_tools: ['Bash'],
         skills: [],
         max_budget_usd: 5.0,
         system_prompt: 'You are helpful.',
