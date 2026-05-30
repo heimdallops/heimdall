@@ -26,11 +26,6 @@ allOf:
           enable_feedback:
             type: boolean
             description: Enable a third option to gather user feedback.
-          feedback_message:
-            type: string
-            description: >-
-              Message to display when prompting for feedback.
-              Defaults to "Other".
         required:
           - message
     required:
