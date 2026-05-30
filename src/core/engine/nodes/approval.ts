@@ -110,6 +110,7 @@ export class ApprovalNode extends BaseNode<NodeRunCompleted | NodeRunExited> {
 
       emitter.emit('approval_requested', {
         nodeId: this.id,
+        nodeName: this.name ?? this.id,
         message: interpolatedMessage,
         enableFeedback: this.enableFeedback,
         resolve: guardedResolve,
