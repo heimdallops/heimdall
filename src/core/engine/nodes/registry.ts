@@ -1,6 +1,10 @@
 import { EngineValidationError } from '../errors.ts';
 import type { BaseNode, NodeRunResult } from './base.ts';
 
+/**
+ * Implement as static methods on a node class, then pass the class to
+ * nodeRegistry.register().
+ */
 export interface NodeType<R extends NodeRunResult = NodeRunResult> {
   matches(raw: Record<string, unknown>): boolean;
   parse(raw: Record<string, unknown>): BaseNode<R>;
