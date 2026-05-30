@@ -2,10 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 
 import { ClaudeCodeAdapter } from '../../../../../src/core/platform/claude/adapter.ts';
 
-// ---------------------------------------------------------------------------
 // SDK mock — same shape as stream.test.ts
-// ---------------------------------------------------------------------------
-
 vi.mock('@anthropic-ai/claude-agent-sdk', () => {
   class AbortError extends Error {
     constructor(message?: string) {
@@ -32,61 +29,35 @@ vi.mock('@anthropic-ai/claude-agent-sdk', () => {
   return { AbortError, query };
 });
 
-// ---------------------------------------------------------------------------
-// Tests
-// ---------------------------------------------------------------------------
-
 describe('ClaudeCodeAdapter', () => {
   describe('run()', () => {
-    it('run() returns a stream that emits done on completion', async () => {
-      const adapter = new ClaudeCodeAdapter();
-      const stream = adapter.run('hello', {});
-
-      let doneEmitted = false;
-      stream.on('done', () => {
-        doneEmitted = true;
-      });
-
-      void stream.start(); // callers are responsible for starting the stream
-      // Wait for the mock generator to complete
-      await stream.sessionId();
-      // Flush remaining microtasks so the done event has time to fire
-      await new Promise<void>((resolve) => setImmediate(resolve));
-
-      expect(doneEmitted).toBe(true);
-    });
-
-    it('sessionId() resolves to the session id emitted by the SDK', async () => {
-      const adapter = new ClaudeCodeAdapter();
-      const stream = adapter.run('hello', {});
-
-      void stream.start(); // callers are responsible for starting the stream
-      await expect(stream.sessionId()).resolves.toBe('adapter-session');
-    });
-
-    it('forwards ClaudeOptions to the underlying stream (model propagates)', async () => {
+    it('forwards all ClaudeOptions fields with correct SDK key renames', async () => {
       const { query: mockedQuery } = await import('@anthropic-ai/claude-agent-sdk');
       const queryMock = vi.mocked(mockedQuery);
       queryMock.mockClear();
 
       const adapter = new ClaudeCodeAdapter();
-      const stream = adapter.run('test prompt', {
+      const stream = adapter.run('prompt', {
         model: 'claude-opus-4-5',
-        allowed_tools: ['Read', 'Write'],
+        reasoning_effort: 'high',
+        allowed_tools: ['Read'],
+        denied_tools: ['Bash'],
+        skills: [],
+        max_budget_usd: 5.0,
+        system_prompt: 'You are helpful.',
+        sandbox: { type: 'docker' },
       });
-      await stream.start(); // callers are responsible for starting the stream
+      await stream.start();
 
-      expect(queryMock).toHaveBeenCalledOnce();
-      interface MockCallArg {
-        prompt: string;
-        options: Record<string, unknown>;
-      }
-      const [call] = queryMock.mock.lastCall! as [MockCallArg];
-      expect(call.prompt).toBe('test prompt');
-
-      const { options: opts } = call;
+      const opts = queryMock.mock.calls[0]![0].options as Record<string, unknown>;
       expect(opts['model']).toBe('claude-opus-4-5');
-      expect(opts['allowedTools']).toEqual(['Read', 'Write']);
+      expect(opts['effort']).toBe('high');
+      expect(opts['allowedTools']).toEqual(['Read']);
+      expect(opts['disallowedTools']).toEqual(['Bash']);
+      expect(opts['skills']).toEqual([]);
+      expect(opts['maxBudgetUsd']).toBe(5.0);
+      expect(opts['systemPrompt']).toBe('You are helpful.');
+      expect(opts['sandbox']).toEqual({ type: 'docker' });
     });
 
     it('passes sessionId through to the SDK as the resume option when provided', async () => {
@@ -95,7 +66,7 @@ describe('ClaudeCodeAdapter', () => {
       queryMock.mockClear();
 
       const adapter = new ClaudeCodeAdapter();
-      await adapter.run('continue prompt', {}, 'resume-session-id').start(); // callers are responsible for starting the stream
+      await adapter.run('continue prompt', {}, 'resume-session-id').start();
 
       expect(queryMock).toHaveBeenCalledOnce();
       const opts = queryMock.mock.calls[0]![0].options as Record<string, unknown>;
@@ -108,7 +79,7 @@ describe('ClaudeCodeAdapter', () => {
       queryMock.mockClear();
 
       const adapter = new ClaudeCodeAdapter();
-      await adapter.run('fresh prompt', {}).start(); // callers are responsible for starting the stream
+      await adapter.run('fresh prompt', {}).start();
 
       const opts = queryMock.mock.calls[0]![0].options as Record<string, unknown>;
       expect(opts['resume']).toBeUndefined();
@@ -120,10 +91,25 @@ describe('ClaudeCodeAdapter', () => {
       queryMock.mockClear();
 
       const adapter = new ClaudeCodeAdapter();
-      await adapter.run('any prompt', {}).start(); // callers are responsible for starting the stream
+      await adapter.run('any prompt', {}).start();
 
       const opts = queryMock.mock.calls[0]![0].options as Record<string, unknown>;
       expect(opts['includePartialMessages']).toBe(true);
+    });
+
+    it('returns a stream that emits done on completion', async () => {
+      const adapter = new ClaudeCodeAdapter();
+      const stream = adapter.run('hello', {});
+      const donePromise = new Promise<void>((resolve) => stream.on('done', resolve));
+      void stream.start();
+      await donePromise;
+    });
+
+    it('sessionId() resolves to the session id emitted by the SDK', async () => {
+      const adapter = new ClaudeCodeAdapter();
+      const stream = adapter.run('hello', {});
+      void stream.start();
+      await expect(stream.sessionId()).resolves.toBe('adapter-session');
     });
   });
 });

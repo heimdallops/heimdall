@@ -1,14 +1,10 @@
-import { readdirSync, readFileSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { describe, expect, it } from 'vitest';
 
-import { parseAgent } from '../../../../../src/core/platform/claude/adapter.ts';
-
-// ---------------------------------------------------------------------------
-// Tests
-// ---------------------------------------------------------------------------
+import { ClaudeCodeAdapter } from '../../../../../src/core/platform/claude/adapter.ts';
 
 describe('parseAgent', () => {
   describe('frontmatter + body', () => {
@@ -19,7 +15,7 @@ model: claude-opus-4-5
 
 You are a helpful assistant.`;
 
-      const { prompt, options } = parseAgent(content);
+      const { prompt, options } = new ClaudeCodeAdapter().parseAgent(content);
 
       expect(prompt).toBe('You are a helpful assistant.');
       expect(options.model).toBe('claude-opus-4-5');
@@ -32,7 +28,7 @@ model: claude-haiku-3-5
 
   trimmed content  `;
 
-      const { prompt } = parseAgent(content);
+      const { prompt } = new ClaudeCodeAdapter().parseAgent(content);
 
       expect(prompt).toBe('trimmed content');
     });
@@ -42,7 +38,7 @@ model: claude-haiku-3-5
     it('returns full content as prompt and empty options when there is no frontmatter', () => {
       const content = 'Just plain text with no frontmatter.';
 
-      const { prompt, options } = parseAgent(content);
+      const { prompt, options } = new ClaudeCodeAdapter().parseAgent(content);
 
       expect(prompt).toBe('Just plain text with no frontmatter.');
       expect(options).toEqual({});
@@ -59,7 +55,7 @@ tools:
 
 Body text.`;
 
-      const { options } = parseAgent(content);
+      const { options } = new ClaudeCodeAdapter().parseAgent(content);
 
       expect(options.allowed_tools).toEqual(['Read', 'Write']);
       // The alias key must not leak through to the output
@@ -73,7 +69,7 @@ tools: Read, Edit, Bash
 
 Body text.`;
 
-      const { options } = parseAgent(content);
+      const { options } = new ClaudeCodeAdapter().parseAgent(content);
 
       expect(options.allowed_tools).toEqual(['Read', 'Edit', 'Bash']);
       expect((options as Record<string, unknown>)['tools']).toBeUndefined();
@@ -89,7 +85,7 @@ model: sonnet
 
 Body.`;
 
-      const { options } = parseAgent(content);
+      const { options } = new ClaudeCodeAdapter().parseAgent(content);
 
       expect((options as Record<string, unknown>)['totally_unknown_key']).toBeUndefined();
       expect(options.model).toBe('sonnet');
@@ -99,7 +95,7 @@ Body.`;
   describe('validation errors', () => {
     it('throws PlatformError with PLATFORM_ERROR code for an invalid value on a known key', () => {
       const content = `---\nreasoning_effort: invalid_value\n---\n\nBody.`;
-      expect(() => parseAgent(content)).toThrow(
+      expect(() => new ClaudeCodeAdapter().parseAgent(content)).toThrow(
         expect.objectContaining({ code: 'PLATFORM_ERROR' })
       );
     });
@@ -111,13 +107,13 @@ reasoning_effort: not_a_valid_effort
 
 Body.`;
 
-      expect(() => parseAgent(content)).toThrow(/reasoning_effort/);
+      expect(() => new ClaudeCodeAdapter().parseAgent(content)).toThrow(/reasoning_effort/);
     });
   });
 
   describe('empty file', () => {
     it('returns empty prompt and empty options for an empty string', () => {
-      const { prompt, options } = parseAgent('');
+      const { prompt, options } = new ClaudeCodeAdapter().parseAgent('');
 
       expect(prompt).toBe('');
       expect(options).toEqual({});
@@ -139,9 +135,7 @@ system_prompt: "You are helpful."
 
 Prompt body here.`;
 
-      expect(() => parseAgent(content)).not.toThrow();
-
-      const { options } = parseAgent(content);
+      const { options } = new ClaudeCodeAdapter().parseAgent(content);
       expect(options.model).toBe('claude-opus-4-5');
       expect(options.reasoning_effort).toBe('high');
       expect(options.allowed_tools).toEqual(['Read']);
@@ -151,21 +145,31 @@ Prompt body here.`;
     });
   });
 
-  describe('real agent files integration', () => {
-    // Walk up from test/unit/core/platform/claude/ to the repo root
-    const __dirname = fileURLToPath(new URL('.', import.meta.url));
-    const agentsDir = join(__dirname, '..', '..', '..', '..', '..', '.claude', 'agents');
+  const __agentsDir = join(
+    fileURLToPath(new URL('.', import.meta.url)),
+    '..',
+    '..',
+    '..',
+    '..',
+    '..',
+    '.claude',
+    'agents'
+  );
+  const __agentFiles = existsSync(__agentsDir)
+    ? readdirSync(__agentsDir).filter((f) => f.endsWith('.md'))
+    : [];
+  const __agentsDirMissing = __agentFiles.length === 0;
 
-    let agentFiles: string[] = [];
-    try {
-      agentFiles = readdirSync(agentsDir).filter((f) => f.endsWith('.md'));
-    } catch {
-      // directory absent: skip integration suite
-    }
+  describe.skipIf(__agentsDirMissing)('real agent files integration', () => {
+    it.each(__agentFiles)(
+      'parseAgent returns valid structure for .claude/agents/%s',
+      (filename) => {
+        const content = readFileSync(join(__agentsDir, filename), 'utf8');
+        const result = new ClaudeCodeAdapter().parseAgent(content);
 
-    it.each(agentFiles)('parseAgent does not throw for .claude/agents/%s', (filename) => {
-      const content = readFileSync(join(agentsDir, filename), 'utf8');
-      expect(() => parseAgent(content)).not.toThrow();
-    });
+        expect(typeof result.prompt).toBe('string');
+        expect(result.prompt.length).toBeGreaterThan(0);
+      }
+    );
   });
 });
