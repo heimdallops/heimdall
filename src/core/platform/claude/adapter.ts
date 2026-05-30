@@ -1,4 +1,4 @@
-import { realpath } from 'node:fs/promises';
+import { readFile, readdir, realpath } from 'node:fs/promises';
 import os from 'node:os';
 import { isAbsolute, resolve, sep } from 'node:path';
 import process from 'node:process';
@@ -11,6 +11,25 @@ import type { PlatformAdapter, PlatformStream } from '../types.ts';
 import type { ClaudeOptions } from './options.ts';
 import { claudeOptionsSchema } from './options.ts';
 import { ClaudeStream } from './stream.ts';
+
+async function enumerateMdFiles(dir: string): Promise<string[]> {
+  const results: string[] = [];
+  let entries;
+  try {
+    entries = await readdir(dir, { withFileTypes: true });
+  } catch {
+    return results;
+  }
+  for (const entry of entries) {
+    const fullPath = resolve(dir, entry.name);
+    if (entry.isDirectory()) {
+      results.push(...(await enumerateMdFiles(fullPath)));
+    } else if ((entry.isFile() || entry.isSymbolicLink()) && entry.name.endsWith('.md')) {
+      results.push(fullPath);
+    }
+  }
+  return results;
+}
 
 const FIELD_ALIASES: Record<string, string> = { tools: 'allowed_tools' };
 const ARRAY_COERCE_KEYS = new Set(['allowed_tools', 'denied_tools']);
@@ -61,14 +80,42 @@ export class ClaudeCodeAdapter implements PlatformAdapter<ClaudeOptions> {
     for (const searchDir of searchDirs) {
       const realSearchDir = await realpath(searchDir).catch(() => searchDir);
       const base = resolve(realSearchDir, '.claude', 'agents');
-      const candidate = resolve(base, `${name}.md`);
-      try {
-        const real = await realpath(candidate);
-        if (real.startsWith(base + sep) || real === base) {
-          return real;
+
+      const candidates = await enumerateMdFiles(base);
+      const matches: string[] = [];
+
+      for (const candidate of candidates) {
+        let real: string;
+        try {
+          real = await realpath(candidate);
+        } catch {
+          continue;
         }
-      } catch {
-        // file does not exist at this level; try the next ancestor
+
+        if (!real.startsWith(base + sep) && real !== base) continue;
+
+        let content: string;
+        try {
+          content = await readFile(real, 'utf8');
+        } catch {
+          continue;
+        }
+
+        try {
+          const { data } = matter(content, {
+            engines: { yaml: (s: string) => yaml.load(s) as Record<string, unknown> },
+          });
+          const agentName = data['name'];
+          if (typeof agentName === 'string' && agentName.length > 0 && agentName === name) {
+            matches.push(real);
+          }
+        } catch {
+          continue;
+        }
+      }
+
+      if (matches.length > 0) {
+        return matches.sort()[0] as string;
       }
     }
 

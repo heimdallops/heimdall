@@ -21,10 +21,11 @@ afterEach(async () => {
   vi.restoreAllMocks();
 });
 
-const createAgentFile = async (dir: string, name: string): Promise<void> => {
+const createAgentFile = async (dir: string, name: string, subdir?: string): Promise<void> => {
   const agentsDir = join(dir, '.claude', 'agents');
-  await mkdir(agentsDir, { recursive: true });
-  await writeFile(join(agentsDir, `${name}.md`), `# ${name}\n`, 'utf8');
+  const targetDir = subdir ? join(agentsDir, subdir) : agentsDir;
+  await mkdir(targetDir, { recursive: true });
+  await writeFile(join(targetDir, `${name}.md`), `---\nname: ${name}\n---\n# ${name}\n`, 'utf8');
 };
 
 describe('findAgent', () => {
@@ -131,12 +132,105 @@ describe('findAgent', () => {
       await mkdir(agentsDir, { recursive: true });
 
       const outsideFile = join(outsideDir, 'secret.md');
-      await writeFile(outsideFile, '# secret\n', 'utf8');
+      await writeFile(outsideFile, `---\nname: escape\n---\n# escape\n`, 'utf8');
 
       await symlink(outsideFile, join(agentsDir, 'escape.md'));
 
       const adapter = new ClaudeCodeAdapter(cwd);
       await expect(adapter.findAgent('escape')).rejects.toBeInstanceOf(PlatformAgentNotFoundError);
+    });
+  });
+
+  describe('subdirectory resolution', () => {
+    it('finds agent nested one level deep in .claude/agents/<subdir>/<name>.md', async () => {
+      const cwd = await makeTempDir();
+      await createAgentFile(cwd, 'nested-agent', 'review');
+
+      const adapter = new ClaudeCodeAdapter(cwd);
+      const result = await adapter.findAgent('nested-agent');
+
+      expect(result).toBe(
+        await realpath(join(cwd, '.claude', 'agents', 'review', 'nested-agent.md'))
+      );
+    });
+
+    it('finds agent nested multiple levels deep', async () => {
+      const cwd = await makeTempDir();
+      await createAgentFile(cwd, 'deep-agent', 'a/b/c');
+
+      const adapter = new ClaudeCodeAdapter(cwd);
+      const result = await adapter.findAgent('deep-agent');
+
+      expect(result).toBe(
+        await realpath(join(cwd, '.claude', 'agents', 'a', 'b', 'c', 'deep-agent.md'))
+      );
+    });
+
+    it('matches by frontmatter name regardless of filename', async () => {
+      const cwd = await makeTempDir();
+      const agentsDir = join(cwd, '.claude', 'agents', 'tools');
+      await mkdir(agentsDir, { recursive: true });
+      // filename differs from the name frontmatter field
+      await writeFile(
+        join(agentsDir, 'something-else.md'),
+        `---\nname: my-tool\n---\n# tool\n`,
+        'utf8'
+      );
+
+      const adapter = new ClaudeCodeAdapter(cwd);
+      const result = await adapter.findAgent('my-tool');
+
+      expect(result).toBe(await realpath(join(agentsDir, 'something-else.md')));
+    });
+
+    it('skips files with no name frontmatter field', async () => {
+      const cwd = await makeTempDir();
+      const agentsDir = join(cwd, '.claude', 'agents');
+      await mkdir(agentsDir, { recursive: true });
+      await writeFile(join(agentsDir, 'noname.md'), `# no frontmatter name\n`, 'utf8');
+
+      const adapter = new ClaudeCodeAdapter(cwd);
+      await expect(adapter.findAgent('noname')).rejects.toBeInstanceOf(PlatformAgentNotFoundError);
+    });
+
+    it('returns the lexicographically smallest real path when duplicate names exist in one scope', async () => {
+      const cwd = await makeTempDir();
+      const agentsDir = join(cwd, '.claude', 'agents');
+      await mkdir(join(agentsDir, 'aaa'), { recursive: true });
+      await mkdir(join(agentsDir, 'zzz'), { recursive: true });
+      await writeFile(
+        join(agentsDir, 'aaa', 'bot.md'),
+        `---\nname: bot\n---\n# bot\n`,
+        'utf8'
+      );
+      await writeFile(
+        join(agentsDir, 'zzz', 'bot.md'),
+        `---\nname: bot\n---\n# bot\n`,
+        'utf8'
+      );
+
+      const adapter = new ClaudeCodeAdapter(cwd);
+      const result = await adapter.findAgent('bot');
+
+      expect(result).toBe(await realpath(join(agentsDir, 'aaa', 'bot.md')));
+    });
+
+    it('subdirectory agent in closer ancestor scope wins over flat agent in farther scope', async () => {
+      const fakeHome = await makeTempDir();
+      vi.spyOn(os, 'homedir').mockReturnValue(fakeHome);
+
+      const projectDir = join(fakeHome, 'project');
+      const cwd = join(projectDir, 'subdir');
+      await mkdir(cwd, { recursive: true });
+      await createAgentFile(projectDir, 'shared', 'research');
+      await createAgentFile(fakeHome, 'shared');
+
+      const adapter = new ClaudeCodeAdapter(cwd);
+      const result = await adapter.findAgent('shared');
+
+      expect(result).toBe(
+        await realpath(join(projectDir, '.claude', 'agents', 'research', 'shared.md'))
+      );
     });
   });
 
