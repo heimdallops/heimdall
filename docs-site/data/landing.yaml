@@ -9,12 +9,6 @@ hero:
     pill: true
     soft: true
 
-  titleLogo:
-    path: 'images/logos'
-    filename: 'unofficial_logo.png'
-    alt: 'Heimdall logo'
-    height: 72px
-
   title: 'Heimdall'
   subtitle: |
     A CLI for **deterministic agentic workflows** from YAML. Agents provide the intelligence;
