@@ -25,6 +25,7 @@ allOf:
               nodes can route on needs.<id>.output.approved.
           enable_feedback:
             type: boolean
+            default: false
             description: Enable a third option to gather user feedback.
         required:
           - message
