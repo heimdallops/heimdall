@@ -115,7 +115,7 @@ export class ClaudeStream extends EventEmitter implements PlatformStream {
       let streamCompleted = false;
 
       for await (const message of stream) {
-        if (!sessionResolved && message.session_id !== undefined) {
+        if (!sessionResolved && message.session_id) {
           this.resolveSessionId(message.session_id);
           sessionResolved = true;
         }
