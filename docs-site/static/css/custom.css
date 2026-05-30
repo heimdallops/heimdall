@@ -1,4 +1,21 @@
 /* =========================================
+   NAVBAR LOGO
+   ========================================= */
+
+.logo .big,
+.logo-icon .big {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.logo-name {
+    font-family: Inter, system-ui, sans-serif;
+    font-size: 22px;
+    font-weight: 700;
+}
+
+/* =========================================
    LANDING PAGE SPACING
    ========================================= */
 
