@@ -6,14 +6,11 @@ export interface NodeType<R extends NodeRunResult = NodeRunResult> {
   parse(raw: Record<string, unknown>): BaseNode<R>;
 }
 
-/** A node class: the static side (NodeType factory) implemented on the class itself. */
-export type NodeClass = NodeType & (new (...args: never[]) => BaseNode);
-
 class NodeRegistry {
   private readonly types: NodeType[] = [];
 
   /** Register a node type. Types are matched in registration order; the first match wins. */
-  public register(type: NodeClass): void {
+  public register(type: NodeType): void {
     this.types.push(type);
   }
 
