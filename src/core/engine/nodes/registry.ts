@@ -26,7 +26,7 @@ class NodeRegistry {
     }
 
     const id = typeof raw['id'] === 'string' ? `"${raw['id']}"` : '"(no id)"';
-    const keys = Object.keys(raw).join(', ');
+    const keys = Object.keys(raw).sort().join(', ');
     throw new EngineValidationError(`Unrecognized node shape for node ${id} — keys: [${keys}]`);
   }
 }
