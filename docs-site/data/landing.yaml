@@ -11,7 +11,7 @@ hero:
 
   titleLogo:
     path: 'images/logos'
-    filename: 'heimdall-logo.png'
+    filename: 'unofficial_logo.png'
     alt: 'Heimdall logo'
     height: 72px
 
@@ -21,8 +21,8 @@ hero:
     Heimdall owns the structure — phases, gates, feedback loops, and isolated git worktrees.
 
   image:
-    path: 'images'
-    filename: 'heimdall-logo.png'
+    path: 'images/logos'
+    filename: 'unofficial_logo.png'
     alt: 'Heimdall logo'
     boxShadow: true
     rounded: true
