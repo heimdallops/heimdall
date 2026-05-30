@@ -32,29 +32,34 @@ Create a `workflows/` directory in your repository and add a workflow definition
 name: fix-issue
 description: Triage, implement, validate, and open a PR for an issue.
 
-phases:
+nodes:
   - id: plan
     agent: spec-planner
-    gate: plan-approved
+
+  - id: approve_plan
+    depends_on: [plan]
+    approval:
+      message: "Review the plan before implementing. Approve to continue."
+      exit_on_no: true
 
   - id: implement
+    depends_on: [approve_plan]
     agent: ts-engineer
-    artifacts:
-      - src/**
 
   - id: validate
-    command: npm run quality
-    on_failure: implement
+    depends_on: [implement]
+    bash: npm run quality
 
   - id: review
+    depends_on: [validate]
     agent: ts-code-reviewer
-    on_failure: implement
 
   - id: publish
-    command: heimdall pr create
+    depends_on: [review]
+    bash: gh pr create --fill
 ```
 
-{{< alert context="info" text="This YAML is illustrative. The workflow schema will be documented when the engine stabilizes." />}}
+{{< alert context="info" text="This YAML is illustrative. The workflow engine is not yet released." />}}
 
 ## Run a workflow
 

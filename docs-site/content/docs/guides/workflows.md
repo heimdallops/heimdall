@@ -1,117 +1,97 @@
 ---
 title: Workflow examples
-description: Illustrative YAML workflows showing phases, gates, and feedback loops.
+description: Illustrative YAML workflows showing nodes, approval gates, and iteration loops.
 icon: account_tree
 weight: 310
 toc: true
 ---
 
-The examples below are **invented previews** of how Heimdall workflows might look. They are not wired to a live engine yet — they demonstrate structure, gates, and code blocks in the docs theme.
+The examples below are **illustrative previews** of how Heimdall workflows look. They demonstrate the schema — nodes, approval gates, and loops — but are not connected to a running engine yet.
 
-## Collect user input to file
+## Collect user input
 
-A simple workflow that prompts for content and writes it to a file:
+A two-node workflow: an agent collects input, a bash node verifies the result.
 
 ```yaml
 name: collect-user-input
 description: Prompt for text and save it to a file in the worktree.
 
-phases:
-  - id: prompt
+nodes:
+  - id: collect
     agent: input-collector
-    prompt: |
-      Ask the user what they want to save, then write the response
-      to `output/user-notes.md` in the worktree.
+    instructions: |
+      Ask the user what they want to save, then write their response
+      to output/user-notes.md in the worktree.
 
   - id: verify
-    gate: file-exists
-    path: output/user-notes.md
+    depends_on: [collect]
+    bash: test -f output/user-notes.md
 ```
 
-Run it (preview):
+## Human approval gate
 
-```bash
-heimdall workflow run collect-user-input
-```
-
-## Save content to file
+Draft content with an agent, pause for human review, then commit on approval:
 
 ```yaml
 name: save-content
-description: Take structured content from an agent and persist it.
+description: Draft content with an agent, get human approval, then commit.
 
-phases:
+nodes:
   - id: draft
     agent: content-writer
-    artifacts:
-      - output/draft.md
+    instructions: Write a concise summary to output/draft.md.
 
   - id: approve
-    gate: human-approval
-    message: Review output/draft.md before finalizing.
+    depends_on: [draft]
+    approval:
+      message: "Review output/draft.md before finalizing. Approve to commit."
+      exit_on_no: true
 
   - id: commit
-    command: git add output/draft.md && git commit -m "docs: add draft content"
+    depends_on: [approve]
+    bash: git add output/draft.md && git commit -m "docs: add draft content"
 ```
 
-## TDD cycle
+## TDD loop
 
-A workflow with explicit review and retry paths:
+Stub tests first, then iterate implement → test until the suite passes:
 
 ```yaml
 name: tdd-cycle
-description: Write a spec, stub tests, implement, and iterate until green.
+description: Write a spec, stub tests, then iterate until tests pass.
 
-phases:
+nodes:
   - id: spec
     agent: spec-writer
-    artifacts:
-      - spec.md
 
   - id: stub
+    depends_on: [spec]
     agent: ts-stub-writer
-    artifacts:
-      - test/**/*.test.ts
 
-  - id: implement
-    agent: ts-engineer
-    artifacts:
-      - src/**
+  - id: tdd_loop
+    depends_on: [stub]
+    loop:
+      max_iterations: 5
+      until: 'scope.nodes.test.output == "pass"'
+      nodes:
+        - id: implement
+          agent: ts-engineer
 
-  - id: test
-    command: npm run test:unit
-    on_failure: implement
+        - id: test
+          depends_on: [implement]
+          bash: |
+            if npm run test:unit; then
+              echo "pass" > $HEIMDALL_OUTPUT
+            else
+              echo "fail" > $HEIMDALL_OUTPUT
+            fi
 
   - id: review
+    depends_on: [tdd_loop]
     agent: ts-test-reviewer
-    on_failure: implement
 ```
 
-Agent definitions might live alongside the workflow:
-
-```markdown
-<!-- agents/spec-writer.md -->
-You are a specification writer. Given a task description, produce a concise
-spec.md with acceptance criteria and edge cases. Do not write implementation code.
-```
-
-## TypeScript gate example
-
-Illustrative CLI output when a validation gate fails:
-
-```typescript
-// Thrown by the workflow engine when a gate fails
-throw new CliError({
-  code: "GATE_FAILED",
-  message: "Phase 'test' failed: npm run test:unit exited with code 1",
-  exitCode: 1,
-  details: {
-    phase: "test",
-    command: "npm run test:unit",
-    retryPhase: "implement",
-  },
-});
-```
+The `loop` runs up to five iterations. Each pass the agent implements, the bash node writes `pass` or `fail` to `$HEIMDALL_OUTPUT`, and the `until` expression reads `scope.nodes.test.output`. When the value is `"pass"` the loop exits and `review` runs.
 
 ## Parallel runs
 
