@@ -1,0 +1,15 @@
+$schema: 'https://json-schema.org/draft/2020-12/schema'
+description: >-
+  Exits the innermost enclosing loop immediately. Any in-flight parallel nodes
+  in the current iteration are stopped, and the iteration count is not
+  incremented. Only valid inside a loop_node's nodes list.
+allOf:
+  - $ref: node.yaml
+  - type: object
+    properties:
+      break:
+        description: >-
+          Exits the enclosing loop. The value is ignored; only the presence of
+          this field matters.
+    required:
+      - break

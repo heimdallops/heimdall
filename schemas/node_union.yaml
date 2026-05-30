@@ -1,0 +1,11 @@
+$schema: 'https://json-schema.org/draft/2020-12/schema'
+description: Union of all supported node types. Every entry in a workflow's nodes list or a loop's nodes list must match exactly one of these.
+oneOf:
+  - $ref: bash_node.yaml
+  - $ref: agent_node.yaml
+  - $ref: prompt_node.yaml
+  - $ref: prompt_file_node.yaml
+  - $ref: approval_node.yaml
+  - $ref: exit_node.yaml
+  - $ref: loop_node.yaml
+  - $ref: break_node.yaml

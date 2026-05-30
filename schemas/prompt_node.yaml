@@ -1,0 +1,13 @@
+$schema: 'https://json-schema.org/draft/2020-12/schema'
+description: Runs an AI model with an inline prompt string. Extends agentic_node.yaml.
+allOf:
+  - $ref: agentic_node.yaml
+  - type: object
+    properties:
+      prompt:
+        type: string
+        description: >-
+          Inline prompt string. Supports ${{ <expression> }} interpolation
+          using CEL expressions.
+    required:
+      - prompt

@@ -8,6 +8,13 @@ Heimdall is a CLI for building deterministic agentic workflows from YAML. User-d
 
 These are implementation constraints, not slogans. Apply them by default.
 
+**Clarify Before Building**
+
+- State assumptions explicitly before implementing. If uncertain, ask.
+- If multiple interpretations exist, surface them — don't pick silently.
+- If something is unclear, name what's confusing and ask rather than guessing.
+- Push back when a simpler approach exists.
+
 **YAGNI**
 
 - No config keys, flags, abstractions, or error paths without a concrete current use case
@@ -40,6 +47,12 @@ These are implementation constraints, not slogans. Apply them by default.
 - Throw `CliError` early for expected failures
 - Don't catch-and-swallow or silently fall back to a default that masks the problem
 - Silent failures produce confusing exit codes and hard-to-debug behavior
+
+**Surgical Changes**
+
+- Touch only what the task requires. Don't improve adjacent code, comments, or formatting.
+- Match existing style, even if you'd do it differently.
+- Remove imports, variables, and functions that _your_ changes made unused — but leave pre-existing dead code alone unless asked.
 
 **Reversibility**
 

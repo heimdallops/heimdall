@@ -1,0 +1,7 @@
+$schema: 'https://json-schema.org/draft/2020-12/schema'
+description: Base platform options shared across all platforms. Extended by platform-specific option schemas.
+type: object
+properties:
+  model:
+    type: string
+    description: Default model for this workflow.

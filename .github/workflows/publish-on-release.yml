@@ -1,4 +1,4 @@
-name: Publish to npm (release)
+name: Publish Release
 
 on:
   release:
@@ -9,20 +9,6 @@ permissions:
   actions: write
 
 jobs:
-  detect_dry_run:
-    name: Detect dry run
-    runs-on: ubuntu-latest
-    outputs:
-      dry_run: ${{ steps.flag.outputs.dry_run }}
-    steps:
-      - id: flag
-        run: |
-          if [ "${{ vars.DRY_RUN }}" = "true" ]; then
-            echo "dry_run=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "dry_run=false" >> "$GITHUB_OUTPUT"
-          fi
-
   validate_release_tag:
     name: Validate release tag
     runs-on: ubuntu-latest
@@ -96,16 +82,23 @@ jobs:
       ref: ${{ needs.prepare_release_branch.outputs.branch_name }}
       upload_package_artifact: true
 
+  publish_binaries:
+    name: Publish binaries
+    needs: prepare_release_branch
+    uses: ./.github/workflows/publish-binaries.yml
+    with:
+      ref: ${{ needs.prepare_release_branch.outputs.branch_name }}
+      release_tag: ${{ github.event.release.tag_name }}
+      dry_run: ${{ vars.DRY_RUN == 'true' }}
+
   publish_to_npm:
     name: Publish to npm
     needs:
-      - detect_dry_run
       - prepare_release_branch
       - build
-    if: needs.build.result == 'success'
     uses: ./.github/workflows/publish-to-npm.yml
     with:
-      dry_run: ${{ needs.detect_dry_run.outputs.dry_run == 'true' }}
+      dry_run: ${{ vars.DRY_RUN == 'true' }}
       package_artifact_name: ${{ needs.build.outputs.package_artifact_name }}
       ref: ${{ needs.prepare_release_branch.outputs.branch_name }}
     secrets: inherit
@@ -114,6 +107,7 @@ jobs:
     name: Delete release branch
     needs:
       - prepare_release_branch
+      - publish_binaries
       - publish_to_npm
     if: always() && needs.prepare_release_branch.result == 'success'
     runs-on: ubuntu-latest
@@ -140,6 +134,7 @@ jobs:
       - validate_release_tag
       - prepare_release_branch
       - build
+      - publish_binaries
       - publish_to_npm
       - cleanup_release_branch
     if: always()
@@ -164,19 +159,18 @@ jobs:
           VALIDATE: ${{ needs.validate_release_tag.result }}
           PREPARE: ${{ needs.prepare_release_branch.result }}
           BUILD: ${{ needs.build.result }}
+          PUBLISH_BINARIES: ${{ needs.publish_binaries.result }}
+          PUBLISH_NPM: ${{ needs.publish_to_npm.result }}
           CLEANUP: ${{ needs.cleanup_release_branch.result }}
-          PUBLISH_JOB: ${{ needs.publish_to_npm.result }}
         run: |
           set -euo pipefail
           FAILED=false
           [ "$VALIDATE" = "success" ] || FAILED=true
           [ "$PREPARE" = "success" ] || FAILED=true
           [ "$BUILD" = "success" ] || FAILED=true
+          [ "$PUBLISH_BINARIES" = "success" ] || FAILED=true
+          [ "$PUBLISH_NPM" = "success" ] || FAILED=true
           [ "$CLEANUP" = "success" ] || FAILED=true
-
-          if [ "$BUILD" = "success" ]; then
-            [ "$PUBLISH_JOB" = "success" ] || FAILED=true
-          fi
 
           if [ "$FAILED" = true ]; then
             echo "color=15158332" >> "$GITHUB_OUTPUT"
@@ -195,8 +189,9 @@ jobs:
           R_VALIDATE: ${{ needs.validate_release_tag.result }}
           R_PREPARE: ${{ needs.prepare_release_branch.result }}
           R_BUILD: ${{ needs.build.result }}
+          R_PUBLISH_BINARIES: ${{ needs.publish_binaries.result }}
+          R_PUBLISH_NPM: ${{ needs.publish_to_npm.result }}
           R_CLEANUP: ${{ needs.cleanup_release_branch.result }}
-          R_PUBLISH_JOB: ${{ needs.publish_to_npm.result }}
           ERR_TEXT: ${{ steps.publish_err_excerpt.outputs.text }}
         run: |
           set -euo pipefail
@@ -216,21 +211,12 @@ jobs:
             printf '**Stages**\n'
             printf '%s · Validate release tag · **%s**\n' "$(ic "$R_VALIDATE")" "${R_VALIDATE}"
             printf '%s · Sync version & push branch · **%s**\n' "$(ic "$R_PREPARE")" "${R_PREPARE}"
-            printf '%s · Build package artifact · **%s**\n' "$(ic "$R_BUILD")" "${R_BUILD}"
+            printf '%s · Build npm package · **%s**\n' "$(ic "$R_BUILD")" "${R_BUILD}"
+            printf '%s · Publish binaries · **%s**\n' "$(ic "$R_PUBLISH_BINARIES")" "${R_PUBLISH_BINARIES}"
+            printf '%s · Publish to npm · **%s**\n' "$(ic "$R_PUBLISH_NPM")" "${R_PUBLISH_NPM}"
             printf '%s · Delete release branch · **%s**\n' "$(ic "$R_CLEANUP")" "${R_CLEANUP}"
-            printf '%s · Publish to npm · **%s**\n' "$(ic "$R_PUBLISH_JOB")" "${R_PUBLISH_JOB}"
-            printf '\n**npm publish**\n'
-            case "${R_PUBLISH_JOB}" in
-              success) PS='✨' ;;
-              skipped) PS='⏭️' ;;
-              cancelled) PS='🛑' ;;
-              *) PS='💥' ;;
-            esac
-            printf '%s · Reported status · **%s**\n' "${PS}" "${R_PUBLISH_JOB}"
             if [ -n "${ERR_TEXT:-}" ]; then
               printf '\n**npm output** *(truncated)*\n```text\n%s\n```\n' "${ERR_TEXT}"
-            else
-              printf '\n_No npm stderr captured._\n'
             fi
             echo "${DELIM}"
           } >> "$GITHUB_OUTPUT"

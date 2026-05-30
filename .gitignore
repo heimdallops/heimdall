@@ -141,3 +141,7 @@ vite.config.ts.timestamp-*
 .github/.secrets
 .github/workflows/.act/.act-artifacts
 .github/workflows/.act/.act-release-event.json
+
+# Private Local Resources
+.local/
+backlog/

@@ -1,0 +1,39 @@
+$schema: 'https://json-schema.org/draft/2020-12/schema'
+description: >-
+  Executes a bash script and exposes its output to downstream nodes via needs.<id>.output.
+  The engine injects a HEIMDALL_OUTPUT environment variable containing the path to a
+  temporary file. Write to that file to control exactly what is exposed as output —
+  only its contents are read, so incidental stdout from commands like apt or curl does
+  not contaminate the result. If nothing is written to HEIMDALL_OUTPUT, the node's
+  output is empty.
+allOf:
+  - $ref: node.yaml
+  - type: object
+    properties:
+      bash:
+        type: string
+        description: >-
+          The bash script to execute. Supports ${{ <expression> }} interpolation
+          using CEL expressions.
+      env:
+        type: object
+        description: Key/value pairs to inject into the environment.
+        additionalProperties:
+          type: string
+          description: >-
+            Environment variable value. Supports ${{ <expression> }}
+            interpolation using CEL expressions.
+      output_format:
+        type: string
+        enum:
+          - text
+          - json
+        default: text
+        description: >-
+          Controls how the contents of HEIMDALL_OUTPUT are parsed. "text" (default)
+          exposes the contents as a plain string on needs.<id>.output. "json" parses
+          the contents as JSON and exposes the parsed structure on needs.<id>.output,
+          making fields accessible as needs.<id>.output.<field>. If "json" is set and
+          the contents are not valid JSON, the node fails immediately.
+    required:
+      - bash
