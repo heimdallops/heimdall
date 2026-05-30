@@ -4,19 +4,23 @@ export type NodeResult = Record<string, unknown>;
 
 export interface NodeStartedEvent {
   nodeId: string;
+  nodeName: string;
 }
 
 export interface NodeCompletedEvent {
   nodeId: string;
+  nodeName: string;
   result: NodeResult;
 }
 
 export interface NodeSkippedEvent {
   nodeId: string;
+  nodeName: string;
 }
 
 export interface NodeFailedEvent {
   nodeId: string;
+  nodeName: string;
   error: unknown;
 }
 
@@ -40,6 +44,7 @@ export interface ApprovalResult {
 
 export interface ApprovalRequestedEvent {
   nodeId: string;
+  nodeName: string;
   message: string;
   enableFeedback: boolean;
   resolve: (result: ApprovalResult) => void;
