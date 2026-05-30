@@ -1,0 +1,23 @@
+$schema: 'https://json-schema.org/draft/2020-12/schema'
+description: >-
+  Output of a loop_node. Accessible to downstream nodes via needs.<id>.<property>.
+type: object
+properties:
+  total_iterations:
+    type: integer
+    description: >-
+      Total number of iterations completed when the loop exited. A loop that
+      ran once has total_iterations: 1. Accessible to downstream nodes via
+      needs.<loop_id>.total_iterations.
+    minimum: 1
+  output:
+    type: object
+    description: >-
+      The resolved outputs declared in the loop's outputs map. Each key is a
+      name declared under outputs and its value is the result of evaluating the
+      corresponding CEL expression at the end of the final iteration.
+      Accessible to downstream nodes via needs.<loop_id>.output.<key>.
+    additionalProperties: true
+required:
+  - total_iterations
+  - output

@@ -1,0 +1,94 @@
+$schema: 'https://json-schema.org/draft/2020-12/schema'
+description: Root schema for a Heimdall workflow definition. A workflow is a named, versioned graph of nodes that Heimdall executes in dependency order, optionally within an isolated git worktree.
+type: object
+properties:
+  version:
+    type: string
+    description: Workflow definition version
+  name:
+    type: string
+    description: Workflow name
+    minLength: 1
+  description:
+    type: string
+    description: Workflow description
+  platform:
+    $ref: platform.yaml
+  platform_options:
+    $ref: platform_options_union.yaml
+  inputs:
+    type: object
+    description: >-
+      Input parameters supplied when the workflow is started. Each key defines
+      one input with a type and optional description.
+    additionalProperties:
+      type: object
+      properties:
+        type:
+          type: string
+          enum:
+            - string
+            - number
+            - integer
+            - boolean
+          description: The value type for this input.
+        description:
+          type: string
+          description: Human-readable description shown when prompting for the input.
+        default:
+          description: Default value used when the input is not supplied. Must match the declared type.
+      required:
+        - type
+      allOf:
+        - if:
+            properties:
+              type:
+                const: string
+          then:
+            properties:
+              default:
+                type: string
+        - if:
+            properties:
+              type:
+                const: number
+          then:
+            properties:
+              default:
+                type: number
+        - if:
+            properties:
+              type:
+                const: integer
+          then:
+            properties:
+              default:
+                type: integer
+        - if:
+            properties:
+              type:
+                const: boolean
+          then:
+            properties:
+              default:
+                type: boolean
+  vars:
+    type: object
+    description: Static variables available to all nodes in the workflow.
+    additionalProperties:
+      oneOf:
+        - type: string
+        - type: number
+        - type: integer
+        - type: boolean
+  workspace:
+    $ref: workspace.yaml
+  nodes:
+    type: array
+    description: List of nodes that make up this workflow.
+    items:
+      $ref: node_union.yaml
+    minItems: 1
+required:
+  - name
+  - nodes

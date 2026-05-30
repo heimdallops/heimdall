@@ -1,0 +1,46 @@
+$schema: 'https://json-schema.org/draft/2020-12/schema'
+description: Base properties shared by all node types. Every node must have a unique id; all other fields are optional.
+type: object
+properties:
+  id:
+    type: string
+    description: Unique identifier for this node. Must contain only alphanumeric characters and underscores.
+    minLength: 1
+    pattern: '^[a-zA-Z0-9_]+$'
+  name:
+    type: string
+    description: Human-readable display name for this node. Optional; if omitted, the id is used.
+  depends_on:
+    type: array
+    description: >-
+      IDs of nodes that must complete before this node runs. A node becomes
+      eligible to run as soon as all its dependencies have completed.
+    items:
+      type: string
+      minLength: 1
+  if:
+    type: string
+    description: >-
+      CEL expression that must evaluate to true for this node to run.
+      Do not wrap in ${{ }}.
+  timeout:
+    type: number
+    description: Maximum time to wait before timing out, in milliseconds.
+    minimum: 0
+  retries:
+    type: object
+    properties:
+      max_attempts:
+        type: integer
+        description: Max number of retry attempts.
+        minimum: 0
+      initial_delay_ms:
+        type: integer
+        description: Initial delay in milliseconds before the first retry. Uses exponential backoff with jitter.
+        minimum: 0
+      max_delay_ms:
+        type: integer
+        description: Maximum delay in milliseconds between retry attempts.
+        minimum: 0
+required:
+  - id

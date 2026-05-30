@@ -69,7 +69,9 @@ export class ClaudeStream extends EventEmitter implements PlatformStream {
     if (this.executePromise !== undefined) {
       return this.executePromise;
     }
+
     this.executePromise = this.execute(this.prompt, this.options, this.initialSessionId);
+
     return this.executePromise;
   }
 
@@ -87,15 +89,20 @@ export class ClaudeStream extends EventEmitter implements PlatformStream {
   sessionId(): Promise<string> {
     if (this.executePromise === undefined) {
       if (this.preStartRejection === undefined) {
-        const err = new PlatformError('PLATFORM_ERROR', 'start() must be called before awaiting sessionId()');
-        this.preStartRejection = Promise.reject(err) as Promise<string>;
+        const err = new PlatformError(
+          'PLATFORM_ERROR',
+          'start() must be called before awaiting sessionId()'
+        );
+        this.preStartRejection = Promise.reject(err);
         // preStartRejection is a plain Promise, not an EventEmitter event, so Node's
         // unhandled-rejection detector fires independently of the 'error' listener
         // registered in the constructor. Attach a no-op catch to silence it.
         this.preStartRejection.catch(() => undefined);
       }
+
       return this.preStartRejection;
     }
+
     return this.sessionIdPromise;
   }
 
@@ -132,7 +139,10 @@ export class ClaudeStream extends EventEmitter implements PlatformStream {
       if (!streamCompleted && this.abortController.signal.aborted) {
         terminated = true;
         const cancellation = new PlatformCancellationError();
-        if (!sessionResolved) this.rejectSessionId(cancellation);
+        if (!sessionResolved) {
+          this.rejectSessionId(cancellation);
+        }
+
         this.emit('error', cancellation);
       } else if (!sessionResolved) {
         terminated = true;

@@ -1,0 +1,22 @@
+$schema: 'https://json-schema.org/draft/2020-12/schema'
+description: Immediately exits the workflow. Any in-flight parallel nodes are stopped.
+allOf:
+  - $ref: node.yaml
+  - type: object
+    properties:
+      exit:
+        type: object
+        description: Exits the workflow immediately. In-flight parallel nodes are stopped.
+        properties:
+          reason:
+            type: string
+            description: Human-readable message explaining why the workflow exited. Displayed to the user on termination.
+          failure:
+            type: boolean
+            default: false
+            description: >-
+              When true, the workflow exits with a non-zero status code indicating
+              abnormal termination. When false (default), the exit is treated as
+              successful completion.
+    required:
+      - exit

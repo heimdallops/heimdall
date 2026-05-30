@@ -47,7 +47,7 @@ describe('ClaudeCodeAdapter', () => {
         doneEmitted = true;
       });
 
-      stream.start(); // callers are responsible for starting the stream
+      void stream.start(); // callers are responsible for starting the stream
       // Wait for the mock generator to complete
       await stream.sessionId();
       // Flush remaining microtasks so the done event has time to fire
@@ -60,7 +60,7 @@ describe('ClaudeCodeAdapter', () => {
       const adapter = new ClaudeCodeAdapter();
       const stream = adapter.run('hello', {});
 
-      stream.start(); // callers are responsible for starting the stream
+      void stream.start(); // callers are responsible for starting the stream
       await expect(stream.sessionId()).resolves.toBe('adapter-session');
     });
 
@@ -70,7 +70,10 @@ describe('ClaudeCodeAdapter', () => {
       queryMock.mockClear();
 
       const adapter = new ClaudeCodeAdapter();
-      const stream = adapter.run('test prompt', { model: 'claude-opus-4-5', allowed_tools: ['Read', 'Write'] });
+      const stream = adapter.run('test prompt', {
+        model: 'claude-opus-4-5',
+        allowed_tools: ['Read', 'Write'],
+      });
       await stream.start(); // callers are responsible for starting the stream
 
       expect(queryMock).toHaveBeenCalledOnce();

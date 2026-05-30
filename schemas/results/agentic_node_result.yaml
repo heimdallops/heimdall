@@ -1,0 +1,18 @@
+$schema: 'https://json-schema.org/draft/2020-12/schema'
+description: >-
+  Output produced by any agentic node (agent_node, prompt_node, prompt_file_node). Available
+  to downstream nodes via needs.<id>.output. If the node defines output_format,
+  the output is parsed as JSON and its properties are accessible directly (e.g.
+  needs.<id>.output.some_field).
+type: object
+properties:
+  output:
+    description: >-
+      The agent's final response. A plain string when no output_format is
+      defined. A structured object matching the output_format schema when one
+      is defined.
+    oneOf:
+      - type: string
+      - type: object
+required:
+  - output

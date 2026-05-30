@@ -112,7 +112,7 @@ describe('ClaudeStream', () => {
 
       const stream = new ClaudeStream('test prompt', {});
       const captured = captureEvents(stream);
-      stream.start();
+      void stream.start();
 
       await flushMicrotasks();
 
@@ -132,7 +132,7 @@ describe('ClaudeStream', () => {
 
       const stream = new ClaudeStream('test prompt', {});
       const captured = captureEvents(stream);
-      stream.start();
+      void stream.start();
 
       await flushMicrotasks();
 
@@ -149,7 +149,7 @@ describe('ClaudeStream', () => {
 
       const stream = new ClaudeStream('test prompt', {});
       const captured = captureEvents(stream);
-      stream.start();
+      void stream.start();
 
       await flushMicrotasks();
 
@@ -164,7 +164,7 @@ describe('ClaudeStream', () => {
 
       const stream = new ClaudeStream('test prompt', {});
       const captured = captureEvents(stream);
-      stream.start();
+      void stream.start();
 
       await flushMicrotasks();
 
@@ -182,7 +182,7 @@ describe('ClaudeStream', () => {
       };
 
       const stream = new ClaudeStream('test prompt', {});
-      stream.start();
+      void stream.start();
       const id = await stream.sessionId();
 
       expect(id).toBe('my-session-42');
@@ -195,7 +195,7 @@ describe('ClaudeStream', () => {
       };
 
       const stream = new ClaudeStream('test prompt', {});
-      stream.start();
+      void stream.start();
       const id = await stream.sessionId();
 
       expect(id).toBe('stream-session');
@@ -210,7 +210,7 @@ describe('ClaudeStream', () => {
       };
 
       const stream = new ClaudeStream('test prompt', {});
-      stream.start();
+      void stream.start();
       const id = await stream.sessionId();
 
       expect(id).toBe('late-session');
@@ -227,7 +227,7 @@ describe('ClaudeStream', () => {
 
       const stream = new ClaudeStream('test prompt', {});
       const captured = captureEvents(stream);
-      stream.start();
+      void stream.start();
 
       await expect(stream.sessionId()).rejects.toMatchObject({
         code: 'PLATFORM_ERROR',
@@ -258,7 +258,7 @@ describe('ClaudeStream', () => {
 
       const stream = new ClaudeStream('test prompt', {});
       const captured = captureEvents(stream);
-      stream.start();
+      void stream.start();
       stream.sessionId().catch(() => undefined); // suppress unhandled promise rejection
       stream.cancel(); // fires before execute() has called query()
 
@@ -280,7 +280,7 @@ describe('ClaudeStream', () => {
 
       const stream = new ClaudeStream('test prompt', {});
       const captured = captureEvents(stream);
-      stream.start();
+      void stream.start();
       stream.sessionId().catch(() => undefined); // suppress unhandled promise rejection
       stream.cancel(); // fires before execute() has called query()
 
@@ -299,7 +299,7 @@ describe('ClaudeStream', () => {
       };
 
       const stream = new ClaudeStream('test prompt', {});
-      stream.start();
+      void stream.start();
       stream.cancel(); // fires before execute() has called query()
 
       await expect(stream.sessionId()).rejects.toBeInstanceOf(PlatformCancellationError);
@@ -314,7 +314,7 @@ describe('ClaudeStream', () => {
 
       const stream = new ClaudeStream('test prompt', {});
       const captured = captureEvents(stream);
-      stream.start();
+      void stream.start();
       stream.sessionId().catch(() => undefined);
       stream.cancel(); // fires before execute() has called query()
 
@@ -335,7 +335,7 @@ describe('ClaudeStream', () => {
 
       const stream = new ClaudeStream('test prompt', {});
       const captured = captureEvents(stream);
-      stream.start();
+      void stream.start();
 
       await flushMicrotasks();
       stream.cancel();
@@ -359,7 +359,7 @@ describe('ClaudeStream', () => {
 
       const stream = new ClaudeStream('test prompt', {});
       const captured = captureEvents(stream);
-      stream.start();
+      void stream.start();
       stream.sessionId().catch(() => undefined); // suppress unhandled promise rejection
 
       await flushMicrotasks();
@@ -388,7 +388,7 @@ describe('ClaudeStream', () => {
 
       const stream = new ClaudeStream('test prompt', {});
       const captured = captureEvents(stream);
-      stream.start();
+      void stream.start();
       stream.sessionId().catch(() => undefined);
 
       await flushMicrotasks(); // let the first chunk arrive
@@ -417,9 +417,11 @@ describe('ClaudeStream', () => {
       const captured = captureEvents(stream);
 
       // cancel() before start() must not throw
-      expect(() => stream.cancel()).not.toThrow();
+      expect(() => {
+        stream.cancel();
+      }).not.toThrow();
 
-      stream.start();
+      void stream.start();
       stream.sessionId().catch(() => undefined); // suppress unhandled promise rejection
       await flushMicrotasks();
 
@@ -470,7 +472,7 @@ describe('ClaudeStream', () => {
 
       const stream = new ClaudeStream('test prompt', {});
       const captured = captureEvents(stream);
-      stream.start();
+      void stream.start();
       // Suppress unhandled rejection on the sessionId promise — error is captured via 'error' event
       stream.sessionId().catch(() => undefined);
 
@@ -492,7 +494,7 @@ describe('ClaudeStream', () => {
       stream.on('error', () => {
         // prevent unhandled error event crash
       });
-      stream.start();
+      void stream.start();
 
       await expect(stream.sessionId()).rejects.toBeInstanceOf(PlatformError);
     });
@@ -510,7 +512,7 @@ describe('ClaudeStream', () => {
 
       const streamA = new ClaudeStream('prompt A', {});
       captureEvents(streamA);
-      streamA.start();
+      void streamA.start();
       await flushMicrotasks();
       const [controllerA] = controllers;
 
@@ -522,7 +524,7 @@ describe('ClaudeStream', () => {
 
       const streamB = new ClaudeStream('prompt B', {});
       captureEvents(streamB);
-      streamB.start();
+      void streamB.start();
       await flushMicrotasks();
       const [, controllerB] = controllers;
 

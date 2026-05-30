@@ -1,0 +1,13 @@
+$schema: 'https://json-schema.org/draft/2020-12/schema'
+description: Runs an AI model with a prompt loaded from a file. The file supports ${{ <expression> }} interpolation using CEL expressions. Extends agentic_node.yaml.
+allOf:
+  - $ref: agentic_node.yaml
+  - type: object
+    properties:
+      prompt_file:
+        type: string
+        description: >-
+          Path to a file containing a prompt. Supports ${{ <expression> }}
+          interpolation using CEL expressions.
+    required:
+      - prompt_file
