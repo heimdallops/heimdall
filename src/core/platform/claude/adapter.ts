@@ -1,6 +1,6 @@
-import { readFile, readdir, realpath } from 'node:fs/promises';
+import { readdir, readFile, realpath } from 'node:fs/promises';
 import os from 'node:os';
-import { isAbsolute, resolve, sep } from 'node:path';
+import { resolve, sep } from 'node:path';
 import process from 'node:process';
 
 import matter from 'gray-matter';
@@ -12,7 +12,7 @@ import type { ClaudeOptions } from './options.ts';
 import { claudeOptionsSchema } from './options.ts';
 import { ClaudeStream } from './stream.ts';
 
-async function enumerateMdFiles(dir: string): Promise<string[]> {
+const enumerateMdFiles = async (dir: string): Promise<string[]> => {
   const results: string[] = [];
   let entries;
   try {
@@ -20,6 +20,7 @@ async function enumerateMdFiles(dir: string): Promise<string[]> {
   } catch {
     return results;
   }
+
   for (const entry of entries) {
     const fullPath = resolve(dir, entry.name);
     if (entry.isDirectory()) {
@@ -28,62 +29,57 @@ async function enumerateMdFiles(dir: string): Promise<string[]> {
       results.push(fullPath);
     }
   }
+
   return results;
-}
+};
 
 const FIELD_ALIASES: Record<string, string> = { tools: 'allowed_tools' };
 const ARRAY_COERCE_KEYS = new Set(['allowed_tools', 'denied_tools']);
 
 export class ClaudeCodeAdapter implements PlatformAdapter<ClaudeOptions> {
   private readonly cwd: string;
+  readonly agents: ReadonlyMap<string, string>;
 
-  constructor(cwd: string = process.cwd()) {
+  private constructor(cwd: string, agents: Map<string, string>) {
     this.cwd = cwd;
+    this.agents = agents;
   }
 
-  run(prompt: string, options: ClaudeOptions, sessionId?: string): PlatformStream {
-    return new ClaudeStream(prompt, options, sessionId);
+  static async create(cwd: string = process.cwd()): Promise<ClaudeCodeAdapter> {
+    const home = os.homedir();
+    const searchDirs = ClaudeCodeAdapter.buildSearchDirs(resolve(cwd), home);
+    const agents = await ClaudeCodeAdapter.scanAgents(searchDirs);
+
+    return new ClaudeCodeAdapter(cwd, agents);
   }
 
-  async findAgent(name: string): Promise<string> {
-    // Explicit paths are caller-trusted: no containment check and no existence verification.
-    if (isAbsolute(name) || name.includes('/') || name.includes('\\') || name.startsWith('.')) {
-      return isAbsolute(name) ? name : resolve(this.cwd, name);
+  private static buildSearchDirs(cwd: string, home: string): string[] {
+    const homePrefix = home.endsWith(sep) ? home : home + sep;
+    // cwd is outside the home tree — no useful intermediate dirs, just check cwd then home.
+    if (cwd !== home && !cwd.startsWith(homePrefix)) {
+      return [cwd, home];
     }
 
-    const home = os.homedir();
-
-    // Walk up from cwd to (and including) home, collecting each directory to probe.
-    // If cwd is not under home, home is still appended as a final fallback.
     const searchDirs: string[] = [];
-    let dir = resolve(this.cwd);
-    let reachedHome = false;
+    let dir = cwd;
     while (true) {
       searchDirs.push(dir);
       if (dir === home) {
-        reachedHome = true;
         break;
       }
 
-      const parent = resolve(dir, '..');
-      if (parent === dir) {
-        break;
-      } // filesystem root
-
-      dir = parent;
+      dir = resolve(dir, '..');
     }
 
-    if (!reachedHome) {
-      searchDirs.push(home);
-    }
+    return searchDirs;
+  }
 
+  private static async scanAgents(searchDirs: string[]): Promise<Map<string, string>> {
+    const cache = new Map<string, string>();
     for (const searchDir of searchDirs) {
       const realSearchDir = await realpath(searchDir).catch(() => searchDir);
       const base = resolve(realSearchDir, '.claude', 'agents');
-
-      const candidates = await enumerateMdFiles(base);
-      const matches: string[] = [];
-
+      const candidates = (await enumerateMdFiles(base)).sort();
       for (const candidate of candidates) {
         let real: string;
         try {
@@ -92,7 +88,9 @@ export class ClaudeCodeAdapter implements PlatformAdapter<ClaudeOptions> {
           continue;
         }
 
-        if (!real.startsWith(base + sep) && real !== base) continue;
+        if (!real.startsWith(base + sep) && real !== base) {
+          continue;
+        }
 
         let content: string;
         try {
@@ -101,25 +99,40 @@ export class ClaudeCodeAdapter implements PlatformAdapter<ClaudeOptions> {
           continue;
         }
 
+        let data: Record<string, unknown>;
         try {
-          const { data } = matter(content, {
+          ({ data } = matter(content, {
             engines: { yaml: (s: string) => yaml.load(s) as Record<string, unknown> },
-          });
-          const agentName = data['name'];
-          if (typeof agentName === 'string' && agentName.length > 0 && agentName === name) {
-            matches.push(real);
-          }
+          }) as { data: Record<string, unknown>; content: string });
         } catch {
           continue;
         }
-      }
 
-      if (matches.length > 0) {
-        return matches.sort()[0] as string;
+        const { name } = data;
+        if (typeof name !== 'string' || name.length === 0) {
+          continue;
+        }
+
+        if (!cache.has(name)) {
+          cache.set(name, content);
+        }
       }
     }
 
-    throw new PlatformAgentNotFoundError(name);
+    return cache;
+  }
+
+  run(prompt: string, options: ClaudeOptions, sessionId?: string): PlatformStream {
+    return new ClaudeStream(prompt, options, sessionId);
+  }
+
+  findAgent(name: string): Promise<string> {
+    const content = this.agents.get(name);
+    if (!content) {
+      return Promise.reject(new PlatformAgentNotFoundError(name));
+    }
+
+    return Promise.resolve(content);
   }
 
   parseAgent(content: string): { prompt: string; options: ClaudeOptions } {

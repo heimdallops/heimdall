@@ -36,7 +36,7 @@ describe('ClaudeCodeAdapter', () => {
       const queryMock = vi.mocked(mockedQuery);
       queryMock.mockClear();
 
-      const adapter = new ClaudeCodeAdapter();
+      const adapter = await ClaudeCodeAdapter.create();
       const stream = adapter.run('prompt', {
         model: 'claude-opus-4-5',
         reasoning_effort: 'high',
@@ -65,7 +65,7 @@ describe('ClaudeCodeAdapter', () => {
       const queryMock = vi.mocked(mockedQuery);
       queryMock.mockClear();
 
-      const adapter = new ClaudeCodeAdapter();
+      const adapter = await ClaudeCodeAdapter.create();
       await adapter.run('continue prompt', {}, 'resume-session-id').start();
 
       expect(queryMock).toHaveBeenCalledOnce();
@@ -78,7 +78,7 @@ describe('ClaudeCodeAdapter', () => {
       const queryMock = vi.mocked(mockedQuery);
       queryMock.mockClear();
 
-      const adapter = new ClaudeCodeAdapter();
+      const adapter = await ClaudeCodeAdapter.create();
       await adapter.run('fresh prompt', {}).start();
 
       const opts = queryMock.mock.calls[0]![0].options as Record<string, unknown>;
@@ -90,7 +90,7 @@ describe('ClaudeCodeAdapter', () => {
       const queryMock = vi.mocked(mockedQuery);
       queryMock.mockClear();
 
-      const adapter = new ClaudeCodeAdapter();
+      const adapter = await ClaudeCodeAdapter.create();
       await adapter.run('any prompt', {}).start();
 
       const opts = queryMock.mock.calls[0]![0].options as Record<string, unknown>;
@@ -98,7 +98,7 @@ describe('ClaudeCodeAdapter', () => {
     });
 
     it('returns a stream that emits done on completion', async () => {
-      const adapter = new ClaudeCodeAdapter();
+      const adapter = await ClaudeCodeAdapter.create();
       const stream = adapter.run('hello', {});
       const donePromise = new Promise<void>((resolve) => stream.on('done', resolve));
       void stream.start();
@@ -106,7 +106,7 @@ describe('ClaudeCodeAdapter', () => {
     });
 
     it('sessionId() resolves to the session id emitted by the SDK', async () => {
-      const adapter = new ClaudeCodeAdapter();
+      const adapter = await ClaudeCodeAdapter.create();
       const stream = adapter.run('hello', {});
       void stream.start();
       await expect(stream.sessionId()).resolves.toBe('adapter-session');

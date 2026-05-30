@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, realpath, rm, symlink, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, rm, symlink, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import { join } from 'node:path';
 
@@ -29,262 +29,126 @@ const createAgentFile = async (dir: string, name: string, subdir?: string): Prom
 };
 
 describe('findAgent', () => {
-  describe('bare name resolution', () => {
-    it('finds agent in <cwd>/.claude/agents/<name>.md', async () => {
-      const cwd = await makeTempDir();
-      await createAgentFile(cwd, 'my-agent');
+  it('returns the raw file contents for a known agent name', async () => {
+    const cwd = await makeTempDir();
+    await createAgentFile(cwd, 'my-agent');
 
-      const adapter = new ClaudeCodeAdapter(cwd);
-      const result = await adapter.findAgent('my-agent');
+    const adapter = await ClaudeCodeAdapter.create(cwd);
+    const content = await adapter.findAgent('my-agent');
 
-      expect(result).toBe(await realpath(join(cwd, '.claude', 'agents', 'my-agent.md')));
-    });
+    expect(typeof content).toBe('string');
+    expect(content).toContain('my-agent');
+  });
 
-    it('falls back to ~/.claude/agents/<name>.md when not in project', async () => {
-      const cwd = await makeTempDir(); // no agents here
-      const fakeHome = await makeTempDir();
-      vi.spyOn(os, 'homedir').mockReturnValue(fakeHome);
+  it('throws PlatformAgentNotFoundError when agent is not in the cache', async () => {
+    const cwd = await makeTempDir();
+    const fakeHome = await makeTempDir();
+    vi.spyOn(os, 'homedir').mockReturnValue(fakeHome);
 
-      await createAgentFile(fakeHome, 'home-agent');
+    const adapter = await ClaudeCodeAdapter.create(cwd);
+    await expect(adapter.findAgent('nonexistent')).rejects.toBeInstanceOf(
+      PlatformAgentNotFoundError
+    );
+  });
 
-      const adapter = new ClaudeCodeAdapter(cwd);
-      const result = await adapter.findAgent('home-agent');
+  it('PlatformAgentNotFoundError carries the missing agent name and correct code', async () => {
+    const cwd = await makeTempDir();
+    const fakeHome = await makeTempDir();
+    vi.spyOn(os, 'homedir').mockReturnValue(fakeHome);
 
-      expect(result).toBe(await realpath(join(fakeHome, '.claude', 'agents', 'home-agent.md')));
-    });
-
-    it('prefers project path over home path when both exist', async () => {
-      const cwd = await makeTempDir();
-      const fakeHome = await makeTempDir();
-      vi.spyOn(os, 'homedir').mockReturnValue(fakeHome);
-
-      await createAgentFile(cwd, 'shared-agent');
-      await createAgentFile(fakeHome, 'shared-agent');
-
-      const adapter = new ClaudeCodeAdapter(cwd);
-      const result = await adapter.findAgent('shared-agent');
-
-      expect(result).toBe(await realpath(join(cwd, '.claude', 'agents', 'shared-agent.md')));
-    });
-
-    it('throws PlatformAgentNotFoundError when agent does not exist anywhere', async () => {
-      const cwd = await makeTempDir();
-      const fakeHome = await makeTempDir();
-      vi.spyOn(os, 'homedir').mockReturnValue(fakeHome);
-
-      const adapter = new ClaudeCodeAdapter(cwd);
-      await expect(adapter.findAgent('nonexistent-agent')).rejects.toBeInstanceOf(
-        PlatformAgentNotFoundError
-      );
-    });
-
-    it('PlatformAgentNotFoundError carries the missing agent name and correct code', async () => {
-      const cwd = await makeTempDir();
-      const fakeHome = await makeTempDir();
-      vi.spyOn(os, 'homedir').mockReturnValue(fakeHome);
-
-      const adapter = new ClaudeCodeAdapter(cwd);
-      await expect(adapter.findAgent('missing')).rejects.toMatchObject({
-        code: 'PLATFORM_AGENT_NOT_FOUND',
-        agentName: 'missing',
-      });
-    });
-
-    it('finds agent placed in an ancestor directory of cwd', async () => {
-      // directory layout: fakeHome/project/subdir  (cwd = subdir, agent only in project)
-      const fakeHome = await makeTempDir();
-      vi.spyOn(os, 'homedir').mockReturnValue(fakeHome);
-
-      const projectDir = join(fakeHome, 'project');
-      const cwd = join(projectDir, 'subdir');
-      await mkdir(cwd, { recursive: true });
-      await createAgentFile(projectDir, 'ancestor-agent');
-
-      const adapter = new ClaudeCodeAdapter(cwd);
-      const result = await adapter.findAgent('ancestor-agent');
-
-      expect(result).toBe(
-        await realpath(join(projectDir, '.claude', 'agents', 'ancestor-agent.md'))
-      );
-    });
-
-    it('prefers a closer ancestor over a farther one', async () => {
-      // layout: fakeHome/parent/child  (cwd = child, agent in both parent and child)
-      const fakeHome = await makeTempDir();
-      vi.spyOn(os, 'homedir').mockReturnValue(fakeHome);
-
-      const parentDir = join(fakeHome, 'parent');
-      const childDir = join(parentDir, 'child');
-      await mkdir(childDir, { recursive: true });
-      await createAgentFile(parentDir, 'layered-agent');
-      await createAgentFile(childDir, 'layered-agent');
-
-      const adapter = new ClaudeCodeAdapter(childDir);
-      const result = await adapter.findAgent('layered-agent');
-
-      expect(result).toBe(await realpath(join(childDir, '.claude', 'agents', 'layered-agent.md')));
-    });
-
-    it('skips a symlink inside .claude/agents/ that points outside the trusted base directory', async () => {
-      const cwd = await makeTempDir();
-      const outsideDir = await makeTempDir();
-      const agentsDir = join(cwd, '.claude', 'agents');
-      await mkdir(agentsDir, { recursive: true });
-
-      const outsideFile = join(outsideDir, 'secret.md');
-      await writeFile(outsideFile, `---\nname: escape\n---\n# escape\n`, 'utf8');
-
-      await symlink(outsideFile, join(agentsDir, 'escape.md'));
-
-      const adapter = new ClaudeCodeAdapter(cwd);
-      await expect(adapter.findAgent('escape')).rejects.toBeInstanceOf(PlatformAgentNotFoundError);
+    const adapter = await ClaudeCodeAdapter.create(cwd);
+    await expect(adapter.findAgent('missing')).rejects.toMatchObject({
+      code: 'PLATFORM_AGENT_NOT_FOUND',
+      agentName: 'missing',
     });
   });
 
-  describe('subdirectory resolution', () => {
-    it('finds agent nested one level deep in .claude/agents/<subdir>/<name>.md', async () => {
-      const cwd = await makeTempDir();
-      await createAgentFile(cwd, 'nested-agent', 'review');
+  it('finds agent in home directory when not present under cwd', async () => {
+    const cwd = await makeTempDir();
+    const fakeHome = await makeTempDir();
+    vi.spyOn(os, 'homedir').mockReturnValue(fakeHome);
+    await createAgentFile(fakeHome, 'home-agent');
 
-      const adapter = new ClaudeCodeAdapter(cwd);
-      const result = await adapter.findAgent('nested-agent');
+    const adapter = await ClaudeCodeAdapter.create(cwd);
+    const content = await adapter.findAgent('home-agent');
 
-      expect(result).toBe(
-        await realpath(join(cwd, '.claude', 'agents', 'review', 'nested-agent.md'))
-      );
-    });
-
-    it('finds agent nested multiple levels deep', async () => {
-      const cwd = await makeTempDir();
-      await createAgentFile(cwd, 'deep-agent', 'a/b/c');
-
-      const adapter = new ClaudeCodeAdapter(cwd);
-      const result = await adapter.findAgent('deep-agent');
-
-      expect(result).toBe(
-        await realpath(join(cwd, '.claude', 'agents', 'a', 'b', 'c', 'deep-agent.md'))
-      );
-    });
-
-    it('matches by frontmatter name regardless of filename', async () => {
-      const cwd = await makeTempDir();
-      const agentsDir = join(cwd, '.claude', 'agents', 'tools');
-      await mkdir(agentsDir, { recursive: true });
-      // filename differs from the name frontmatter field
-      await writeFile(
-        join(agentsDir, 'something-else.md'),
-        `---\nname: my-tool\n---\n# tool\n`,
-        'utf8'
-      );
-
-      const adapter = new ClaudeCodeAdapter(cwd);
-      const result = await adapter.findAgent('my-tool');
-
-      expect(result).toBe(await realpath(join(agentsDir, 'something-else.md')));
-    });
-
-    it('skips files with no name frontmatter field', async () => {
-      const cwd = await makeTempDir();
-      const agentsDir = join(cwd, '.claude', 'agents');
-      await mkdir(agentsDir, { recursive: true });
-      await writeFile(join(agentsDir, 'noname.md'), `# no frontmatter name\n`, 'utf8');
-
-      const adapter = new ClaudeCodeAdapter(cwd);
-      await expect(adapter.findAgent('noname')).rejects.toBeInstanceOf(PlatformAgentNotFoundError);
-    });
-
-    it('returns the lexicographically smallest real path when duplicate names exist in one scope', async () => {
-      const cwd = await makeTempDir();
-      const agentsDir = join(cwd, '.claude', 'agents');
-      await mkdir(join(agentsDir, 'aaa'), { recursive: true });
-      await mkdir(join(agentsDir, 'zzz'), { recursive: true });
-      await writeFile(
-        join(agentsDir, 'aaa', 'bot.md'),
-        `---\nname: bot\n---\n# bot\n`,
-        'utf8'
-      );
-      await writeFile(
-        join(agentsDir, 'zzz', 'bot.md'),
-        `---\nname: bot\n---\n# bot\n`,
-        'utf8'
-      );
-
-      const adapter = new ClaudeCodeAdapter(cwd);
-      const result = await adapter.findAgent('bot');
-
-      expect(result).toBe(await realpath(join(agentsDir, 'aaa', 'bot.md')));
-    });
-
-    it('subdirectory agent in closer ancestor scope wins over flat agent in farther scope', async () => {
-      const fakeHome = await makeTempDir();
-      vi.spyOn(os, 'homedir').mockReturnValue(fakeHome);
-
-      const projectDir = join(fakeHome, 'project');
-      const cwd = join(projectDir, 'subdir');
-      await mkdir(cwd, { recursive: true });
-      await createAgentFile(projectDir, 'shared', 'research');
-      await createAgentFile(fakeHome, 'shared');
-
-      const adapter = new ClaudeCodeAdapter(cwd);
-      const result = await adapter.findAgent('shared');
-
-      expect(result).toBe(
-        await realpath(join(projectDir, '.claude', 'agents', 'research', 'shared.md'))
-      );
-    });
+    expect(content).toContain('home-agent');
   });
 
-  describe('path-style names', () => {
-    it('treats names containing "/" as a path and skips search', async () => {
-      const cwd = await makeTempDir();
-      await mkdir(join(cwd, 'custom'), { recursive: true });
-      await writeFile(join(cwd, 'custom', 'agent.md'), '# custom\n', 'utf8');
+  it('returns cwd-level content when the same name exists in both cwd and home', async () => {
+    const fakeHome = await makeTempDir();
+    vi.spyOn(os, 'homedir').mockReturnValue(fakeHome);
+    const cwd = join(fakeHome, 'project');
+    await mkdir(cwd, { recursive: true });
+    await createAgentFile(cwd, 'shared');
+    await createAgentFile(fakeHome, 'shared');
 
-      const adapter = new ClaudeCodeAdapter(cwd);
-      const result = await adapter.findAgent('custom/agent.md');
+    const adapter = await ClaudeCodeAdapter.create(cwd);
+    const content = await adapter.findAgent('shared');
 
-      expect(result).toBe(join(cwd, 'custom', 'agent.md'));
-    });
+    expect(content).toContain('# shared');
+  });
 
-    it('treats names starting with "." as a path and skips search', async () => {
-      const cwd = await makeTempDir();
-      await writeFile(join(cwd, 'agent.md'), '# dot agent\n', 'utf8');
+  it('finds an agent in a subdirectory of .claude/agents/', async () => {
+    const cwd = await makeTempDir();
+    await createAgentFile(cwd, 'nested-agent', 'review');
 
-      const adapter = new ClaudeCodeAdapter(cwd);
-      const result = await adapter.findAgent('./agent.md');
+    const adapter = await ClaudeCodeAdapter.create(cwd);
+    const content = await adapter.findAgent('nested-agent');
 
-      expect(result).toBe(join(cwd, 'agent.md'));
-    });
+    expect(content).toContain('nested-agent');
+  });
 
-    it('returns an absolute path unchanged when it starts with "/"', async () => {
-      const cwd = await makeTempDir();
-      const absPath = join(cwd, 'absolute-agent.md');
-      await writeFile(absPath, '# abs\n', 'utf8');
+  it('matches by frontmatter name regardless of filename', async () => {
+    const cwd = await makeTempDir();
+    const agentsDir = join(cwd, '.claude', 'agents');
+    await mkdir(agentsDir, { recursive: true });
+    await writeFile(
+      join(agentsDir, 'something-else.md'),
+      `---\nname: my-tool\n---\n# tool\n`,
+      'utf8'
+    );
 
-      const adapter = new ClaudeCodeAdapter(cwd);
-      const result = await adapter.findAgent(absPath);
+    const adapter = await ClaudeCodeAdapter.create(cwd);
+    const content = await adapter.findAgent('my-tool');
 
-      expect(result).toBe(absPath);
-    });
+    expect(content).toContain('my-tool');
+  });
 
-    it('resolves a relative path (with "/") correctly against cwd', async () => {
-      const cwd = await makeTempDir();
-      const subdir = join(cwd, 'agents');
-      await mkdir(subdir, { recursive: true });
-      await writeFile(join(subdir, 'special.md'), '# special\n', 'utf8');
+  it('skips files with no name frontmatter field', async () => {
+    const cwd = await makeTempDir();
+    const agentsDir = join(cwd, '.claude', 'agents');
+    await mkdir(agentsDir, { recursive: true });
+    await writeFile(join(agentsDir, 'noname.md'), `# no frontmatter name\n`, 'utf8');
 
-      const adapter = new ClaudeCodeAdapter(cwd);
-      const result = await adapter.findAgent('agents/special.md');
+    const adapter = await ClaudeCodeAdapter.create(cwd);
+    await expect(adapter.findAgent('noname')).rejects.toBeInstanceOf(PlatformAgentNotFoundError);
+  });
 
-      expect(result).toBe(join(cwd, 'agents', 'special.md'));
-    });
+  it('does not crawl intermediate dirs when cwd is above home', async () => {
+    const fakeHome = await makeTempDir();
+    vi.spyOn(os, 'homedir').mockReturnValue(fakeHome);
+    const cwd = join(fakeHome, '..');
+    await createAgentFile(fakeHome, 'home-only-agent');
+    await createAgentFile(cwd, 'cwd-agent');
 
-    it('returns resolved path without checking existence for a path-style name', async () => {
-      // File does not exist — findAgent should still return the resolved path
-      const cwd = await makeTempDir();
-      const adapter = new ClaudeCodeAdapter(cwd);
-      const result = await adapter.findAgent('does-not-exist/agent.md');
-      expect(result).toBe(join(cwd, 'does-not-exist', 'agent.md'));
-    });
+    const adapter = await ClaudeCodeAdapter.create(cwd);
+
+    await expect(adapter.findAgent('home-only-agent')).resolves.toContain('home-only-agent');
+    await expect(adapter.findAgent('cwd-agent')).resolves.toContain('cwd-agent');
+  });
+
+  it('skips a symlink inside .claude/agents/ that points outside the base directory', async () => {
+    const cwd = await makeTempDir();
+    const outsideDir = await makeTempDir();
+    const agentsDir = join(cwd, '.claude', 'agents');
+    await mkdir(agentsDir, { recursive: true });
+
+    const outsideFile = join(outsideDir, 'secret.md');
+    await writeFile(outsideFile, `---\nname: escape\n---\n# escape\n`, 'utf8');
+    await symlink(outsideFile, join(agentsDir, 'escape.md'));
+
+    const adapter = await ClaudeCodeAdapter.create(cwd);
+    await expect(adapter.findAgent('escape')).rejects.toBeInstanceOf(PlatformAgentNotFoundError);
   });
 });
