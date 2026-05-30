@@ -47,7 +47,7 @@ describe('ClaudeCodeAdapter', () => {
         system_prompt: 'You are helpful.',
         sandbox: { type: 'docker' },
       });
-      await stream.start();
+      await stream.sessionId();
 
       const opts = queryMock.mock.calls[0]![0].options as Record<string, unknown>;
       expect(opts['model']).toBe('claude-opus-4-5');
@@ -66,7 +66,7 @@ describe('ClaudeCodeAdapter', () => {
       queryMock.mockClear();
 
       const adapter = await ClaudeCodeAdapter.create();
-      await adapter.run('continue prompt', {}, 'resume-session-id').start();
+      await adapter.run('continue prompt', {}, 'resume-session-id').sessionId();
 
       expect(queryMock).toHaveBeenCalledOnce();
       const opts = queryMock.mock.calls[0]![0].options as Record<string, unknown>;
@@ -79,7 +79,7 @@ describe('ClaudeCodeAdapter', () => {
       queryMock.mockClear();
 
       const adapter = await ClaudeCodeAdapter.create();
-      await adapter.run('fresh prompt', {}).start();
+      await adapter.run('fresh prompt', {}).sessionId();
 
       const opts = queryMock.mock.calls[0]![0].options as Record<string, unknown>;
       expect(opts['resume']).toBeUndefined();
@@ -91,7 +91,7 @@ describe('ClaudeCodeAdapter', () => {
       queryMock.mockClear();
 
       const adapter = await ClaudeCodeAdapter.create();
-      await adapter.run('any prompt', {}).start();
+      await adapter.run('any prompt', {}).sessionId();
 
       const opts = queryMock.mock.calls[0]![0].options as Record<string, unknown>;
       expect(opts['includePartialMessages']).toBe(true);
@@ -101,14 +101,12 @@ describe('ClaudeCodeAdapter', () => {
       const adapter = await ClaudeCodeAdapter.create();
       const stream = adapter.run('hello', {});
       const donePromise = new Promise<void>((resolve) => stream.on('done', resolve));
-      void stream.start();
       await donePromise;
     });
 
     it('sessionId() resolves to the session id emitted by the SDK', async () => {
       const adapter = await ClaudeCodeAdapter.create();
       const stream = adapter.run('hello', {});
-      void stream.start();
       await expect(stream.sessionId()).resolves.toBe('adapter-session');
     });
   });

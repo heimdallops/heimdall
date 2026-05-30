@@ -41,8 +41,6 @@ import type { ClaudeOptions } from './options.ts';
 export class ClaudeStream extends EventEmitter implements PlatformStream {
   private readonly abortController: AbortController;
   private readonly sessionIdPromise: Promise<string>;
-  private executePromise: Promise<void> | undefined;
-  private preStartRejection: Promise<string> | undefined;
   private resolveSessionId!: (id: string) => void;
   private rejectSessionId!: (err: unknown) => void;
   private readonly prompt: string;
@@ -59,20 +57,11 @@ export class ClaudeStream extends EventEmitter implements PlatformStream {
       this.resolveSessionId = resolve;
       this.rejectSessionId = reject;
     });
+    this.sessionIdPromise.catch(() => undefined);
     this.prompt = prompt;
     this.options = options;
     this.initialSessionId = sessionId;
-  }
-
-  // Must be called after listeners are registered. Idempotent — subsequent calls return the same promise.
-  start(): Promise<void> {
-    if (this.executePromise !== undefined) {
-      return this.executePromise;
-    }
-
-    this.executePromise = this.execute(this.prompt, this.options, this.initialSessionId);
-
-    return this.executePromise;
+    void this.execute(this.prompt, this.options, this.initialSessionId);
   }
 
   override on<K extends keyof StreamEventMap>(
@@ -87,22 +76,6 @@ export class ClaudeStream extends EventEmitter implements PlatformStream {
   }
 
   sessionId(): Promise<string> {
-    if (this.executePromise === undefined) {
-      if (this.preStartRejection === undefined) {
-        const err = new PlatformError(
-          'PLATFORM_ERROR',
-          'start() must be called before awaiting sessionId()'
-        );
-        this.preStartRejection = Promise.reject(err);
-        // preStartRejection is a plain Promise, not an EventEmitter event, so Node's
-        // unhandled-rejection detector fires independently of the 'error' listener
-        // registered in the constructor. Attach a no-op catch to silence it.
-        this.preStartRejection.catch(() => undefined);
-      }
-
-      return this.preStartRejection;
-    }
-
     return this.sessionIdPromise;
   }
 

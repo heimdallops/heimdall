@@ -12,12 +12,15 @@ export interface StreamEventMap {
 }
 
 /**
- * Errors arrive through the `error` event rather than as promise rejections,
- * so callers observe all failures through a single listener path.
+ * Errors are reported through two channels. Most failures arrive via the
+ * `error` event. However, `sessionId()` returns a `Promise<string>` that may
+ * also reject — with `PlatformCancellationError` if the stream is cancelled
+ * before a session ID is observed, or with `PlatformError` if the stream ends
+ * in failure. Callers must handle both the `error` event and potential
+ * rejections from `sessionId()`.
  */
 export interface PlatformStream {
   on<K extends keyof StreamEventMap>(event: K, handler: (...args: StreamEventMap[K]) => void): this;
-  start(): Promise<void>;
   cancel(): void;
   sessionId(): Promise<string>;
 }
