@@ -39,7 +39,7 @@ nodes:
   - id: approve_plan
     depends_on: [plan]
     approval:
-      message: "Review the plan before implementing. Approve to continue."
+      message: 'Review the plan before implementing. Approve to continue.'
       exit_on_no: true
 
   - id: implement

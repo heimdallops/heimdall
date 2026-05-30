@@ -10,33 +10,33 @@ hero:
     soft: true
 
   titleLogo:
-    path: "images/logos"
-    filename: "heimdall-logo.png"
-    alt: "Heimdall logo"
+    path: 'images/logos'
+    filename: 'heimdall-logo.png'
+    alt: 'Heimdall logo'
     height: 72px
 
-  title: "Heimdall"
+  title: 'Heimdall'
   subtitle: |
     A CLI for **deterministic agentic workflows** from YAML. Agents provide the intelligence;
     Heimdall owns the structure — phases, gates, feedback loops, and isolated git worktrees.
 
   image:
-    path: "images"
-    filename: "heimdall-logo.png"
-    alt: "Heimdall logo"
+    path: 'images'
+    filename: 'heimdall-logo.png'
+    alt: 'Heimdall logo'
     boxShadow: true
     rounded: true
 
   ctaButton:
     icon: visibility
-    btnText: "About Heimdall"
-    url: "/docs/about/"
+    btnText: 'About Heimdall'
+    url: '/docs/about/'
   cta2Button:
     icon: code
-    btnText: "Workflow examples"
-    url: "/docs/guides/workflows/"
+    btnText: 'Workflow examples'
+    url: '/docs/guides/workflows/'
 
-  info: "**Open source** · MIT Licensed · Documentation preview"
+  info: '**Open source** · MIT Licensed · Documentation preview'
 
 imageCompare:
   enable: false
