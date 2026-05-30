@@ -24,14 +24,14 @@ class OutputFile implements AsyncDisposable {
 
   public static async create(): Promise<OutputFile> {
     const path = join(tmpdir(), `heimdall-bash-output-${randomUUID()}`);
-    const fh = await open(path, 'w+');
+    const fh = await open(path, 'wx+', 0o600);
 
     return new OutputFile(fh, path);
   }
 
   public async [Symbol.asyncDispose](): Promise<void> {
     await this.fh.close().catch(() => undefined);
-    await rm(this.path, { force: true });
+    await rm(this.path, { force: true }).catch(() => undefined);
   }
 }
 

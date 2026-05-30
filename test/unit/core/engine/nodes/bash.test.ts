@@ -1,5 +1,7 @@
+import { randomUUID } from 'node:crypto';
 import { access, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 
 import { describe, expect, it } from 'vitest';
 import { ZodError } from 'zod';
@@ -52,8 +54,8 @@ describe('BashNode', () => {
 
       expect(result.status).toBe('completed');
       // The output is the injected HEIMDALL_OUTPUT path — it must start with the system temp dir
-      expect((result as NodeRunCompleted).result['output'] as string).toMatch(
-        new RegExp(`^${tmpdir()}`)
+      expect(((result as NodeRunCompleted).result['output'] as string).startsWith(tmpdir())).toBe(
+        true
       );
     });
   });
@@ -181,6 +183,8 @@ describe('BashNode', () => {
       ['array', "'[1,2,3]'", [1, 2, 3]],
       ['number', '"42"', 42],
       ['null', '"null"', null],
+      ['boolean', '"true"', true],
+      ['string', '\'"hello"\'', 'hello'],
     ])(
       'returns parsed value when HEIMDALL_OUTPUT contains a JSON %s',
       async (_label, literal, expected) => {
@@ -357,14 +361,14 @@ describe('BashNode', () => {
 
     it('deletes the temp file even when the script exits non-zero', async () => {
       // The script writes the injected path to a side-channel file, then exits non-zero.
-      const captureFile = '/tmp/heimdall-test-capture';
+      const captureFile = join(tmpdir(), `heimdall-test-capture-${randomUUID()}`);
 
       // Clean up any remnant from a previous test run
       await rm(captureFile, { force: true });
 
       const node = makeNode({
         id: 'n1',
-        bash: 'echo -n "$HEIMDALL_OUTPUT" > /tmp/heimdall-test-capture; exit 1',
+        bash: `echo -n "$HEIMDALL_OUTPUT" > ${captureFile}; exit 1`,
       });
 
       const err = await catchRejection(run(node));
