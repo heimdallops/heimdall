@@ -49,7 +49,7 @@ export class ApprovalNode extends BaseNode<NodeRunCompleted | NodeRunExited> {
     this.enableFeedback = data.enableFeedback;
   }
 
-  public override run(options: NodeRunOptions): Promise<NodeRunCompleted | NodeRunExited> {
+  public override async run(options: NodeRunOptions): Promise<NodeRunCompleted | NodeRunExited> {
     const { ctx, emitter } = options;
 
     let interpolatedMessage: string;
@@ -62,27 +62,20 @@ export class ApprovalNode extends BaseNode<NodeRunCompleted | NodeRunExited> {
         'Failed to interpolate approval message',
         'ENGINE_APPROVAL_INTERPOLATION_ERROR',
         this.id,
-        {
-          nodeName: this.name,
-          cause: err,
-        }
+        { nodeName: this.name, cause: err }
       );
     }
 
-    return new Promise<NodeRunCompleted | NodeRunExited>((resolve, reject) => {
-      if (emitter.listenerCount('approval_requested') === 0) {
-        reject(
-          new NodeError(
-            'Approval node emitted approval_requested but no listener is registered',
-            'ENGINE_APPROVAL_NO_LISTENER',
-            this.id,
-            { nodeName: this.name }
-          )
-        );
+    if (emitter.listenerCount('approval_requested') === 0) {
+      throw new NodeError(
+        'Approval node emitted approval_requested but no listener is registered',
+        'ENGINE_APPROVAL_NO_LISTENER',
+        this.id,
+        { nodeName: this.name }
+      );
+    }
 
-        return;
-      }
-
+    return await new Promise<NodeRunCompleted | NodeRunExited>((resolve) => {
       let resolved = false;
 
       const guardedResolve = (approvalResult: ApprovalResult): void => {
@@ -120,7 +113,7 @@ export class ApprovalNode extends BaseNode<NodeRunCompleted | NodeRunExited> {
 
       emitter.emit('approval_requested', {
         nodeId: this.id,
-        nodeName: this.name ?? this.id,
+        nodeName: this.displayName(),
         message: interpolatedMessage,
         enableFeedback: this.enableFeedback,
         resolve: guardedResolve,
