@@ -9,4 +9,4 @@ Heimdall is a CLI for building deterministic agentic workflows from YAML. AI age
 
 ---
 
-Start with [About Heimdall](/docs/about/) for the product overview, then explore [Getting started](/docs/getting-started/) and [Workflows](/docs/guides/workflows/) for illustrative examples.
+Start with [About Heimdall](/docs/about/) for the product overview, then explore [Getting started](/docs/getting-started/) and the [Guides](/docs/guides/) for illustrative workflow patterns. For field-level detail, see the [Reference](/docs/reference/) section.
