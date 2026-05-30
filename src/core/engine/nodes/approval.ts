@@ -37,8 +37,8 @@ export class ApprovalNode extends BaseNode<NodeRunCompleted | NodeRunExited> {
       ...(data.timeout !== undefined ? { timeout: data.timeout } : {}),
       ...(data.retries !== undefined ? { retries: data.retries } : {}),
       message: data.approval.message,
-      exitOnNo: data.approval.exit_on_no ?? false,
-      enableFeedback: data.approval.enable_feedback ?? false,
+      exitOnNo: data.approval.exit_on_no,
+      enableFeedback: data.approval.enable_feedback,
     });
   }
 
@@ -52,12 +52,22 @@ export class ApprovalNode extends BaseNode<NodeRunCompleted | NodeRunExited> {
   public override run(options: NodeRunOptions): Promise<NodeRunCompleted | NodeRunExited> {
     const { ctx, emitter } = options;
 
-    // interpolate is CEL-agnostic and accepts any Record;
-    // ExecutionContext satisfies this shape at runtime.
-    const interpolatedMessage = interpolate(
-      this.message,
-      ctx as unknown as Record<string, unknown>
-    );
+    let interpolatedMessage: string;
+    try {
+      // interpolate is CEL-agnostic and accepts any Record;
+      // ExecutionContext satisfies this shape at runtime.
+      interpolatedMessage = interpolate(this.message, ctx as unknown as Record<string, unknown>);
+    } catch (err) {
+      throw new NodeError(
+        'Failed to interpolate approval message',
+        'ENGINE_APPROVAL_INTERPOLATION_ERROR',
+        this.id,
+        {
+          nodeName: this.name,
+          cause: err,
+        }
+      );
+    }
 
     return new Promise<NodeRunCompleted | NodeRunExited>((resolve, reject) => {
       if (emitter.listenerCount('approval_requested') === 0) {

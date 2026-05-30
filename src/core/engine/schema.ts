@@ -94,8 +94,8 @@ export const PromptFileNodeSchema = AgenticBaseNodeSchema.extend({
 export const ApprovalNodeSchema = BaseNodeSchema.extend({
   approval: z.object({
     message: z.string(),
-    exit_on_no: z.boolean().optional(),
-    enable_feedback: z.boolean().optional(),
+    exit_on_no: z.boolean().default(false),
+    enable_feedback: z.boolean().default(false),
   }),
 });
 

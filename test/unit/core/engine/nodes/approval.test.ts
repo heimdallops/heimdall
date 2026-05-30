@@ -198,6 +198,20 @@ describe('ApprovalNode', () => {
       });
     });
 
+    it('returns status exited when enable_feedback: true but feedback is an empty string', async () => {
+      const node = makeNode({
+        id: 'a1',
+        approval: { message: 'Approve?', exit_on_no: true, enable_feedback: true },
+      });
+      const result = await runWithResolve(node, makeCtx(), { approved: false, feedback: '' });
+
+      expect(result).toEqual({
+        status: 'exited',
+        reason: 'Approval declined',
+        failure: false,
+      });
+    });
+
     it('returns status exited when feedback is provided but enable_feedback: false', async () => {
       const node = makeNode({
         id: 'a1',
@@ -249,6 +263,16 @@ describe('ApprovalNode', () => {
         approval: { message: 'Approve?', enable_feedback: true },
       });
       const result = await runWithResolve(node, makeCtx(), { approved: true });
+
+      expect(result).toEqual({ status: 'completed', result: { approved: true } });
+    });
+
+    it('does not include feedback key when enable_feedback: true but feedback is an empty string', async () => {
+      const node = makeNode({
+        id: 'a1',
+        approval: { message: 'Approve?', enable_feedback: true },
+      });
+      const result = await runWithResolve(node, makeCtx(), { approved: true, feedback: '' });
 
       expect(result).toEqual({ status: 'completed', result: { approved: true } });
     });
