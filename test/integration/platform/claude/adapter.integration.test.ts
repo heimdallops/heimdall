@@ -75,4 +75,75 @@ describe('ClaudeCodeAdapter integration', () => {
     },
     30_000
   );
+
+  // GIVEN a first run completes and a session ID is captured
+  // WHEN adapter.run() is called again with that session ID as the third argument
+  // THEN the second stream resolves a session ID, emits done with no errors,
+  //      and the model's response reflects awareness of the prior turn's content
+  it.skipIf(!credentialsAvailable)(
+    'resumed session retains context from the previous turn',
+    async () => {
+      const adapter = await ClaudeCodeAdapter.create(tempDir);
+
+      const stream1 = adapter.run('My secret word is: zygote. Reply with only: OK', {});
+      await collectStream(stream1);
+      const sessionId = await stream1.sessionId();
+
+      const stream2 = adapter.run('What was my secret word? Reply with only the word.', {}, sessionId);
+      const { output, errors } = await collectStream(stream2);
+
+      expect(errors).toHaveLength(0);
+      expect(output.toLowerCase()).toContain('zygote');
+    },
+    60_000
+  );
+
+  // GIVEN an agent fixture whose frontmatter includes a disallowed_tools list
+  //       (e.g. disallowed_tools: [Bash])
+  // WHEN parseAgent() is called and the returned options are passed to adapter.run()
+  // THEN the stream completes without error, confirming the SDK accepted the
+  //      disallowed_tools option without rejecting the call
+  it.skipIf(!credentialsAvailable)(
+    'agent with disallowed_tools frontmatter completes without error',
+    async () => {
+      const adapter = await ClaudeCodeAdapter.create(tempDir);
+      const { options } = adapter.parseAgent('---\nname: no-bash\ndisallowed_tools: [Bash]\n---\n');
+
+      expect(options.disallowed_tools).toEqual(['Bash']);
+
+      const stream = adapter.run('Reply with only: OK', options);
+      const { errors } = await collectStream(stream);
+
+      expect(errors).toHaveLength(0);
+    },
+    30_000
+  );
+
+  // GIVEN two calls to adapter.run() are started concurrently on the same adapter instance
+  // WHEN both streams are consumed in parallel
+  // THEN each stream resolves its own distinct non-empty session ID,
+  //      confirming the adapter does not share state between concurrent runs
+  it.skipIf(!credentialsAvailable)(
+    'concurrent streams on the same adapter resolve independent session IDs',
+    async () => {
+      const adapter = await ClaudeCodeAdapter.create(tempDir);
+      const content = await adapter.findAgent('echo');
+      const { options } = adapter.parseAgent(content);
+
+      const stream1 = adapter.run('hello', options);
+      const stream2 = adapter.run('world', options);
+
+      const [result1, result2] = await Promise.all([collectStream(stream1), collectStream(stream2)]);
+
+      expect(result1.errors).toHaveLength(0);
+      expect(result2.errors).toHaveLength(0);
+
+      const [id1, id2] = await Promise.all([stream1.sessionId(), stream2.sessionId()]);
+
+      expect(id1).toMatch(/.+/);
+      expect(id2).toMatch(/.+/);
+      expect(id1).not.toBe(id2);
+    },
+    60_000
+  );
 });
