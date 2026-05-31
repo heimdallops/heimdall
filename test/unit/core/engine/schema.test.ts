@@ -100,7 +100,6 @@ describe('WorkflowDefinitionSchema', () => {
       ['prompt_file', { prompt_file: './prompt.md' }],
       ['approval', { approval: { message: 'Approve?' } }],
       ['exit', { exit: {} }],
-      ['break', { break: true }],
       [
         'loop with max_iterations',
         { loop: { max_iterations: 3, nodes: [{ id: 'inner', bash: 'echo loop' }] } },
@@ -113,6 +112,12 @@ describe('WorkflowDefinitionSchema', () => {
       const result = WorkflowDefinitionSchema.safeParse(workflow(nodeFields));
 
       expect(result.success).toBe(true);
+    });
+
+    it('rejects a break node at the top level', () => {
+      const result = WorkflowDefinitionSchema.safeParse(workflow({ break: null }));
+
+      expect(result.success).toBe(false);
     });
 
     it('rejects a loop node with neither until nor max_iterations', () => {

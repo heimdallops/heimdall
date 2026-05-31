@@ -168,16 +168,28 @@ export type Node =
   | LoopNode
   | BreakNode;
 
-export const WorkflowDefinitionSchema = z.object({
-  name: z.string().min(1),
-  version: z.string().optional(),
-  description: z.string().optional(),
-  platform: z.literal('claude').optional(),
-  platform_options: z.record(z.string(), z.unknown()).optional(),
-  inputs: z.record(z.string(), InputDeclarationSchema).optional(),
-  vars: z.record(z.string(), z.union([z.string(), z.number(), z.boolean()])).optional(),
-  workspace: WorkspaceConfigSchema.optional(),
-  nodes: z.array(NodeSchema).min(1),
-});
+export const WorkflowDefinitionSchema = z
+  .object({
+    name: z.string().min(1),
+    version: z.string().optional(),
+    description: z.string().optional(),
+    platform: z.literal('claude').optional(),
+    platform_options: z.record(z.string(), z.unknown()).optional(),
+    inputs: z.record(z.string(), InputDeclarationSchema).optional(),
+    vars: z.record(z.string(), z.union([z.string(), z.number(), z.boolean()])).optional(),
+    workspace: WorkspaceConfigSchema.optional(),
+    nodes: z.array(NodeSchema).min(1),
+  })
+  .superRefine((data, ctx) => {
+    data.nodes.forEach((node, index) => {
+      if ('break' in node) {
+        ctx.addIssue({
+          code: 'custom',
+          path: ['nodes', index],
+          message: 'break_node may only appear inside a loop body, not at the top level',
+        });
+      }
+    });
+  });
 
 export type WorkflowDefinition = z.infer<typeof WorkflowDefinitionSchema>;
