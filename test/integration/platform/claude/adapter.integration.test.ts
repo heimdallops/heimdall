@@ -71,15 +71,11 @@ describe('ClaudeCodeAdapter integration', () => {
 
       expect(errors).toHaveLength(0);
       expect(output.toLowerCase()).toContain('hello world');
-      await expect(stream.sessionId()).resolves.toMatch(/.+/);
+      await expect(stream.sessionId()).resolves.toMatch(/^\S{8,}$/);
     },
     30_000
   );
 
-  // GIVEN a first run completes and a session ID is captured
-  // WHEN adapter.run() is called again with that session ID as the third argument
-  // THEN the second stream resolves a session ID, emits done with no errors,
-  //      and the model's response reflects awareness of the prior turn's content
   it.skipIf(!credentialsAvailable)(
     'resumed session retains context from the previous turn',
     async () => {
@@ -98,11 +94,6 @@ describe('ClaudeCodeAdapter integration', () => {
     60_000
   );
 
-  // GIVEN an agent fixture whose frontmatter includes a disallowed_tools list
-  //       (e.g. disallowed_tools: [Bash])
-  // WHEN parseAgent() is called and the returned options are passed to adapter.run()
-  // THEN the stream completes without error, confirming the SDK accepted the
-  //      disallowed_tools option without rejecting the call
   it.skipIf(!credentialsAvailable)(
     'agent with disallowed_tools frontmatter completes without error',
     async () => {
@@ -119,10 +110,6 @@ describe('ClaudeCodeAdapter integration', () => {
     30_000
   );
 
-  // GIVEN two calls to adapter.run() are started concurrently on the same adapter instance
-  // WHEN both streams are consumed in parallel
-  // THEN each stream resolves its own distinct non-empty session ID,
-  //      confirming the adapter does not share state between concurrent runs
   it.skipIf(!credentialsAvailable)(
     'concurrent streams on the same adapter resolve independent session IDs',
     async () => {
@@ -140,10 +127,151 @@ describe('ClaudeCodeAdapter integration', () => {
 
       const [id1, id2] = await Promise.all([stream1.sessionId(), stream2.sessionId()]);
 
-      expect(id1).toMatch(/.+/);
-      expect(id2).toMatch(/.+/);
+      expect(id1).toMatch(/^\S{8,}$/);
+      expect(id2).toMatch(/^\S{8,}$/);
       expect(id1).not.toBe(id2);
     },
     60_000
   );
+});
+
+describe('parseAgent frontmatter validation', () => {
+  let tempDir: string;
+  let adapter: ClaudeCodeAdapter;
+
+  beforeAll(async () => {
+    tempDir = await mkdtemp(join(os.tmpdir(), 'heimdall-parseagent-validation-'));
+    await mkdir(join(tempDir, '.claude', 'agents'), { recursive: true });
+
+    const fixtures: { name: string; content: string }[] = [
+      {
+        name: 'valid-options.md',
+        content: `---
+name: valid-options
+model: claude-opus-4-5
+reasoning_effort: high
+allowed_tools:
+  - Read
+  - Edit
+disallowed_tools:
+  - Bash
+max_budget_usd: 10.0
+system_prompt: "You are helpful."
+---
+Body.
+`,
+      },
+      {
+        name: 'mixed-frontmatter.md',
+        content: `---
+name: mixed-frontmatter
+model: claude-opus-4-5
+reasoning_effort: ultra
+---
+Body.
+`,
+      },
+      {
+        name: 'all-invalid.md',
+        content: `---
+name: all-invalid
+reasoning_effort: turbo
+max_budget_usd: "not-a-number"
+---
+Body.
+`,
+      },
+      {
+        name: 'foreign-platform.md',
+        content: `---
+name: foreign-platform
+opencode_provider: anthropic
+opencode_model: claude-3-7-sonnet
+custom_tool_timeout: 30
+---
+Body.
+`,
+      },
+      {
+        name: 'cross-platform.md',
+        content: `---
+name: cross-platform
+model: claude-sonnet-4-5
+opencode_provider: anthropic
+custom_tool_timeout: 30
+reasoning_effort: high
+---
+Body.
+`,
+      },
+      {
+        name: 'alias-tools.md',
+        content: `---
+name: alias-tools
+tools: Read, Edit
+---
+Body.
+`,
+      },
+    ];
+
+    for (const fixture of fixtures) {
+      await writeFile(join(tempDir, '.claude', 'agents', fixture.name), fixture.content, 'utf8');
+    }
+
+    adapter = await ClaudeCodeAdapter.create(tempDir);
+  });
+
+  afterAll(async () => {
+    await rm(tempDir, { recursive: true, force: true });
+  });
+
+  it('parses all valid frontmatter fields into options with no dropped fields', async () => {
+    const content = await adapter.findAgent('valid-options');
+    const { options } = adapter.parseAgent(content);
+
+    expect(options).toEqual({
+      model: 'claude-opus-4-5',
+      reasoning_effort: 'high',
+      allowed_tools: ['Read', 'Edit'],
+      disallowed_tools: ['Bash'],
+      max_budget_usd: 10.0,
+      system_prompt: 'You are helpful.',
+    });
+  });
+
+  it('includes valid fields and excludes invalid fields', async () => {
+    const content = await adapter.findAgent('mixed-frontmatter');
+    const { options } = adapter.parseAgent(content);
+
+    expect(options).toEqual({ model: 'claude-opus-4-5' });
+  });
+
+  it('returns empty options and does not throw when all known keys have invalid values', async () => {
+    const content = await adapter.findAgent('all-invalid');
+    const { options } = adapter.parseAgent(content);
+    expect(options).toEqual({});
+  });
+
+  it('returns empty options when only foreign-platform keys are present', async () => {
+    const content = await adapter.findAgent('foreign-platform');
+    const { options } = adapter.parseAgent(content);
+
+    expect(options).toEqual({});
+  });
+
+  it('includes heimdall-known valid fields and ignores foreign keys', async () => {
+    const content = await adapter.findAgent('cross-platform');
+    const { options } = adapter.parseAgent(content);
+
+    expect(options).toEqual({ model: 'claude-sonnet-4-5', reasoning_effort: 'high' });
+  });
+
+  it('maps "tools" alias to allowed_tools and coerces comma-string to array', async () => {
+    const content = await adapter.findAgent('alias-tools');
+    const { options } = adapter.parseAgent(content);
+
+    expect(options.allowed_tools).toEqual(['Read', 'Edit']);
+    expect((options as Record<string, unknown>)['tools']).toBeUndefined();
+  });
 });

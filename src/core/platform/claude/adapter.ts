@@ -6,7 +6,7 @@ import process from 'node:process';
 import matter from 'gray-matter';
 import yaml from 'js-yaml';
 
-import { PlatformAgentNotFoundError, PlatformError } from '../errors.ts';
+import { PlatformAgentNotFoundError } from '../errors.ts';
 import type { PlatformAdapter, PlatformStream } from '../types.ts';
 import type { ClaudeOptions } from './options.ts';
 import { claudeOptionsSchema } from './options.ts';
@@ -35,6 +35,28 @@ const enumerateMdFiles = async (dir: string): Promise<string[]> => {
 
 const FIELD_ALIASES: Record<string, string> = { tools: 'allowed_tools' };
 const ARRAY_COERCE_KEYS = new Set(['allowed_tools', 'disallowed_tools']);
+
+// gray-matter supports `---js` frontmatter that executes JavaScript at parse time.
+//TODO: @c1moore @nolanrsherman Override the javascript engine to block arbitrary code execution in agent files.
+const MATTER_OPTIONS = {
+  engines: {
+    yaml: (s: string) => {
+      const parsed = yaml.load(s);
+
+      return parsed !== null && typeof parsed === 'object' && !Array.isArray(parsed)
+        ? (parsed as Record<string, unknown>)
+        : {};
+    },
+    javascript: {
+      parse: (_s: string): Record<string, unknown> => {
+        throw new Error('JavaScript frontmatter is not permitted in agent files');
+      },
+      stringify: (): string => {
+        throw new Error('not supported');
+      },
+    },
+  },
+} as const;
 
 export class ClaudeCodeAdapter implements PlatformAdapter<ClaudeOptions> {
   private readonly cwd: string;
@@ -101,9 +123,10 @@ export class ClaudeCodeAdapter implements PlatformAdapter<ClaudeOptions> {
 
         let data: Record<string, unknown>;
         try {
-          ({ data } = matter(content, {
-            engines: { yaml: (s: string) => yaml.load(s) as Record<string, unknown> },
-          }) as { data: Record<string, unknown>; content: string });
+          ({ data } = matter(content, MATTER_OPTIONS) as {
+            data: Record<string, unknown>;
+            content: string;
+          });
         } catch {
           continue;
         }
@@ -136,34 +159,50 @@ export class ClaudeCodeAdapter implements PlatformAdapter<ClaudeOptions> {
   }
 
   parseAgent(content: string): { prompt: string; options: ClaudeOptions } {
-    const { data: rawFrontmatter, content: body } = matter(content, {
-      engines: { yaml: (s: string) => yaml.load(s) as Record<string, unknown> },
-    });
+    const { data: rawFrontmatter, content: body } = matter(content, MATTER_OPTIONS);
 
     const aliased: Record<string, unknown> = {};
+
+    // Pass 1: canonical (non-alias) keys take unconditional precedence
     for (const [key, value] of Object.entries(rawFrontmatter)) {
-      aliased[FIELD_ALIASES[key] ?? key] = value;
+      if (!(key in FIELD_ALIASES)) {
+        aliased[key] = value;
+      }
+    }
+
+    // Pass 2: alias keys fill in only when no canonical key was present
+    for (const [key, value] of Object.entries(rawFrontmatter)) {
+      const canonicalKey = FIELD_ALIASES[key];
+      if (canonicalKey !== undefined && !(canonicalKey in aliased)) {
+        aliased[canonicalKey] = value;
+      }
     }
 
     for (const key of ARRAY_COERCE_KEYS) {
-      if (typeof aliased[key] === 'string') {
-        aliased[key] = aliased[key]
+      const raw = aliased[key];
+      if (typeof raw === 'string') {
+        aliased[key] = raw
           .split(',')
           .map((s) => s.trim())
           .filter(Boolean);
       }
     }
 
-    const result = claudeOptionsSchema.partial().safeParse(aliased);
-    if (!result.success) {
-      const [issue] = result.error.issues;
-      const fieldPath = issue?.path.join('.') ?? 'unknown';
-      throw new PlatformError(
-        'PLATFORM_ERROR',
-        `Invalid agent frontmatter at '${fieldPath}': ${issue?.code ?? 'validation error'}`
-      );
+    const options: ClaudeOptions = {};
+
+    for (const [key, value] of Object.entries(aliased)) {
+      const fieldSchema = claudeOptionsSchema.shape[key as keyof typeof claudeOptionsSchema.shape];
+      if (fieldSchema === undefined) {
+        // Unknown keys are silently ignored — they were never Heimdall's to validate.
+        continue;
+      }
+
+      const result = fieldSchema.safeParse(value);
+      if (result.success) {
+        Object.assign(options, { [key]: result.data });
+      }
     }
 
-    return { prompt: body.trim(), options: result.data };
+    return { prompt: body.trim(), options };
   }
 }

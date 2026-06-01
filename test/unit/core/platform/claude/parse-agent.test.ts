@@ -1,4 +1,5 @@
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
+import os from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -9,7 +10,7 @@ import { ClaudeCodeAdapter } from '../../../../../src/core/platform/claude/adapt
 describe('parseAgent', () => {
   let adapter: ClaudeCodeAdapter;
   beforeAll(async () => {
-    adapter = await ClaudeCodeAdapter.create();
+    adapter = await ClaudeCodeAdapter.create(os.tmpdir());
   });
 
   describe('frontmatter + body', () => {
@@ -63,7 +64,6 @@ Body text.`;
       const { options } = adapter.parseAgent(content);
 
       expect(options.allowed_tools).toEqual(['Read', 'Write']);
-      // The alias key must not leak through to the output
       expect((options as Record<string, unknown>)['tools']).toBeUndefined();
     });
 
@@ -78,6 +78,32 @@ Body text.`;
 
       expect(options.allowed_tools).toEqual(['Read', 'Edit', 'Bash']);
       expect((options as Record<string, unknown>)['tools']).toBeUndefined();
+    });
+
+    it('prefers allowed_tools over the tools alias when both appear in frontmatter', () => {
+      const content = `---
+allowed_tools:
+  - Write
+tools:
+  - Read
+---
+
+Body.`;
+      const { options } = adapter.parseAgent(content);
+      expect(options.allowed_tools).toEqual(['Write']);
+    });
+
+    it('prefers allowed_tools over the tools alias when tools appears first in frontmatter', () => {
+      const content = `---
+tools:
+  - Read
+allowed_tools:
+  - Write
+---
+
+Body.`;
+      const { options } = adapter.parseAgent(content);
+      expect(options.allowed_tools).toEqual(['Write']);
     });
   });
 
@@ -98,21 +124,17 @@ Body.`;
   });
 
   describe('validation errors', () => {
-    it('throws PlatformError with PLATFORM_ERROR code for an invalid value on a known key', () => {
+    it('excludes the invalid field from options', () => {
       const content = `---\nreasoning_effort: invalid_value\n---\n\nBody.`;
-      expect(() => adapter.parseAgent(content)).toThrow(
-        expect.objectContaining({ code: 'PLATFORM_ERROR' })
-      );
+      const { options } = adapter.parseAgent(content);
+      expect(options.reasoning_effort).toBeUndefined();
     });
 
-    it('error message includes the offending field name', () => {
-      const content = `---
-reasoning_effort: not_a_valid_effort
----
-
-Body.`;
-
-      expect(() => adapter.parseAgent(content)).toThrow(/reasoning_effort/);
+    it('retains valid sibling fields and excludes only the invalid field', () => {
+      const content = `---\nreasoning_effort: invalid_value\nmodel: claude-opus-4-5\n---\n\nBody.`;
+      const { options } = adapter.parseAgent(content);
+      expect(options.model).toBe('claude-opus-4-5');
+      expect(options.reasoning_effort).toBeUndefined();
     });
   });
 
@@ -174,6 +196,10 @@ Prompt body here.`;
 
         expect(typeof result.prompt).toBe('string');
         expect(result.prompt.length).toBeGreaterThan(0);
+        // Frontmatter delimiter must not bleed into the prompt
+        expect(result.prompt).not.toMatch(/^---/);
+        // tools alias: real agents may use `tools:` — verify it is not leaked as-is into options
+        expect((result.options as Record<string, unknown>)['tools']).toBeUndefined();
       }
     );
   });
