@@ -25,7 +25,8 @@ export interface PlatformStream {
   sessionId(): Promise<string>;
 }
 
-// Abstraction boundary between the engine and a concrete AI platform SDK.
+// PlatformAdapter provides a common interface for interacting with different
+// AI platforms such as Claude Code, OpenCode, and Codex.
 export interface PlatformAdapter<TOptions extends BasePlatformOptions> {
   run(prompt: string, options: TOptions, sessionId?: string): PlatformStream;
   findAgent(name: string): Promise<string>;
