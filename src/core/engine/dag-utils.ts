@@ -60,7 +60,11 @@ export const topologicalSort = (nodes: BaseNode[]): BaseNode[] => {
 
   for (const node of nodes) {
     for (const dep of node.getDependencies()) {
-      adjacency.get(dep)!.push(node.id);
+      const successors = adjacency.get(dep);
+      if (successors === undefined) {
+        throw new EngineConfigError(`Node '${node.id}' has unknown depends_on reference: '${dep}'`);
+      }
+      successors.push(node.id);
       inDegree.set(node.id, inDegree.get(node.id)! + 1);
     }
   }
@@ -100,7 +104,7 @@ export const topologicalSort = (nodes: BaseNode[]): BaseNode[] => {
   return order.map((id) => nodeById.get(id)!);
 };
 
-export const buildSharedContextMap = (orderedNodes: BaseNode[]): Map<string, string> => {
+export const buildContextInheritanceMap = (orderedNodes: BaseNode[]): Map<string, string> => {
   const nodeById = new Map(orderedNodes.map((n) => [n.id, n]));
   const sharedContextMap = new Map<string, string>();
 

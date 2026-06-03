@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import {
-  buildSharedContextMap,
+  buildContextInheritanceMap,
   topologicalSort,
   validateDependencyReferences,
   validateNoNodeTypes,
@@ -228,11 +228,11 @@ describe('topologicalSort', () => {
   });
 });
 
-describe('buildSharedContextMap', () => {
+describe('buildContextInheritanceMap', () => {
   it('returns an empty map when no shared-context nodes are present', () => {
     const nodes = [new StubNode({ id: 'A' }), new StubNode({ id: 'B', depends_on: ['A'] })];
 
-    const result = buildSharedContextMap(nodes);
+    const result = buildContextInheritanceMap(nodes);
 
     expect(result.size).toBe(0);
   });
@@ -241,7 +241,7 @@ describe('buildSharedContextMap', () => {
     const writer = new AgenticStubNode({ id: 'writer' });
     const reader = new SharedContextNode({ id: 'reader', depends_on: ['writer'] });
 
-    const result = buildSharedContextMap([writer, reader]);
+    const result = buildContextInheritanceMap([writer, reader]);
 
     expect(result.get('reader')).toBe('writer');
   });
@@ -252,7 +252,7 @@ describe('buildSharedContextMap', () => {
       new NonAgenticSharedContextNode({ id: 'consumer', depends_on: ['prep'] }),
     ];
 
-    const result = buildSharedContextMap(nodes);
+    const result = buildContextInheritanceMap(nodes);
 
     expect(result.has('consumer')).toBe(false);
   });
@@ -264,7 +264,7 @@ describe('buildSharedContextMap', () => {
       new SharedContextNode({ id: 'consumer', depends_on: ['agent', 'helper'] }),
     ];
 
-    const result = buildSharedContextMap(nodes);
+    const result = buildContextInheritanceMap(nodes);
 
     expect(result.get('consumer')).toBe('agent');
   });
@@ -277,7 +277,7 @@ describe('buildSharedContextMap', () => {
       new SharedContextNode({ id: 'consumer2', depends_on: ['agent2'] }),
     ];
 
-    const result = buildSharedContextMap(nodes);
+    const result = buildContextInheritanceMap(nodes);
 
     expect(result.get('consumer1')).toBe('agent1');
     expect(result.get('consumer2')).toBe('agent2');
@@ -291,7 +291,7 @@ describe('buildSharedContextMap', () => {
       new SharedContextNode({ id: 'consumer', depends_on: ['agent2'] }),
     ];
 
-    const result = buildSharedContextMap(nodes);
+    const result = buildContextInheritanceMap(nodes);
 
     expect(result.get('consumer')).toBe('agent2');
   });
