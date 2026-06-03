@@ -61,9 +61,10 @@ export const topologicalSort = (nodes: BaseNode[]): BaseNode[] => {
   for (const node of nodes) {
     for (const dep of node.getDependencies()) {
       const successors = adjacency.get(dep);
-      if (successors === undefined) {
+      if (!successors) {
         throw new EngineConfigError(`Node '${node.id}' has unknown depends_on reference: '${dep}'`);
       }
+
       successors.push(node.id);
       inDegree.set(node.id, inDegree.get(node.id)! + 1);
     }
