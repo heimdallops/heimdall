@@ -16,7 +16,7 @@ system_prompt: "You are an echo machine. When the user sends a message, reply wi
 
 // The SDK spawns a bundled Claude Code CLI binary that accepts ANTHROPIC_API_KEY from the
 // environment or the developer's existing Claude Code CLI OAuth credentials (~/.claude/).
-const hasCredentials = async (): Promise<boolean> => {
+const isClaudeAvailable = async (): Promise<boolean> => {
   if (process.env['ANTHROPIC_API_KEY']) {
     return true;
   }
@@ -30,19 +30,25 @@ const hasCredentials = async (): Promise<boolean> => {
   }
 };
 
-const credentialsAvailable = await hasCredentials();
+const claudeAvailable = await isClaudeAvailable();
 
-const collectStream = (stream: PlatformStream): Promise<{ output: string; errors: PlatformError[] }> => {
+const collectStream = (
+  stream: PlatformStream
+): Promise<{ output: string; errors: PlatformError[] }> => {
   return new Promise((resolve, reject) => {
     const chunks: string[] = [];
     const errors: PlatformError[] = [];
 
-    stream.on('chunk', (delta) => { chunks.push(delta); });
+    stream.on('chunk', (delta) => {
+      chunks.push(delta);
+    });
     stream.on('error', (err) => {
       errors.push(err);
       reject(err);
     });
-    stream.on('done', () => { resolve({ output: chunks.join(''), errors }); });
+    stream.on('done', () => {
+      resolve({ output: chunks.join(''), errors });
+    });
   });
 };
 
@@ -59,7 +65,7 @@ describe('ClaudeCodeAdapter integration', () => {
     await rm(tempDir, { recursive: true, force: true });
   });
 
-  it.skipIf(!credentialsAvailable)(
+  it.skipIf(!claudeAvailable)(
     'echo agent returns hello world',
     async () => {
       const adapter = await ClaudeCodeAdapter.create(tempDir);
@@ -67,16 +73,15 @@ describe('ClaudeCodeAdapter integration', () => {
       const { options } = adapter.parseAgent(content);
 
       const stream = adapter.run('hello world', options);
-      const { output, errors } = await collectStream(stream);
+      const { output } = await collectStream(stream);
 
-      expect(errors).toHaveLength(0);
       expect(output.toLowerCase()).toContain('hello world');
       await expect(stream.sessionId()).resolves.toMatch(/^\S{8,}$/);
     },
     30_000
   );
 
-  it.skipIf(!credentialsAvailable)(
+  it.skipIf(!claudeAvailable)(
     'resumed session retains context from the previous turn',
     async () => {
       const adapter = await ClaudeCodeAdapter.create(tempDir);
@@ -85,16 +90,19 @@ describe('ClaudeCodeAdapter integration', () => {
       await collectStream(stream1);
       const sessionId = await stream1.sessionId();
 
-      const stream2 = adapter.run('What was my secret word? Reply with only the word.', {}, sessionId);
-      const { output, errors } = await collectStream(stream2);
+      const stream2 = adapter.run(
+        'What was my secret word? Reply with only the word.',
+        {},
+        sessionId
+      );
+      const { output } = await collectStream(stream2);
 
-      expect(errors).toHaveLength(0);
       expect(output.toLowerCase()).toContain('zygote');
     },
     60_000
   );
 
-  it.skipIf(!credentialsAvailable)(
+  it.skipIf(!claudeAvailable)(
     'agent with disallowed_tools frontmatter completes without error',
     async () => {
       const adapter = await ClaudeCodeAdapter.create(tempDir);
@@ -103,14 +111,12 @@ describe('ClaudeCodeAdapter integration', () => {
       expect(options.disallowed_tools).toEqual(['Bash']);
 
       const stream = adapter.run('Reply with only: OK', options);
-      const { errors } = await collectStream(stream);
-
-      expect(errors).toHaveLength(0);
+      await collectStream(stream);
     },
     30_000
   );
 
-  it.skipIf(!credentialsAvailable)(
+  it.skipIf(!claudeAvailable)(
     'concurrent streams on the same adapter resolve independent session IDs',
     async () => {
       const adapter = await ClaudeCodeAdapter.create(tempDir);
@@ -120,10 +126,7 @@ describe('ClaudeCodeAdapter integration', () => {
       const stream1 = adapter.run('hello', options);
       const stream2 = adapter.run('world', options);
 
-      const [result1, result2] = await Promise.all([collectStream(stream1), collectStream(stream2)]);
-
-      expect(result1.errors).toHaveLength(0);
-      expect(result2.errors).toHaveLength(0);
+      await Promise.all([collectStream(stream1), collectStream(stream2)]);
 
       const [id1, id2] = await Promise.all([stream1.sessionId(), stream2.sessionId()]);
 
@@ -133,145 +136,54 @@ describe('ClaudeCodeAdapter integration', () => {
     },
     60_000
   );
-});
 
-describe('parseAgent frontmatter validation', () => {
-  let tempDir: string;
-  let adapter: ClaudeCodeAdapter;
+  it.skipIf(!claudeAvailable)(
+    'assembles multi-chunk response correctly',
+    async () => {
+      const adapter = await ClaudeCodeAdapter.create(tempDir);
 
-  beforeAll(async () => {
-    tempDir = await mkdtemp(join(os.tmpdir(), 'heimdall-parseagent-validation-'));
-    await mkdir(join(tempDir, '.claude', 'agents'), { recursive: true });
+      const chunks: string[] = [];
+      const stream = adapter.run(
+        'Count from 1 to 20, each number on its own line. Reply with only the numbers.',
+        {}
+      );
 
-    const fixtures: { name: string; content: string }[] = [
-      {
-        name: 'valid-options.md',
-        content: `---
-name: valid-options
-model: claude-opus-4-5
-reasoning_effort: high
-allowed_tools:
-  - Read
-  - Edit
-disallowed_tools:
-  - Bash
-max_budget_usd: 10.0
-system_prompt: "You are helpful."
----
-Body.
-`,
-      },
-      {
-        name: 'mixed-frontmatter.md',
-        content: `---
-name: mixed-frontmatter
-model: claude-opus-4-5
-reasoning_effort: ultra
----
-Body.
-`,
-      },
-      {
-        name: 'all-invalid.md',
-        content: `---
-name: all-invalid
-reasoning_effort: turbo
-max_budget_usd: "not-a-number"
----
-Body.
-`,
-      },
-      {
-        name: 'foreign-platform.md',
-        content: `---
-name: foreign-platform
-opencode_provider: anthropic
-opencode_model: claude-3-7-sonnet
-custom_tool_timeout: 30
----
-Body.
-`,
-      },
-      {
-        name: 'cross-platform.md',
-        content: `---
-name: cross-platform
-model: claude-sonnet-4-5
-opencode_provider: anthropic
-custom_tool_timeout: 30
-reasoning_effort: high
----
-Body.
-`,
-      },
-      {
-        name: 'alias-tools.md',
-        content: `---
-name: alias-tools
-tools: Read, Edit
----
-Body.
-`,
-      },
-    ];
+      await new Promise<void>((resolve, reject) => {
+        stream.on('chunk', (delta) => chunks.push(delta));
+        stream.on('error', reject);
+        stream.on('done', resolve);
+      });
 
-    for (const fixture of fixtures) {
-      await writeFile(join(tempDir, '.claude', 'agents', fixture.name), fixture.content, 'utf8');
-    }
+      const output = chunks.join('');
+      expect(output).toMatch(/1/);
+      expect(output).toMatch(/20/);
+      expect(chunks.length).toBeGreaterThanOrEqual(1);
+    },
+    30_000
+  );
 
-    adapter = await ClaudeCodeAdapter.create(tempDir);
-  });
+  it.skipIf(!claudeAvailable)(
+    'chunks from a long response assemble into output exceeding 500 words',
+    async () => {
+      const adapter = await ClaudeCodeAdapter.create(tempDir);
 
-  afterAll(async () => {
-    await rm(tempDir, { recursive: true, force: true });
-  });
+      const chunks: string[] = [];
+      const stream = adapter.run(
+        'Write a short story that is at least 500 words long. Reply with only the story text. Your response must be at least 500 words long. Check that it is 500 words or more then return only the story text.',
+        {}
+      );
 
-  it('parses all valid frontmatter fields into options with no dropped fields', async () => {
-    const content = await adapter.findAgent('valid-options');
-    const { options } = adapter.parseAgent(content);
+      await new Promise<void>((resolve, reject) => {
+        stream.on('chunk', (delta) => chunks.push(delta));
+        stream.on('error', reject);
+        stream.on('done', resolve);
+      });
 
-    expect(options).toEqual({
-      model: 'claude-opus-4-5',
-      reasoning_effort: 'high',
-      allowed_tools: ['Read', 'Edit'],
-      disallowed_tools: ['Bash'],
-      max_budget_usd: 10.0,
-      system_prompt: 'You are helpful.',
-    });
-  });
-
-  it('includes valid fields and excludes invalid fields', async () => {
-    const content = await adapter.findAgent('mixed-frontmatter');
-    const { options } = adapter.parseAgent(content);
-
-    expect(options).toEqual({ model: 'claude-opus-4-5' });
-  });
-
-  it('returns empty options and does not throw when all known keys have invalid values', async () => {
-    const content = await adapter.findAgent('all-invalid');
-    const { options } = adapter.parseAgent(content);
-    expect(options).toEqual({});
-  });
-
-  it('returns empty options when only foreign-platform keys are present', async () => {
-    const content = await adapter.findAgent('foreign-platform');
-    const { options } = adapter.parseAgent(content);
-
-    expect(options).toEqual({});
-  });
-
-  it('includes heimdall-known valid fields and ignores foreign keys', async () => {
-    const content = await adapter.findAgent('cross-platform');
-    const { options } = adapter.parseAgent(content);
-
-    expect(options).toEqual({ model: 'claude-sonnet-4-5', reasoning_effort: 'high' });
-  });
-
-  it('maps "tools" alias to allowed_tools and coerces comma-string to array', async () => {
-    const content = await adapter.findAgent('alias-tools');
-    const { options } = adapter.parseAgent(content);
-
-    expect(options.allowed_tools).toEqual(['Read', 'Edit']);
-    expect((options as Record<string, unknown>)['tools']).toBeUndefined();
-  });
+      const output = chunks.join('');
+      const wordCount = output.trim().split(/\s+/).length;
+      expect(wordCount).toBeGreaterThan(500);
+      expect(chunks.length).toBeGreaterThan(1);
+    },
+    60_000
+  );
 });

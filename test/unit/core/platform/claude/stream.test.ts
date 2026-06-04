@@ -73,7 +73,9 @@ const makeResultMessage = (sessionId = 'sess-1'): SDKMessage => ({
   uuid: 'uuid-2',
 });
 
-// Utility: wait for all pending microtasks / promises to settle
+// Waits for all pending microtasks and one macrotask cycle.
+// Sufficient here because mock generators suspend at a single `await Promise.resolve()`
+// before each yield — one setImmediate drains the full chain.
 const flushMicrotasks = (): Promise<void> => new Promise<void>((resolve) => setImmediate(resolve));
 
 // Collect events emitted on a ClaudeStream into typed arrays
@@ -99,6 +101,10 @@ const captureEvents = (stream: ClaudeStream): Captured => {
 
 beforeEach(() => {
   capturedAbortController = undefined;
+  mockGeneratorFactory = async function* (): AsyncGenerator<SDKMessage, void> {
+    await Promise.resolve();
+    throw new Error('mockGeneratorFactory was not set for this test');
+  };
 });
 
 describe('ClaudeStream', () => {
@@ -221,11 +227,11 @@ describe('ClaudeStream', () => {
       const stream = new ClaudeStream('test prompt', {});
       const captured = captureEvents(stream);
 
+      await flushMicrotasks();
+
       await expect(stream.sessionId()).rejects.toMatchObject({
         code: 'PLATFORM_ERROR',
       });
-
-      await flushMicrotasks();
 
       expect(captured.done).toBe(false);
       expect(captured.errors).toHaveLength(1);
@@ -235,157 +241,161 @@ describe('ClaudeStream', () => {
   });
 
   describe('cancel()', () => {
-    // Pre-execution cancel: cancel() is called synchronously after construction,
-    // before the event loop advances. Because execute() suspends at the first
-    // await inside the generator, cancel() aborts the AbortController before
-    // any message is processed. These tests cover the "cancel before execution
-    // begins" path.
+    describe('pre-execution cancel', () => {
+      // Tests where cancel() fires synchronously after construction,
+      // before execute() has called query(). Because execute() suspends at
+      // the first await inside the generator, cancel() aborts the AbortController
+      // before any message is processed.
 
-    it("triggers 'error' event with PlatformCancellationError (pre-execution cancel)", async () => {
-      const { AbortError: SDKAbortError } = await import('@anthropic-ai/claude-agent-sdk');
+      it("triggers 'error' event with PlatformCancellationError", async () => {
+        const { AbortError: SDKAbortError } = await import('@anthropic-ai/claude-agent-sdk');
 
-      mockGeneratorFactory = async function* (): AsyncGenerator<SDKMessage, void> {
-        await Promise.resolve();
-        // Simulate the SDK throwing AbortError when cancelled
-        throw new SDKAbortError('aborted');
-      };
+        mockGeneratorFactory = async function* (): AsyncGenerator<SDKMessage, void> {
+          await Promise.resolve();
+          // Simulate the SDK throwing AbortError when cancelled
+          throw new SDKAbortError('aborted');
+        };
 
-      const stream = new ClaudeStream('test prompt', {});
-      const captured = captureEvents(stream);
-      stream.cancel(); // fires before execute() has called query()
-
-      await flushMicrotasks();
-
-      expect(captured.errors).toHaveLength(1);
-      const [firstCancelError] = captured.errors;
-      expect(firstCancelError).toBeInstanceOf(PlatformCancellationError);
-      expect(firstCancelError!.code).toBe('PLATFORM_CANCELLED');
-    });
-
-    it("does not emit 'done' after 'error' when AbortError is thrown on cancel (pre-execution cancel)", async () => {
-      const { AbortError: SDKAbortError } = await import('@anthropic-ai/claude-agent-sdk');
-
-      mockGeneratorFactory = async function* (): AsyncGenerator<SDKMessage, void> {
-        await Promise.resolve();
-        throw new SDKAbortError('aborted');
-      };
-
-      const stream = new ClaudeStream('test prompt', {});
-      const captured = captureEvents(stream);
-      stream.cancel(); // fires before execute() has called query()
-
-      await flushMicrotasks();
-
-      expect(captured.errors).toHaveLength(1);
-      expect(captured.done).toBe(false);
-    });
-
-    it('rejects sessionId() promise with PlatformCancellationError on cancel (pre-execution cancel)', async () => {
-      const { AbortError: SDKAbortError } = await import('@anthropic-ai/claude-agent-sdk');
-
-      mockGeneratorFactory = async function* (): AsyncGenerator<SDKMessage, void> {
-        await Promise.resolve();
-        throw new SDKAbortError('aborted');
-      };
-
-      const stream = new ClaudeStream('test prompt', {});
-      stream.cancel(); // fires before execute() has called query()
-
-      await expect(stream.sessionId()).rejects.toBeInstanceOf(PlatformCancellationError);
-    });
-
-    it('emits PlatformCancellationError when SDK returns early without throwing on abort (pre-execution cancel)', async () => {
-      // SDK may silently terminate the generator instead of throwing AbortError
-      mockGeneratorFactory = async function* (): AsyncGenerator<SDKMessage, void> {
-        await Promise.resolve();
-        // returns without yielding or throwing — simulates silent abort
-      };
-
-      const stream = new ClaudeStream('test prompt', {});
-      const captured = captureEvents(stream);
-      expect(() => {
+        const stream = new ClaudeStream('test prompt', {});
+        const captured = captureEvents(stream);
         stream.cancel(); // fires before execute() has called query()
-      }).not.toThrow();
 
-      await flushMicrotasks();
+        await flushMicrotasks();
 
-      expect(captured.errors).toHaveLength(1);
-      expect(captured.errors[0]).toBeInstanceOf(PlatformCancellationError);
-      expect(captured.errors[0]!.code).toBe('PLATFORM_CANCELLED');
-      expect(captured.done).toBe(false);
-    });
-
-    it("emits 'done' when stream receives a result message even if abort signal is set (race)", async () => {
-      mockGeneratorFactory = async function* (): AsyncGenerator<SDKMessage, void> {
-        await Promise.resolve();
-        yield makeChunk('hello');
-        yield makeResultMessage();
-      };
-
-      const stream = new ClaudeStream('test prompt', {});
-      const captured = captureEvents(stream);
-
-      await flushMicrotasks();
-      stream.cancel();
-
-      await flushMicrotasks();
-
-      expect(captured.chunks).toEqual(['hello']);
-      expect(captured.done).toBe(true);
-      expect(captured.errors).toHaveLength(0);
-      await expect(stream.sessionId()).resolves.toBe('sess-1');
-    });
-
-    it('wraps AbortError thrown by the SDK mid-stream in PlatformCancellationError', async () => {
-      const { AbortError: SDKAbortError } = await import('@anthropic-ai/claude-agent-sdk');
-
-      mockGeneratorFactory = async function* (): AsyncGenerator<SDKMessage, void> {
-        await Promise.resolve();
-        yield makeChunk('first chunk'); // execution begins, chunk emitted
-        throw new SDKAbortError('aborted'); // SDK throws unconditionally (no cancel() call)
-      };
-
-      const stream = new ClaudeStream('test prompt', {});
-      const captured = captureEvents(stream);
-
-      await flushMicrotasks();
-
-      expect(captured.chunks).toEqual(['first chunk']);
-      expect(captured.errors).toHaveLength(1);
-      expect(captured.errors[0]).toBeInstanceOf(PlatformCancellationError);
-      expect(captured.errors[0]!.code).toBe('PLATFORM_CANCELLED');
-      expect(captured.done).toBe(false);
-    });
-
-    it('emits PlatformCancellationError when cancel() is called after a chunk arrives (mid-stream cancel)', async () => {
-      const { AbortError: SDKAbortError } = await import('@anthropic-ai/claude-agent-sdk');
-
-      let resolveChunkBarrier!: () => void;
-      const chunkBarrier = new Promise<void>((r) => {
-        resolveChunkBarrier = r;
+        expect(captured.errors).toHaveLength(1);
+        const [firstCancelError] = captured.errors;
+        expect(firstCancelError).toBeInstanceOf(PlatformCancellationError);
+        expect(firstCancelError!.code).toBe('PLATFORM_CANCELLED');
       });
 
-      mockGeneratorFactory = async function* (): AsyncGenerator<SDKMessage, void> {
-        await Promise.resolve();
-        yield makeChunk('first chunk');
-        await chunkBarrier; // suspend until cancel() fires
-        throw new SDKAbortError('aborted');
-      };
+      it("does not emit 'done' after 'error'", async () => {
+        const { AbortError: SDKAbortError } = await import('@anthropic-ai/claude-agent-sdk');
 
-      const stream = new ClaudeStream('test prompt', {});
-      const captured = captureEvents(stream);
+        mockGeneratorFactory = async function* (): AsyncGenerator<SDKMessage, void> {
+          await Promise.resolve();
+          throw new SDKAbortError('aborted');
+        };
 
-      await flushMicrotasks(); // let the first chunk arrive
-      expect(captured.chunks).toEqual(['first chunk']);
+        const stream = new ClaudeStream('test prompt', {});
+        const captured = captureEvents(stream);
+        stream.cancel(); // fires before execute() has called query()
 
-      stream.cancel();
-      resolveChunkBarrier();
+        await flushMicrotasks();
 
-      await flushMicrotasks();
+        expect(captured.errors).toHaveLength(1);
+        expect(captured.done).toBe(false);
+      });
 
-      expect(captured.errors).toHaveLength(1);
-      expect(captured.errors[0]).toBeInstanceOf(PlatformCancellationError);
-      expect(captured.done).toBe(false);
+      it('rejects sessionId() with PlatformCancellationError', async () => {
+        const { AbortError: SDKAbortError } = await import('@anthropic-ai/claude-agent-sdk');
+
+        mockGeneratorFactory = async function* (): AsyncGenerator<SDKMessage, void> {
+          await Promise.resolve();
+          throw new SDKAbortError('aborted');
+        };
+
+        const stream = new ClaudeStream('test prompt', {});
+        const captured = captureEvents(stream);
+        stream.cancel(); // fires before execute() has called query()
+
+        await expect(stream.sessionId()).rejects.toBeInstanceOf(PlatformCancellationError);
+
+        await flushMicrotasks();
+        expect(captured.done).toBe(false);
+      });
+
+      it('emits PlatformCancellationError when SDK returns early without throwing', async () => {
+        // SDK may silently terminate the generator instead of throwing AbortError
+        mockGeneratorFactory = async function* (): AsyncGenerator<SDKMessage, void> {
+          await Promise.resolve();
+          // returns without yielding or throwing — simulates silent abort
+        };
+
+        const stream = new ClaudeStream('test prompt', {});
+        const captured = captureEvents(stream);
+        stream.cancel(); // fires before execute() has called query()
+
+        await flushMicrotasks();
+
+        expect(captured.errors).toHaveLength(1);
+        expect(captured.errors[0]).toBeInstanceOf(PlatformCancellationError);
+        expect(captured.errors[0]!.code).toBe('PLATFORM_CANCELLED');
+        expect(captured.done).toBe(false);
+      });
+
+      it('passes abortController.signal to the SDK on cancel()', async () => {
+        const { AbortError: SDKAbortError } = await import('@anthropic-ai/claude-agent-sdk');
+
+        mockGeneratorFactory = async function* (): AsyncGenerator<SDKMessage, void> {
+          await Promise.resolve();
+          throw new SDKAbortError('aborted');
+        };
+
+        const stream = new ClaudeStream('prompt', {});
+        captureEvents(stream);
+        stream.cancel();
+
+        await flushMicrotasks();
+
+        expect(capturedAbortController).toBeDefined();
+        expect(capturedAbortController!.signal.aborted).toBe(true);
+      });
+    });
+
+    describe('race: abort vs. result message', () => {
+      // Tests where the stream finishes with a result message even if abort
+      // is signalled — the result message wins.
+
+      it("emits 'done' when stream receives a result message even if abort signal is set", async () => {
+        mockGeneratorFactory = async function* (): AsyncGenerator<SDKMessage, void> {
+          await Promise.resolve();
+          yield makeChunk('hello');
+          await Promise.resolve();
+          yield makeResultMessage();
+        };
+
+        const stream = new ClaudeStream('test prompt', {});
+        const captured = captureEvents(stream);
+
+        // Cancel BEFORE flushing so signal.aborted is true while the generator
+        // is still running. The generator then yields the result message, which
+        // sets streamCompleted = true. After the loop:
+        //   !streamCompleted (false) && signal.aborted (true) → false → 'done' fires.
+        stream.cancel();
+
+        await flushMicrotasks();
+
+        expect(captured.chunks).toEqual(['hello']);
+        expect(captured.done).toBe(true);
+        expect(captured.errors).toHaveLength(0);
+        await expect(stream.sessionId()).resolves.toBe('sess-1');
+      });
+    });
+
+    describe('SDK throws AbortError unconditionally', () => {
+      // Tests where the SDK throws AbortError during streaming, regardless of
+      // whether cancel() was called — this exercises the wrapping behavior.
+
+      it('wraps AbortError thrown by the SDK mid-stream in PlatformCancellationError', async () => {
+        const { AbortError: SDKAbortError } = await import('@anthropic-ai/claude-agent-sdk');
+
+        mockGeneratorFactory = async function* (): AsyncGenerator<SDKMessage, void> {
+          await Promise.resolve();
+          yield makeChunk('first chunk'); // execution begins, chunk emitted
+          throw new SDKAbortError('aborted'); // SDK throws unconditionally (no cancel() call)
+        };
+
+        const stream = new ClaudeStream('test prompt', {});
+        const captured = captureEvents(stream);
+
+        await flushMicrotasks();
+
+        expect(captured.chunks).toEqual(['first chunk']);
+        expect(captured.errors).toHaveLength(1);
+        expect(captured.errors[0]).toBeInstanceOf(PlatformCancellationError);
+        expect(captured.errors[0]!.code).toBe('PLATFORM_CANCELLED');
+        expect(captured.done).toBe(false);
+      });
     });
   });
 
@@ -451,6 +461,10 @@ describe('ClaudeStream', () => {
       expect(controllerA).toBeDefined();
       expect(controllerB).toBeDefined();
       expect(controllerA).not.toBe(controllerB);
+
+      // Before cancel, both signals must be unaborted
+      expect(controllerA!.signal.aborted).toBe(false);
+      expect(controllerB!.signal.aborted).toBe(false);
 
       // Cancelling one must not affect the other
       streamA.cancel();

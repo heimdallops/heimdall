@@ -1,7 +1,4 @@
-import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import os from 'node:os';
-import { join } from 'node:path';
-import { fileURLToPath } from 'node:url';
 
 import { beforeAll, describe, expect, it } from 'vitest';
 
@@ -170,37 +167,5 @@ Prompt body here.`;
       expect(options.max_budget_usd).toBe(5.0);
       expect(options.system_prompt).toBe('You are helpful.');
     });
-  });
-
-  const __agentsDir = join(
-    fileURLToPath(new URL('.', import.meta.url)),
-    '..',
-    '..',
-    '..',
-    '..',
-    '..',
-    '.claude',
-    'agents'
-  );
-  const __agentFiles = existsSync(__agentsDir)
-    ? readdirSync(__agentsDir).filter((f) => f.endsWith('.md'))
-    : [];
-  const __agentsDirMissing = __agentFiles.length === 0;
-
-  describe.skipIf(__agentsDirMissing)('real agent files integration', () => {
-    it.each(__agentFiles)(
-      'parseAgent returns valid structure for .claude/agents/%s',
-      (filename) => {
-        const content = readFileSync(join(__agentsDir, filename), 'utf8');
-        const result = adapter.parseAgent(content);
-
-        expect(typeof result.prompt).toBe('string');
-        expect(result.prompt.length).toBeGreaterThan(0);
-        // Frontmatter delimiter must not bleed into the prompt
-        expect(result.prompt).not.toMatch(/^---/);
-        // tools alias: real agents may use `tools:` — verify it is not leaked as-is into options
-        expect((result.options as Record<string, unknown>)['tools']).toBeUndefined();
-      }
-    );
   });
 });

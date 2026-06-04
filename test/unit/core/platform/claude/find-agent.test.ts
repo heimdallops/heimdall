@@ -7,6 +7,11 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { ClaudeCodeAdapter } from '../../../../../src/core/platform/claude/adapter.ts';
 import { PlatformAgentNotFoundError } from '../../../../../src/core/platform/errors.ts';
 
+// All tests here cover unique filesystem/precedence behavior (home dir fallback, symlink
+// sandboxing, subdirectory crawl, frontmatter-name matching) not covered elsewhere.
+// The duplication concern is between parse-agent.test.ts and the parseAgent frontmatter
+// validation describe in test/integration/platform/claude/adapter.integration.test.ts.
+
 const tempDirs: string[] = [];
 
 const makeTempDir = async (): Promise<string> => {
@@ -80,13 +85,23 @@ describe('findAgent', () => {
     vi.spyOn(os, 'homedir').mockReturnValue(fakeHome);
     const cwd = join(fakeHome, 'project');
     await mkdir(cwd, { recursive: true });
-    await createAgentFile(cwd, 'shared');
+
+    // Write cwd copy with distinct content
+    const cwdAgentsDir = join(cwd, '.claude', 'agents');
+    await mkdir(cwdAgentsDir, { recursive: true });
+    await writeFile(
+      join(cwdAgentsDir, 'shared.md'),
+      `---\nname: shared\n---\n# cwd-version\n`,
+      'utf8'
+    );
+
+    // Write home copy with different content
     await createAgentFile(fakeHome, 'shared');
 
     const adapter = await ClaudeCodeAdapter.create(cwd);
     const content = await adapter.findAgent('shared');
 
-    expect(content).toContain('# shared');
+    expect(content).toContain('# cwd-version');
   });
 
   it('finds an agent in a subdirectory of .claude/agents/', async () => {
@@ -126,9 +141,13 @@ describe('findAgent', () => {
   });
 
   it('does not crawl intermediate dirs when cwd is above home', async () => {
-    const fakeHome = await makeTempDir();
+    const root = await makeTempDir(); // tracked, deleted in afterEach
+    const fakeHome = join(root, 'home');
+    const cwd = join(root, 'above');
+    await mkdir(fakeHome, { recursive: true });
+    await mkdir(cwd, { recursive: true });
     vi.spyOn(os, 'homedir').mockReturnValue(fakeHome);
-    const cwd = join(fakeHome, '..');
+
     await createAgentFile(fakeHome, 'home-only-agent');
     await createAgentFile(cwd, 'cwd-agent');
 

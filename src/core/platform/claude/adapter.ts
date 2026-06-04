@@ -26,7 +26,11 @@ const enumerateMdFiles = async (dir: string): Promise<string[]> => {
     if (entry.isDirectory()) {
       results.push(...(await enumerateMdFiles(fullPath)));
     } else if ((entry.isFile() || entry.isSymbolicLink()) && entry.name.endsWith('.md')) {
-      results.push(fullPath);
+      try {
+        results.push(await realpath(fullPath));
+      } catch {
+        // skip unresolvable symlinks
+      }
     }
   }
 
@@ -37,7 +41,8 @@ const FIELD_ALIASES: Record<string, string> = { tools: 'allowed_tools' };
 const ARRAY_COERCE_KEYS = new Set(['allowed_tools', 'disallowed_tools']);
 
 // gray-matter supports `---js` frontmatter that executes JavaScript at parse time.
-//TODO: @c1moore @nolanrsherman Override the javascript engine to block arbitrary code execution in agent files.
+// Agent files come from the filesystem and may be untrusted; permitting JS frontmatter
+// would allow arbitrary code execution inside the Heimdall process.
 const MATTER_OPTIONS = {
   engines: {
     yaml: (s: string) => {
@@ -100,23 +105,17 @@ export class ClaudeCodeAdapter implements PlatformAdapter<ClaudeOptions> {
     const cache = new Map<string, string>();
     for (const searchDir of searchDirs) {
       const realSearchDir = await realpath(searchDir).catch(() => searchDir);
-      const base = resolve(realSearchDir, '.claude', 'agents');
+      const resolvedAgentsDir = resolve(realSearchDir, '.claude', 'agents');
+      const base = await realpath(resolvedAgentsDir).catch(() => resolvedAgentsDir);
       const candidates = (await enumerateMdFiles(base)).sort();
       for (const candidate of candidates) {
-        let real: string;
-        try {
-          real = await realpath(candidate);
-        } catch {
-          continue;
-        }
-
-        if (!real.startsWith(base + sep) && real !== base) {
+        if (!candidate.startsWith(base + sep) && candidate !== base) {
           continue;
         }
 
         let content: string;
         try {
-          content = await readFile(real, 'utf8');
+          content = await readFile(candidate, 'utf8');
         } catch {
           continue;
         }
