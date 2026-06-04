@@ -22,22 +22,52 @@ hero:
     rounded: true
 
   ctaButton:
-    icon: visibility
-    btnText: 'About Heimdall'
-    url: '/docs/about/'
+    icon: rocket_launch
+    btnText: 'Get started'
+    url: '/docs/getting-started/'
   cta2Button:
-    icon: code
-    btnText: 'Workflow examples'
-    url: '/docs/guides/workflows/'
+    icon: menu_book
+    btnText: 'Read the docs'
+    url: '/docs/about/'
 
-  info: '**Open source** · MIT Licensed · Documentation preview'
+  info: '**Open source** · MIT Licensed · `npm install -g heimdall` *(coming soon)*'
 
 imageCompare:
   enable: false
 
+getStarted:
+  enable: true
+  weight: 25
+  template: get started
+
+  title: Up and running in minutes
+  subtitle: |
+    Requires **Node.js 22+** and **Git**. Install Heimdall, drop a workflow YAML into your repo, and run it — each execution gets its own isolated worktree.
+
+  steps:
+    - icon: download
+      title: Install
+      description: 'One command gets the CLI on your PATH.'
+      code: 'npm install -g heimdall'
+
+    - icon: edit_note
+      title: Define a workflow
+      description: 'Describe agents, phases, gates, and handoffs in a YAML file in your repo.'
+      code: 'heimdall init fix-issue'
+
+    - icon: play_circle
+      title: Run
+      description: 'Heimdall creates an isolated worktree and drives each phase to completion.'
+      code: 'heimdall workflow run fix-issue'
+
+  ctaButton:
+    icon: rocket_launch
+    btnText: 'View full guide'
+    url: '/docs/getting-started/'
+
 featureGrid:
   enable: true
-  weight: 20
+  weight: 30
   template: feature grid
 
   title: Why Heimdall?

@@ -41,44 +41,35 @@ html, body {
 <!-- background -->
 <rect width="400" height="400" fill="#080d1a"/>
 
-<!-- ── H pillars ─────────────────────────────────────────────────────── -->
-<!-- Left: outer-top (65,115), diagonal cut to inner-top (155,178), rect down -->
-<path d="M65,350 L155,350 L155,178 L110,115 L65,115 Z" fill="url(#pg)"/>
-<!-- Right: mirror -->
-<path d="M335,350 L245,350 L245,178 L290,115 L335,115 Z" fill="url(#pg)"/>
+<!-- ── H letter mark ────────────────────────────────────────────────── -->
+<!-- width=270 spans x=65..335 (circuit anchor points); crossbar centre lands at (200,222) = eye centre -->
+<image href="/heimdall-h.svg" x="65" y="21" width="270" height="373"/>
 
 <!-- ── Eye socket ─────────────────────────────────────────────────────── -->
-<path d="M155,222 Q200,183 245,222 Q200,261 155,222 Z" fill="#080d1a"/>
-<path d="M155,222 Q200,183 245,222 Q200,261 155,222 Z"
+<path d="M148.3,222 Q200,177.2 251.8,222 Q200,266.9 148.3,222 Z" fill="#080d1a"/>
+<path d="M148.3,222 Q200,177.2 251.8,222 Q200,266.9 148.3,222 Z"
       fill="none" stroke="#3b82f6" stroke-width="2.5"/>
 
 <!-- ── Iris (rotates around eye centre 200,222) ───────────────────────── -->
 <g id="iris" filter="url(#sm)">
   <!-- outer ring -->
-  <circle cx="200" cy="222" r="27" fill="none" stroke="#22d3ee" stroke-width="2.2"/>
-  <!-- inner segmented ring (4 × 80° arcs at r=17, gaps at cardinal directions) -->
-  <path d="M216.9,223.5 A17,17 0 0,1 201.5,238.9" fill="none" stroke="#22d3ee" stroke-width="3" stroke-linecap="round"/>
-  <path d="M198.5,238.9 A17,17 0 0,1 183.1,223.5" fill="none" stroke="#22d3ee" stroke-width="3" stroke-linecap="round"/>
-  <path d="M183.1,220.5 A17,17 0 0,1 198.5,205.1" fill="none" stroke="#22d3ee" stroke-width="3" stroke-linecap="round"/>
-  <path d="M201.5,205.1 A17,17 0 0,1 216.9,220.5" fill="none" stroke="#22d3ee" stroke-width="3" stroke-linecap="round"/>
+  <circle cx="200" cy="222" r="31.1" fill="none" stroke="#22d3ee" stroke-width="2.2"/>
+  <!-- inner segmented ring (4 × 80° arcs at r=19.6, gaps at cardinal directions) -->
+  <path d="M219.4,223.7 A19.6,19.6 0 0,1 201.7,241.4" fill="none" stroke="#22d3ee" stroke-width="3" stroke-linecap="round"/>
+  <path d="M198.3,241.4 A19.6,19.6 0 0,1 180.6,223.7" fill="none" stroke="#22d3ee" stroke-width="3" stroke-linecap="round"/>
+  <path d="M180.6,220.3 A19.6,19.6 0 0,1 198.3,202.6" fill="none" stroke="#22d3ee" stroke-width="3" stroke-linecap="round"/>
+  <path d="M201.7,202.6 A19.6,19.6 0 0,1 219.4,220.3" fill="none" stroke="#22d3ee" stroke-width="3" stroke-linecap="round"/>
   <!-- crosshair arms -->
-  <line x1="200" y1="222" x2="227" y2="222" stroke="#22d3ee" stroke-width="1.6" stroke-linecap="round"/>
-  <line x1="200" y1="222" x2="200" y2="249" stroke="#22d3ee" stroke-width="1.6" stroke-linecap="round"/>
-  <line x1="200" y1="222" x2="173" y2="222" stroke="#22d3ee" stroke-width="1.6" stroke-linecap="round"/>
-  <line x1="200" y1="222" x2="200" y2="195" stroke="#22d3ee" stroke-width="1.6" stroke-linecap="round"/>
+  <line x1="200" y1="222" x2="231.1" y2="222" stroke="#22d3ee" stroke-width="1.6" stroke-linecap="round"/>
+  <line x1="200" y1="222" x2="200" y2="253.1" stroke="#22d3ee" stroke-width="1.6" stroke-linecap="round"/>
+  <line x1="200" y1="222" x2="168.9" y2="222" stroke="#22d3ee" stroke-width="1.6" stroke-linecap="round"/>
+  <line x1="200" y1="222" x2="200" y2="190.9" stroke="#22d3ee" stroke-width="1.6" stroke-linecap="round"/>
   <!-- centre dot -->
-  <circle cx="200" cy="222" r="5" fill="#22d3ee"/>
+  <circle cx="200" cy="222" r="5.8" fill="#22d3ee"/>
   <animateTransform attributeName="transform" type="rotate"
     from="0 200 222" to="360 200 222" dur="12s" repeatCount="indefinite"/>
 </g>
 
-<!-- ── Bottom circuit arch ────────────────────────────────────────────── -->
-<path d="M155,350 C157,378 193,392 200,392 C207,392 243,378 245,350"
-      fill="none" stroke="#22d3ee" stroke-width="1.8"/>
-<circle cx="200" cy="392" r="5" fill="#22d3ee" filter="url(#sm)">
-  <animate attributeName="r"       values="4.5;6.5;4.5" dur="2.4s" repeatCount="indefinite"/>
-  <animate attributeName="opacity" values="0.6;1;0.6"   dur="2.4s" repeatCount="indefinite"/>
-</circle>
 
 <!-- ── Circuit lines: LEFT ───────────────────────────────────────────── -->
 <path id="ll1" d="M65,157 L30,157"  fill="none" stroke="#22d3ee" stroke-width="1.5" stroke-linecap="round"/>
