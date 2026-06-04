@@ -95,13 +95,14 @@ describe('agent cache', () => {
   });
 
   it('does not include intermediate dirs when cwd is above home', async () => {
-    const fakeHome = await makeTempDir();
+    const root = await makeTempDir();
+    const cwd = join(root, 'cwd');
+    const fakeHome = join(cwd, 'home');
+    await mkdir(fakeHome, { recursive: true });
     vi.spyOn(os, 'homedir').mockReturnValue(fakeHome);
 
-    const cwd = join(fakeHome, '..');
-    // agent placed at an intermediate level between cwd and home — must NOT appear in cache
-    const intermediateCwd = join(cwd, '..');
-    await writeAgent(intermediateCwd, 'noise.md', validAgent('noise'));
+    // noise placed above cwd (at root) — must NOT appear in cache
+    await writeAgent(root, 'noise.md', validAgent('noise'));
     await writeAgent(cwd, 'cwd-agent.md', validAgent('cwd-agent'));
     await writeAgent(fakeHome, 'home-agent.md', validAgent('home-agent'));
 
