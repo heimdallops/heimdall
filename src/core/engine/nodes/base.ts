@@ -93,6 +93,11 @@ export abstract class BaseNode<R extends NodeRunResult = NodeRunResult> {
     return [...this.depends_on];
   }
 
+  // Subclasses throw EngineConfigError to reject the workflow before execution starts.
+  public validate(): void {
+    return;
+  }
+
   // Both default to false; subclasses opt in. False is the safe default for the engine's
   // branching logic — a subclass that forgets to override is inert, not dangerous.
   public isAgentic(): boolean {
