@@ -45,11 +45,6 @@ html, body {
 <!-- width=270 spans x=65..335 (circuit anchor points); crossbar centre lands at (200,222) = eye centre -->
 <image href="/heimdall-h.svg" x="65" y="21" width="270" height="373"/>
 
-<!-- ── Eye socket ─────────────────────────────────────────────────────── -->
-<path d="M148.3,222 Q200,177.2 251.8,222 Q200,266.9 148.3,222 Z" fill="#080d1a"/>
-<path d="M148.3,222 Q200,177.2 251.8,222 Q200,266.9 148.3,222 Z"
-      fill="none" stroke="#3b82f6" stroke-width="2.5"/>
-
 <!-- ── Iris (rotates around eye centre 200,222) ───────────────────────── -->
 <g id="iris" filter="url(#sm)">
   <!-- outer ring -->
@@ -183,12 +178,8 @@ pulse(['rl4', 'rl5', 'rl6'], 1400, 2600, 1300);
   // Actually: scale the entire mark on Y very briefly
   const wait = 4000 + Math.random() * 5000;
   setTimeout(() => {
-    // Squish just the eye strip using a temporary style on a wrapper
     const iris = document.getElementById('iris');
-    const eye  = document.querySelector('#mark path[d*="Q200,183"]');
-    const eyeOutline = document.querySelectorAll('#mark path[d*="Q200,183"]');
-    // Animate scaleY on the eye group elements via WAAPI
-    const targets = [...eyeOutline, iris];
+    const targets = [iris];
     targets.forEach(el => {
       el.animate(
         [{ transform: 'scaleY(1)'  , transformOrigin: '200px 222px', transformBox: 'view-box' },
