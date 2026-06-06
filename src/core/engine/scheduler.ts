@@ -43,11 +43,19 @@ const sleep = (ms: number, signal?: AbortSignal): Promise<void> =>
       return;
     }
 
-    const timer = setTimeout(resolve, ms);
-    signal?.addEventListener('abort', () => {
+    // onAbort is declared after timer so the const binding is visible in the closure —
+    // both callbacks only fire asynchronously, so timer is always assigned before either runs.
+    const timer = setTimeout(() => {
+      signal?.removeEventListener('abort', onAbort);
+      resolve();
+    }, ms);
+
+    const onAbort = (): void => {
       clearTimeout(timer);
       resolve();
-    });
+    };
+
+    signal?.addEventListener('abort', onAbort, { once: true });
   });
 
 const computeRetryDelay = (attempt: number, initialDelayMs: number, maxDelayMs: number): number => {
