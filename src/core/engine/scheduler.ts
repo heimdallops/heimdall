@@ -192,12 +192,8 @@ export const runScheduler = async (
     });
 
     const promise = runWithRetry(node, controller.signal, buildOptions).then((result) => {
-      // Discard stale settlements after a control-flow signal (exit or break), or if this node was already cancelled
-      if ((exitResult || broke) && result.status !== 'exited') {
-        return;
-      }
-
-      if (entry.status === 'cancelled') {
+      // Once a control-flow signal (exit/break) is recorded or this node was cancelled, discard the settlement
+      if (exitResult || broke || entry.status === 'cancelled') {
         return;
       }
 
@@ -337,11 +333,15 @@ export const runScheduler = async (
   }
 
   if (exitResult) {
-    return { outcome: 'exited', success: !exitResult.failure, exitReason: exitResult.reason };
+    return {
+      outcome: 'exited',
+      success: !exitResult.failure && !hasFailure,
+      exitReason: exitResult.reason,
+    };
   }
 
   if (broke) {
-    return { outcome: 'broke', success: true };
+    return { outcome: 'broke', success: !hasFailure };
   }
 
   return { outcome: 'completed', success: !hasFailure };

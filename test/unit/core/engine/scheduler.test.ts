@@ -703,6 +703,124 @@ describe('runScheduler', () => {
   });
 
   // -------------------------------------------------------------------------
+  describe('control-flow race: first exit/break wins', () => {
+    it('break-then-exit: first settler (break) wins — outcome is broke, no workflow_exited emitted', async () => {
+      const nodeA = new DeferredNode({ id: 'nodeA' });
+      const nodeB = new DeferredNode({ id: 'nodeB' });
+      const exitEvents: WorkflowExitedEvent[] = collectEvents(emitter, 'workflow_exited');
+
+      const schedulerDone = runScheduler([nodeA, nodeB], makeCtx(), options);
+
+      // Ensure both are in-flight before settling either
+      await Promise.all([nodeA.started, nodeB.started]);
+
+      // A breaks first
+      nodeA.resolve({ status: 'break' });
+
+      // Yield so the scheduler processes the break signal before B settles
+      await Promise.resolve();
+      await Promise.resolve();
+
+      // B settles with exited — must be discarded because broke is already set
+      nodeB.resolve({ status: 'exited', failure: false });
+
+      const result = await schedulerDone;
+
+      expect(result.outcome).toBe('broke');
+      expect(result.success).toBe(true);
+      // The late exit settlement must be discarded — no workflow_exited event
+      expect(exitEvents).toHaveLength(0);
+    });
+
+    it('exit-then-exit race: only the first exit wins — exactly one workflow_exited emitted with first reason', async () => {
+      const nodeA = new DeferredNode({ id: 'nodeA' });
+      const nodeB = new DeferredNode({ id: 'nodeB' });
+      const exitEvents: WorkflowExitedEvent[] = collectEvents(emitter, 'workflow_exited');
+
+      const schedulerDone = runScheduler([nodeA, nodeB], makeCtx(), options);
+
+      await Promise.all([nodeA.started, nodeB.started]);
+
+      // A exits first
+      nodeA.resolve({ status: 'exited', reason: 'first', failure: false });
+
+      // Yield so the scheduler records exitResult before B settles
+      await Promise.resolve();
+      await Promise.resolve();
+
+      // B exits second with a different reason and failure:true — must be fully discarded
+      nodeB.resolve({ status: 'exited', reason: 'second', failure: true });
+
+      const result = await schedulerDone;
+
+      // Exactly one workflow_exited event — the second is discarded
+      expect(exitEvents).toHaveLength(1);
+      expect(exitEvents[0]!.reason).toBe('first');
+      expect(exitEvents[0]!.failure).toBe(false);
+
+      // Outcome reflects the first exit only
+      expect(result.outcome).toBe('exited');
+      expect(result.exitReason).toBe('first');
+      expect(result.success).toBe(true);
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  describe('failure before exit/break makes run unsuccessful', () => {
+    it('failure then exit: prior failure is not masked — outcome: exited, success: false', async () => {
+      const nodeA = new DeferredNode({ id: 'nodeA' });
+      const nodeB = new DeferredNode({ id: 'nodeB' });
+
+      const schedulerDone = runScheduler([nodeA, nodeB], makeCtx(), options);
+
+      // Both must be in-flight before either settles
+      await Promise.all([nodeA.started, nodeB.started]);
+
+      // A fails, recording hasFailure — dispatchEligible halts new dispatch but B is already in-flight
+      nodeA.resolve({ status: 'failed', error: new Error('A failed') });
+
+      // Yield so the scheduler processes A's failure before B settles
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+
+      // B exits — exitResult is recorded after hasFailure was set
+      nodeB.resolve({ status: 'exited', failure: false });
+
+      const result = await schedulerDone;
+
+      expect(result.outcome).toBe('exited');
+      // The pre-existing failure must not be masked
+      expect(result.success).toBe(false);
+    });
+
+    it('failure then break: prior failure is not masked — outcome: broke, success: false', async () => {
+      const nodeA = new DeferredNode({ id: 'nodeA' });
+      const nodeB = new DeferredNode({ id: 'nodeB' });
+
+      const schedulerDone = runScheduler([nodeA, nodeB], makeCtx(), options);
+
+      await Promise.all([nodeA.started, nodeB.started]);
+
+      // A fails, recording hasFailure
+      nodeA.resolve({ status: 'failed', error: new Error('A failed') });
+
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+
+      // B breaks — broke is recorded after hasFailure was set
+      nodeB.resolve({ status: 'break' });
+
+      const result = await schedulerDone;
+
+      expect(result.outcome).toBe('broke');
+      // The pre-existing failure must not be masked
+      expect(result.success).toBe(false);
+    });
+  });
+
+  // -------------------------------------------------------------------------
   describe('evaluateIf error path', () => {
     it('resolves with success: false when if expression produces a non-boolean (e.g. numeric literal)', async () => {
       // CEL expression '42' evaluates to a number, not a boolean — evaluateIf throws
