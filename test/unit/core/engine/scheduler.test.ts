@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type {
   EngineEmitter,
@@ -975,6 +975,228 @@ describe('runScheduler', () => {
 
       expect(completed[0]!.nodeId).toBe('first');
       expect(completed[1]!.nodeId).toBe('second');
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  describe('retry jitter bounds (computeRetryDelay)', () => {
+    afterEach(() => {
+      vi.restoreAllMocks();
+    });
+
+    it('never waits longer than max_delay_ms when Math.random returns its maximum', async () => {
+      vi.useFakeTimers();
+      // Force Math.random to its effective maximum so jitter is at its upper bound (bounded * 1.0).
+      vi.spyOn(Math, 'random').mockReturnValue(0.9999);
+
+      const maxDelayMs = 500;
+      let attempt = 0;
+      const node = new (class extends BaseNode {
+        public run(_options: NodeRunOptions): Promise<NodeRunResult> {
+          attempt += 1;
+          if (attempt === 1) {
+            return Promise.resolve({ status: 'failed', error: new Error('first') });
+          }
+
+          return Promise.resolve({ status: 'completed', result: {} });
+        }
+      })({
+        id: 'jitter_node',
+        retries: { max_attempts: 1, initial_delay_ms: 1000, max_delay_ms: maxDelayMs },
+      });
+
+      const schedulerDone = runScheduler([node], makeCtx(), options);
+
+      // Advance exactly max_delay_ms — if jitter could exceed max_delay_ms the scheduler
+      // would still be waiting and attempt would remain 1.
+      await vi.advanceTimersByTimeAsync(maxDelayMs);
+
+      const result = await schedulerDone;
+
+      expect(result.success).toBe(true);
+      expect(attempt).toBe(2);
+    });
+
+    it('proceeds after only 50% of max_delay_ms when Math.random returns 0 (minimum jitter)', async () => {
+      vi.useFakeTimers();
+      // Math.random = 0 → jitter factor = 0.5 → delay = 0.5 * bounded
+      vi.spyOn(Math, 'random').mockReturnValue(0);
+
+      const initialDelayMs = 1000;
+      let attempt = 0;
+      const node = new (class extends BaseNode {
+        public run(_options: NodeRunOptions): Promise<NodeRunResult> {
+          attempt += 1;
+          if (attempt === 1) {
+            return Promise.resolve({ status: 'failed', error: new Error('first') });
+          }
+
+          return Promise.resolve({ status: 'completed', result: {} });
+        }
+      })({
+        id: 'min_jitter_node',
+        retries: { max_attempts: 1, initial_delay_ms: initialDelayMs, max_delay_ms: 30000 },
+      });
+
+      const schedulerDone = runScheduler([node], makeCtx(), options);
+
+      // With Math.random = 0, delay = 0.5 * 1000 = 500ms.
+      // Advancing 500ms should be sufficient to trigger the retry.
+      await vi.advanceTimersByTimeAsync(500);
+
+      const result = await schedulerDone;
+
+      expect(result.success).toBe(true);
+      expect(attempt).toBe(2);
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  describe('retry stops immediately on scheduler abort', () => {
+    it('does not retry after the first failure when another node aborts the scheduler', async () => {
+      vi.useFakeTimers();
+
+      const nodeA = new DeferredNode({ id: 'nodeA' });
+
+      let runCount = 0;
+      const nodeB = new (class extends BaseNode {
+        public run(_options: NodeRunOptions): Promise<NodeRunResult> {
+          runCount += 1;
+
+          return Promise.resolve({ status: 'failed', error: new Error('b failed') });
+        }
+      })({
+        id: 'nodeB',
+        retries: { max_attempts: 5, initial_delay_ms: 10000, max_delay_ms: 30000 },
+      });
+
+      const schedulerDone = runScheduler([nodeA, nodeB], makeCtx(), options);
+
+      // Wait for nodeA to start (nodeB starts immediately too since they're independent)
+      await nodeA.started;
+
+      // Give nodeB's first run a chance to settle
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+
+      // At this point nodeB has failed once and is sleeping its 10s backoff.
+      // Abort the scheduler by resolving nodeA with exited.
+      nodeA.resolve({ status: 'exited', failure: false });
+
+      // The scheduler should resolve WITHOUT needing to advance timers through the backoff.
+      const result = await schedulerDone;
+
+      expect(result.outcome).toBe('exited');
+      // nodeB must not have been retried — run count stays at 1.
+      expect(runCount).toBe(1);
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  describe('per-attempt timeout signal isolation', () => {
+    it('aborts the signal passed to the timed-out node after the timeout fires', async () => {
+      vi.useFakeTimers();
+
+      let capturedSignal: AbortSignal | undefined;
+
+      const node = new (class extends BaseNode {
+        public run(runOptions: NodeRunOptions): Promise<NodeRunResult> {
+          capturedSignal = runOptions.signal;
+
+          // Never resolves on its own — timeout fires first
+          return new Promise<NodeRunResult>(() => undefined);
+        }
+      })({ id: 'hanging_node', timeout: 3000 });
+
+      const schedulerDone = runScheduler([node], makeCtx(), options);
+
+      // Confirm the signal is not yet aborted before the timeout
+      await Promise.resolve();
+      expect(capturedSignal).toBeDefined();
+      expect(capturedSignal!.aborted).toBe(false);
+
+      // Fire the timeout
+      await vi.advanceTimersByTimeAsync(3001);
+
+      expect(capturedSignal!.aborted).toBe(true);
+
+      const result = await schedulerDone;
+      expect(result.success).toBe(false);
+    });
+
+    it('does not abort a sibling node signal when a peer node times out', async () => {
+      vi.useFakeTimers();
+
+      // nodeA hangs and times out
+      const nodeA = new (class extends BaseNode {
+        public run(_options: NodeRunOptions): Promise<NodeRunResult> {
+          return new Promise<NodeRunResult>(() => undefined);
+        }
+      })({ id: 'nodeA', timeout: 2000 });
+
+      // nodeB is an independent deferred node — we capture its signal
+      const nodeB = new SignalCapturingDeferredNode({ id: 'nodeB' });
+
+      const schedulerDone = runScheduler([nodeA, nodeB], makeCtx(), options);
+
+      await nodeB.started;
+
+      // Verify nodeB's signal is live before the timeout
+      expect(nodeB.capturedSignal).toBeDefined();
+      expect(nodeB.capturedSignal!.aborted).toBe(false);
+
+      // Fire nodeA's per-attempt timeout
+      await vi.advanceTimersByTimeAsync(2001);
+
+      // nodeB's signal must NOT be aborted — nodeA's timeout is isolated
+      expect(nodeB.capturedSignal!.aborted).toBe(false);
+
+      // Resolve nodeB normally; the scheduler should complete successfully
+      nodeB.resolve({ status: 'completed', result: {} });
+
+      // nodeA failed (timed out, no retries), so overall outcome is failed
+      const result = await schedulerDone;
+      expect(result.success).toBe(false);
+    });
+
+    it('retries a node whose first attempt timed out and succeeds on the second attempt', async () => {
+      vi.useFakeTimers();
+
+      let attempt = 0;
+      const node = new (class extends BaseNode {
+        public run(_options: NodeRunOptions): Promise<NodeRunResult> {
+          attempt += 1;
+          if (attempt === 1) {
+            // First attempt hangs — timeout will fire
+            return new Promise<NodeRunResult>(() => undefined);
+          }
+
+          // Second attempt completes immediately
+          return Promise.resolve({ status: 'completed', result: { retried: true } });
+        }
+      })({
+        id: 'timeout_retry_node',
+        timeout: 1000,
+        retries: { max_attempts: 1, initial_delay_ms: 200, max_delay_ms: 1000 },
+      });
+
+      const completed: NodeCompletedEvent[] = collectEvents(emitter, 'node_completed');
+
+      const schedulerDone = runScheduler([node], makeCtx(), options);
+
+      // Advance past the first-attempt timeout
+      await vi.advanceTimersByTimeAsync(1001);
+
+      // Advance past the retry backoff delay
+      await vi.advanceTimersByTimeAsync(1001);
+
+      const result = await schedulerDone;
+
+      expect(result.success).toBe(true);
+      expect(attempt).toBe(2);
+      expect(completed).toHaveLength(1);
+      expect(completed[0]!.nodeId).toBe('timeout_retry_node');
     });
   });
 

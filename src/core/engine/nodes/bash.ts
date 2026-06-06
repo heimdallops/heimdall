@@ -9,7 +9,7 @@ import { execa } from 'execa';
 import { interpolate } from '../cel.ts';
 import { NodeError } from '../errors.ts';
 import { BashNodeSchema } from '../schema.ts';
-import type { BaseNodeData, NodeRunCompleted, NodeRunOptions } from './base.ts';
+import type { BaseNodeData, NodeRunCompleted, NodeRunFailed, NodeRunOptions } from './base.ts';
 import { BaseNode } from './base.ts';
 import { nodeRegistry } from './registry.ts';
 
@@ -45,7 +45,7 @@ interface BashNodeData extends BaseNodeData {
   outputFormat: 'text' | 'json';
 }
 
-export class BashNode extends BaseNode<NodeRunCompleted> {
+export class BashNode extends BaseNode<NodeRunCompleted | NodeRunFailed> {
   private readonly bash: string;
   private readonly env: Record<string, string> | undefined;
   private readonly outputFormat: 'text' | 'json';
@@ -77,7 +77,7 @@ export class BashNode extends BaseNode<NodeRunCompleted> {
     this.outputFormat = data.outputFormat;
   }
 
-  public override async run(options: NodeRunOptions): Promise<NodeRunCompleted> {
+  public override async run(options: NodeRunOptions): Promise<NodeRunCompleted | NodeRunFailed> {
     const { ctx, signal } = options;
     const celContext = ctx as unknown as Record<string, unknown>;
 
@@ -128,7 +128,7 @@ export class BashNode extends BaseNode<NodeRunCompleted> {
     // isCanceled is only true when the run was aborted via cancelSignal; the scheduler has already
     // marked this node cancelled and will discard the result, so no NodeError is needed here.
     if (execResult.isCanceled) {
-      return { status: 'failed', error: execResult } as unknown as NodeRunCompleted;
+      return { status: 'failed', error: execResult };
     }
 
     if (execResult.exitCode !== 0) {

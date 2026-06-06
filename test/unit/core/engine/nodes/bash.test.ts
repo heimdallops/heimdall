@@ -389,6 +389,44 @@ describe('BashNode', () => {
     });
   });
 
+  describe('cancellation', () => {
+    it('resolves to status: failed (not completed) when the signal is already aborted before run starts', async () => {
+      const node = makeNode({ id: 'n1', bash: 'sleep 30' });
+      const abortedSignal = AbortSignal.abort();
+
+      const result = await node.run({
+        ctx: makeCtx(),
+        adapter: fakeAdapter,
+        emitter,
+        signal: abortedSignal,
+      });
+
+      expect(result.status).toBe('failed');
+      // Must not have produced a completed result
+      expect('result' in result).toBe(false);
+    });
+
+    it('resolves to status: failed when the signal is aborted shortly after run starts', async () => {
+      const node = makeNode({ id: 'n1', bash: 'sleep 30' });
+      const controller = new AbortController();
+
+      // Abort immediately after calling run — execa cancels via cancelSignal before sleep finishes
+      const runPromise = node.run({
+        ctx: makeCtx(),
+        adapter: fakeAdapter,
+        emitter,
+        signal: controller.signal,
+      });
+
+      controller.abort();
+
+      const result = await runPromise;
+
+      expect(result.status).toBe('failed');
+      expect('result' in result).toBe(false);
+    });
+  });
+
   describe('BashNode.matches', () => {
     it('returns true when raw object has a bash key', () => {
       expect(BashNode.matches({ id: 'n1', bash: 'echo hi' })).toBe(true);

@@ -34,26 +34,43 @@ const RETRY_DEFAULTS = {
   max_delay_ms: 30000,
 } as const;
 
-const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
+// Resolves after ms, or immediately if the signal fires — avoids blocking shutdown during backoff.
+const sleep = (ms: number, signal?: AbortSignal): Promise<void> =>
+  new Promise((resolve) => {
+    if (signal?.aborted) {
+      resolve();
+
+      return;
+    }
+
+    const timer = setTimeout(resolve, ms);
+    signal?.addEventListener('abort', () => {
+      clearTimeout(timer);
+      resolve();
+    });
+  });
 
 const computeRetryDelay = (attempt: number, initialDelayMs: number, maxDelayMs: number): number => {
   const exponential = initialDelayMs * Math.pow(2, attempt - 1);
   const bounded = Math.min(maxDelayMs, exponential);
 
-  // half-to-full jitter: spreads retries by adding up to 50% of the bounded delay
-  return bounded + Math.random() * bounded * 0.5;
+  // half-to-full jitter: result spans [0.5×bounded, bounded], never exceeding max_delay_ms
+  return bounded * (0.5 + Math.random() * 0.5);
 };
 
 const runWithTimeout = (
   runPromise: Promise<NodeRunResult>,
   timeoutMs: number | undefined,
-  nodeId: string
+  nodeId: string,
+  attemptController: AbortController
 ): Promise<NodeRunResult> => {
   if (timeoutMs === undefined || timeoutMs <= 0) {
     return runPromise;
   }
 
   const timeout = sleep(timeoutMs).then((): never => {
+    // Abort only this attempt so the underlying node can stop its work.
+    attemptController.abort();
     throw new Error(`Node "${nodeId}" timed out after ${timeoutMs}ms`);
   });
 
@@ -62,7 +79,8 @@ const runWithTimeout = (
 
 const runWithRetry = async (
   node: BaseNode,
-  buildOptions: () => Parameters<BaseNode['run']>[0]
+  schedulerSignal: AbortSignal,
+  buildOptions: (signal: AbortSignal) => Parameters<BaseNode['run']>[0]
 ): Promise<NodeRunResult> => {
   const maxAttempts = node.retries?.max_attempts ?? RETRY_DEFAULTS.max_attempts;
   const initialDelayMs = node.retries?.initial_delay_ms ?? RETRY_DEFAULTS.initial_delay_ms;
@@ -73,12 +91,30 @@ const runWithRetry = async (
   // attempt 0 is the initial try; attempts 1..maxAttempts are retries
   for (let attempt = 0; attempt <= maxAttempts; attempt++) {
     if (attempt > 0) {
+      if (schedulerSignal.aborted) {
+        break;
+      }
+
       const waitMs = computeRetryDelay(attempt, initialDelayMs, maxDelayMs);
-      await sleep(waitMs);
+      await sleep(waitMs, schedulerSignal);
+
+      // Re-check after the (possibly early-woken) sleep.
+      if (schedulerSignal.aborted) {
+        break;
+      }
     }
 
+    // Compose the per-attempt timeout signal with the scheduler's cancellation signal so BOTH abort the run.
+    const attemptController = new AbortController();
+    const attemptSignal = AbortSignal.any([schedulerSignal, attemptController.signal]);
+
     try {
-      const result = await runWithTimeout(node.run(buildOptions()), node.timeout, node.id);
+      const result = await runWithTimeout(
+        node.run(buildOptions(attemptSignal)),
+        node.timeout,
+        node.id,
+        attemptController
+      );
 
       if (result.status !== 'failed') {
         return result;
@@ -139,15 +175,15 @@ export const runScheduler = async (
     const predecessorId = sharedContextMap.get(node.id);
     const predecessorSessionId = predecessorId ? state.get(predecessorId)?.sessionId : undefined;
 
-    const buildOptions = (): Parameters<BaseNode['run']>[0] => ({
+    const buildOptions = (signal: AbortSignal): Parameters<BaseNode['run']>[0] => ({
       ctx: buildCtx(),
       adapter,
       emitter,
-      signal: controller.signal,
+      signal,
       predecessorSessionId,
     });
 
-    const promise = runWithRetry(node, buildOptions).then((result) => {
+    const promise = runWithRetry(node, controller.signal, buildOptions).then((result) => {
       // Discard stale settlements after a control-flow signal (exit or break), or if this node was already cancelled
       if ((exitResult || broke) && result.status !== 'exited') {
         return;
