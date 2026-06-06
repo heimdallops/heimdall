@@ -39,7 +39,12 @@ const runWithResolve = (
     capturedResolve = event.resolve;
   });
 
-  const runPromise = node.run({ ctx, adapter: fakeAdapter, emitter });
+  const runPromise = node.run({
+    ctx,
+    adapter: fakeAdapter,
+    emitter,
+    signal: new AbortController().signal,
+  });
 
   if (!capturedResolve) {
     throw new Error(
@@ -64,7 +69,12 @@ describe('ApprovalNode', () => {
       });
 
       const node = makeNode({ id: 'approval1', approval: { message: 'Please approve' } });
-      await node.run({ ctx: makeCtx(), adapter: fakeAdapter, emitter });
+      await node.run({
+        ctx: makeCtx(),
+        adapter: fakeAdapter,
+        emitter,
+        signal: new AbortController().signal,
+      });
 
       expect(capturedNodeId).toBe('approval1');
     });
@@ -86,6 +96,7 @@ describe('ApprovalNode', () => {
         ctx: makeCtx({ name: 'World' }),
         adapter: fakeAdapter,
         emitter,
+        signal: new AbortController().signal,
       });
 
       expect(capturedMessage).toBe('Hello World');
@@ -104,7 +115,12 @@ describe('ApprovalNode', () => {
         id: 'a1',
         approval: { message: 'Approve?', enable_feedback: true },
       });
-      await node.run({ ctx: makeCtx(), adapter: fakeAdapter, emitter });
+      await node.run({
+        ctx: makeCtx(),
+        adapter: fakeAdapter,
+        emitter,
+        signal: new AbortController().signal,
+      });
 
       expect(capturedEnableFeedback).toBe(true);
     });
@@ -119,7 +135,12 @@ describe('ApprovalNode', () => {
       });
 
       const node = makeNode({ id: 'a1', approval: { message: 'Approve?' } });
-      await node.run({ ctx: makeCtx(), adapter: fakeAdapter, emitter });
+      await node.run({
+        ctx: makeCtx(),
+        adapter: fakeAdapter,
+        emitter,
+        signal: new AbortController().signal,
+      });
 
       expect(capturedEnableFeedback).toBe(false);
     });
@@ -288,7 +309,12 @@ describe('ApprovalNode', () => {
       });
 
       const node = makeNode({ id: 'a1', approval: { message: 'Approve?' } });
-      const runPromise = node.run({ ctx: makeCtx(), adapter: fakeAdapter, emitter });
+      const runPromise = node.run({
+        ctx: makeCtx(),
+        adapter: fakeAdapter,
+        emitter,
+        signal: new AbortController().signal,
+      });
 
       if (!capturedResolve) {
         throw new Error(
@@ -319,7 +345,12 @@ describe('ApprovalNode', () => {
       const node = makeNode({ id: 'a1', approval: { message: 'Approve?' } });
 
       await expect(
-        node.run({ ctx: makeCtx(), adapter: fakeAdapter, emitter })
+        node.run({
+          ctx: makeCtx(),
+          adapter: fakeAdapter,
+          emitter,
+          signal: new AbortController().signal,
+        })
       ).rejects.toMatchObject({
         name: 'NodeError',
         code: 'ENGINE_APPROVAL_NO_LISTENER',

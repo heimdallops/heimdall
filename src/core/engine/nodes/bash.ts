@@ -78,7 +78,7 @@ export class BashNode extends BaseNode<NodeRunCompleted> {
   }
 
   public override async run(options: NodeRunOptions): Promise<NodeRunCompleted> {
-    const { ctx } = options;
+    const { ctx, signal } = options;
     const celContext = ctx as unknown as Record<string, unknown>;
 
     let interpolatedBash: string;
@@ -119,10 +119,17 @@ export class BashNode extends BaseNode<NodeRunCompleted> {
         ...interpolatedEnv,
         HEIMDALL_OUTPUT: outputFile.path,
       },
+      cancelSignal: signal,
       reject: false,
       stdout: 'inherit',
       stderr: 'inherit',
     });
+
+    // isCanceled is only true when the run was aborted via cancelSignal; the scheduler has already
+    // marked this node cancelled and will discard the result, so no NodeError is needed here.
+    if (execResult.isCanceled) {
+      return { status: 'failed', error: execResult } as unknown as NodeRunCompleted;
+    }
 
     if (execResult.exitCode !== 0) {
       throw new NodeError(

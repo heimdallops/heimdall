@@ -29,7 +29,7 @@ const emitter = createEngineEmitter();
 const makeNode = (raw: Record<string, unknown>): BashNode => BashNode.parse(raw);
 
 const run = (node: BashNode, ctx: ExecutionContext = makeCtx()): Promise<NodeRunResult> =>
-  node.run({ ctx, adapter: fakeAdapter, emitter });
+  node.run({ ctx, adapter: fakeAdapter, emitter, signal: new AbortController().signal });
 
 const catchRejection = async (promise: Promise<unknown>): Promise<unknown> => {
   try {

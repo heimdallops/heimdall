@@ -8,7 +8,7 @@ export type { NodeResult, RetryPolicy };
 export interface NodeRunCompleted {
   status: 'completed';
   result: NodeResult;
-  sessionId?: string;
+  sessionId?: string | undefined;
 }
 
 export interface NodeRunExited {
@@ -44,7 +44,7 @@ export interface LoopContext {
   readonly iteration: number;
   readonly nodes: ReadonlyMap<string, NodeResult>;
   readonly needs: ReadonlyMap<string, NodeResult>;
-  readonly outer?: LoopContext;
+  readonly outer?: LoopContext | undefined;
 }
 
 export interface ExecutionContext {
@@ -52,23 +52,24 @@ export interface ExecutionContext {
   readonly vars: Record<string, string | number | bigint | boolean>;
   readonly needs: ReadonlyMap<string, NodeResult>;
   readonly sessionDir: string;
-  readonly scope?: LoopContext;
+  readonly scope?: LoopContext | undefined;
 }
 
 export interface NodeRunOptions {
   ctx: ExecutionContext;
   adapter: PlatformAdapter;
   emitter: EngineEmitter;
-  predecessorSessionId?: string;
+  signal: AbortSignal;
+  predecessorSessionId?: string | undefined;
 }
 
 export interface BaseNodeData {
   id: string;
-  name?: string;
-  depends_on?: string[];
-  if?: string;
-  timeout?: number;
-  retries?: RetryPolicy;
+  name?: string | undefined;
+  depends_on?: string[] | undefined;
+  if?: string | undefined;
+  timeout?: number | undefined;
+  retries?: RetryPolicy | undefined;
 }
 
 export abstract class BaseNode<R extends NodeRunResult = NodeRunResult> {
