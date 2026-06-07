@@ -1102,45 +1102,12 @@ describe('runScheduler', () => {
       vi.restoreAllMocks();
     });
 
-    it('never waits longer than max_delay_ms when Math.random returns its maximum', async () => {
+    it('lower bound: delay = 0.5 × exp when Math.random returns 0', async () => {
       vi.useFakeTimers();
-      // Force Math.random to its effective maximum so jitter is at its upper bound (bounded * 1.0).
-      vi.spyOn(Math, 'random').mockReturnValue(0.9999);
-
-      const maxDelayMs = 500;
-      let attempt = 0;
-      const node = new (class extends BaseNode {
-        public run(_options: NodeRunOptions): Promise<NodeRunResult> {
-          attempt += 1;
-          if (attempt === 1) {
-            return Promise.resolve({ status: 'failed', error: new Error('first') });
-          }
-
-          return Promise.resolve({ status: 'completed', result: {} });
-        }
-      })({
-        id: 'jitter_node',
-        retries: { max_attempts: 1, initial_delay_ms: 1000, max_delay_ms: maxDelayMs },
-      });
-
-      const schedulerDone = runScheduler([node], makeCtx(), options);
-
-      // Advance exactly max_delay_ms — if jitter could exceed max_delay_ms the scheduler
-      // would still be waiting and attempt would remain 1.
-      await vi.advanceTimersByTimeAsync(maxDelayMs);
-
-      const result = await schedulerDone;
-
-      expect(result.success).toBe(true);
-      expect(attempt).toBe(2);
-    });
-
-    it('proceeds after only 50% of max_delay_ms when Math.random returns 0 (minimum jitter)', async () => {
-      vi.useFakeTimers();
-      // Math.random = 0 → jitter factor = 0.5 → delay = 0.5 * bounded
+      // Math.random = 0 → jitter factor = 0.5 → delay = 0.5 × initialDelayMs × 2^(attempt-1)
+      // For attempt 1: exp = 1000, delay = 500 ms.
       vi.spyOn(Math, 'random').mockReturnValue(0);
 
-      const initialDelayMs = 1000;
       let attempt = 0;
       const node = new (class extends BaseNode {
         public run(_options: NodeRunOptions): Promise<NodeRunResult> {
@@ -1153,14 +1120,96 @@ describe('runScheduler', () => {
         }
       })({
         id: 'min_jitter_node',
-        retries: { max_attempts: 1, initial_delay_ms: initialDelayMs, max_delay_ms: 30000 },
+        retries: { max_attempts: 1, initial_delay_ms: 1000, max_delay_ms: 30000 },
       });
 
       const schedulerDone = runScheduler([node], makeCtx(), options);
 
-      // With Math.random = 0, delay = 0.5 * 1000 = 500ms.
-      // Advancing 500ms should be sufficient to trigger the retry.
+      // Verify the retry has NOT fired before the lower-bound delay.
+      await vi.advanceTimersByTimeAsync(499);
+      expect(attempt).toBe(1);
+
+      // Advance to exactly the lower bound — the retry must fire now.
+      await vi.advanceTimersByTimeAsync(1);
+
+      const result = await schedulerDone;
+
+      expect(result.success).toBe(true);
+      expect(attempt).toBe(2);
+    });
+
+    it('upper excursion: delay exceeds exp and reaches up to 1.5 × exp when unclamped (Math.random near 1)', async () => {
+      // New formula: jittered = exp × (0.5 + random) where exp = initial_delay_ms × 2^(attempt-1).
+      // For attempt 1 with initial_delay_ms=1000: exp=1000, max delay ≈ 1000 × 1.5 = 1500 ms.
+      // max_delay_ms=30000 ensures the clamp never engages, so the full jittered value is used.
+      //
+      // This test would FAIL under the old downward-only formula because that formula caps at exp
+      // (i.e. bounded × 1.0 ≤ 1000 ms). Under the old formula the retry fires before 1001 ms;
+      // under the new formula it fires at ~1499.9 ms — well past the 1000 ms mark.
+      vi.useFakeTimers();
+      vi.spyOn(Math, 'random').mockReturnValue(0.9999);
+
+      let attempt = 0;
+      const node = new (class extends BaseNode {
+        public run(_options: NodeRunOptions): Promise<NodeRunResult> {
+          attempt += 1;
+          if (attempt === 1) {
+            return Promise.resolve({ status: 'failed', error: new Error('first') });
+          }
+
+          return Promise.resolve({ status: 'completed', result: {} });
+        }
+      })({
+        id: 'upper_jitter_node',
+        retries: { max_attempts: 1, initial_delay_ms: 1000, max_delay_ms: 30000 },
+      });
+
+      const schedulerDone = runScheduler([node], makeCtx(), options);
+
+      // At 1000 ms (= exp) the retry must NOT have fired yet — jitter pushes it above exp.
+      await vi.advanceTimersByTimeAsync(1000);
+      expect(attempt).toBe(1);
+
+      // At ~1500 ms (= 1.5 × exp) the retry must have fired.
       await vi.advanceTimersByTimeAsync(500);
+
+      const result = await schedulerDone;
+
+      expect(result.success).toBe(true);
+      expect(attempt).toBe(2);
+    });
+
+    it('hard ceiling: delay is clamped to max_delay_ms when 1.5 × exp exceeds max_delay_ms', async () => {
+      // For attempt 1 with initial_delay_ms=1000: exp=1000, 1.5×exp=1500 > max_delay_ms=1200.
+      // The clamp must fire: Math.min(1200, 1499.9) = 1200 ms.
+      // Under the old formula: bounded=min(1000,1200)=1000, delay≈999.95 ms — fires before 1200 ms.
+      // Under the new formula: delay=1200 ms — does NOT fire before 1200 ms.
+      vi.useFakeTimers();
+      vi.spyOn(Math, 'random').mockReturnValue(0.9999);
+
+      let attempt = 0;
+      const node = new (class extends BaseNode {
+        public run(_options: NodeRunOptions): Promise<NodeRunResult> {
+          attempt += 1;
+          if (attempt === 1) {
+            return Promise.resolve({ status: 'failed', error: new Error('first') });
+          }
+
+          return Promise.resolve({ status: 'completed', result: {} });
+        }
+      })({
+        id: 'clamped_jitter_node',
+        retries: { max_attempts: 1, initial_delay_ms: 1000, max_delay_ms: 1200 },
+      });
+
+      const schedulerDone = runScheduler([node], makeCtx(), options);
+
+      // At 1199 ms the retry must NOT have fired — max_delay_ms is the hard ceiling.
+      await vi.advanceTimersByTimeAsync(1199);
+      expect(attempt).toBe(1);
+
+      // Advance to max_delay_ms — the retry must fire now.
+      await vi.advanceTimersByTimeAsync(1);
 
       const result = await schedulerDone;
 

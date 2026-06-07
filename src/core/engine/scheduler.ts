@@ -59,11 +59,10 @@ const sleep = (ms: number, signal?: AbortSignal): Promise<void> =>
   });
 
 const computeRetryDelay = (attempt: number, initialDelayMs: number, maxDelayMs: number): number => {
-  const exponential = initialDelayMs * Math.pow(2, attempt - 1);
-  const bounded = Math.min(maxDelayMs, exponential);
+  const exp = initialDelayMs * Math.pow(2, attempt - 1);
+  const jittered = exp * (0.5 + Math.random()); // symmetric ±50% jitter keeps delays spread around the target rather than always compressing downward
 
-  // half-to-full jitter: result spans [0.5×bounded, bounded], never exceeding max_delay_ms
-  return bounded * (0.5 + Math.random() * 0.5);
+  return Math.min(maxDelayMs, jittered);
 };
 
 const runWithTimeout = (
