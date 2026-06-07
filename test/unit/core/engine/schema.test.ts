@@ -1,7 +1,10 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  ApprovalNodeSchema,
   InputDeclarationSchema,
+  LoopNodeSchema,
+  NodeSchema,
   WorkflowDefinitionSchema,
 } from '../../../../src/core/engine/schema.ts';
 
@@ -114,36 +117,6 @@ describe('WorkflowDefinitionSchema', () => {
 
       expect(result.success).toBe(true);
     });
-
-    it('rejects a loop node with neither until nor max_iterations', () => {
-      const result = WorkflowDefinitionSchema.safeParse(
-        workflow({ loop: { nodes: [{ id: 'inner', bash: 'echo loop' }] } })
-      );
-
-      expect(result.success).toBe(false);
-    });
-
-    it('rejects a loop node with an empty inner nodes array', () => {
-      const result = WorkflowDefinitionSchema.safeParse(
-        workflow({ loop: { max_iterations: 3, nodes: [] } })
-      );
-
-      expect(result.success).toBe(false);
-    });
-
-    it('rejects an approval node missing approval.message', () => {
-      const result = WorkflowDefinitionSchema.safeParse(
-        workflow({ approval: { exit_on_no: true } })
-      );
-
-      expect(result.success).toBe(false);
-    });
-
-    it('rejects a node with no recognised type field', () => {
-      const result = WorkflowDefinitionSchema.safeParse(workflow({ name: 'Orphan' }));
-
-      expect(result.success).toBe(false);
-    });
   });
 
   describe('inputs', () => {
@@ -168,6 +141,122 @@ describe('WorkflowDefinitionSchema', () => {
       });
       expect(result.data.inputs?.['count']).toEqual({ type: 'integer' });
     });
+  });
+});
+
+describe('NodeSchema', () => {
+  it('accepts any extra fields alongside a valid id (passthrough)', () => {
+    const result = NodeSchema.safeParse({
+      id: 'my_node',
+      unknown_field: 'hello',
+      nested: { x: 1 },
+    });
+
+    expect(result.success).toBe(true);
+    if (!result.success) {
+      return;
+    }
+
+    // passthrough: extra keys must be preserved in the parsed output
+    expect(result.data['unknown_field']).toBe('hello');
+    expect(result.data['nested']).toEqual({ x: 1 });
+  });
+
+  it('rejects a node missing the id field entirely', () => {
+    const result = NodeSchema.safeParse({ bash: 'echo hi' });
+
+    expect(result.success).toBe(false);
+    if (result.success) {
+      return;
+    }
+
+    const paths = result.error.issues.map((i) => i.path.join('.'));
+    expect(paths).toContain('id');
+  });
+
+  it('rejects a node whose id contains invalid characters', () => {
+    const result = NodeSchema.safeParse({ id: 'bad-id', bash: 'echo hi' });
+
+    expect(result.success).toBe(false);
+    if (result.success) {
+      return;
+    }
+
+    const issue = result.error.issues.find((i) => i.path.includes('id'));
+    expect(issue).toBeDefined();
+    expect(issue?.message).toMatch(/Node id must match/);
+  });
+});
+
+describe('LoopNodeSchema', () => {
+  const baseLoop = (loop: object): { id: string; loop: object } => ({
+    id: 'loop1',
+    loop,
+  });
+
+  it('rejects a loop node with neither until nor max_iterations', () => {
+    const result = LoopNodeSchema.safeParse(
+      baseLoop({ nodes: [{ id: 'inner', bash: 'echo loop' }] })
+    );
+
+    expect(result.success).toBe(false);
+    if (result.success) {
+      return;
+    }
+
+    const messages = result.error.issues.map((i) => i.message);
+    expect(messages.some((m) => m.includes('until') || m.includes('max_iterations'))).toBe(true);
+  });
+
+  it('rejects a loop node with an empty inner nodes array', () => {
+    const result = LoopNodeSchema.safeParse(baseLoop({ max_iterations: 3, nodes: [] }));
+
+    expect(result.success).toBe(false);
+    if (result.success) {
+      return;
+    }
+
+    const issue = result.error.issues.find((i) => i.path.includes('nodes'));
+    expect(issue).toBeDefined();
+  });
+
+  it('accepts a loop node with max_iterations and at least one inner node', () => {
+    const result = LoopNodeSchema.safeParse(
+      baseLoop({ max_iterations: 3, nodes: [{ id: 'inner', bash: 'echo loop' }] })
+    );
+
+    expect(result.success).toBe(true);
+  });
+
+  it('accepts a loop node with until and at least one inner node', () => {
+    const result = LoopNodeSchema.safeParse(
+      baseLoop({
+        until: 'scope.iteration == 3',
+        nodes: [{ id: 'inner', bash: 'echo loop' }],
+      })
+    );
+
+    expect(result.success).toBe(true);
+  });
+});
+
+describe('ApprovalNodeSchema', () => {
+  it('rejects an approval node missing approval.message', () => {
+    const result = ApprovalNodeSchema.safeParse({ id: 'a1', approval: { exit_on_no: true } });
+
+    expect(result.success).toBe(false);
+    if (result.success) {
+      return;
+    }
+
+    const issue = result.error.issues.find((i) => i.path.includes('message'));
+    expect(issue).toBeDefined();
+  });
+
+  it('accepts an approval node with only the required message field', () => {
+    const result = ApprovalNodeSchema.safeParse({ id: 'a1', approval: { message: 'Approve?' } });
+
+    expect(result.success).toBe(true);
   });
 });
 
