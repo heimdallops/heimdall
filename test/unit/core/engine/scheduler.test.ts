@@ -11,7 +11,7 @@ import type {
   WorkflowExitedEvent,
 } from '../../../../src/core/engine/emitter.ts';
 import { createEngineEmitter } from '../../../../src/core/engine/emitter.ts';
-import { EngineError } from '../../../../src/core/engine/errors.ts';
+import { EngineError, NodeError } from '../../../../src/core/engine/errors.ts';
 import type {
   ExecutionContext,
   NodeRunOptions,
@@ -22,10 +22,6 @@ import type { BaseNodeData } from '../../../../src/core/engine/nodes/base.ts';
 import { BaseNode } from '../../../../src/core/engine/nodes/base.ts';
 import type { SchedulerOptions } from '../../../../src/core/engine/scheduler.ts';
 import { runScheduler } from '../../../../src/core/engine/scheduler.ts';
-
-// ---------------------------------------------------------------------------
-// Stub infrastructure
-// ---------------------------------------------------------------------------
 
 class StubNode extends BaseNode {
   private readonly result: NodeRunResult;
@@ -40,10 +36,7 @@ class StubNode extends BaseNode {
   }
 }
 
-/**
- * A node whose run() result is controlled externally via resolve/reject
- * handles. Useful for verifying concurrent dispatch.
- */
+/** A node whose run() result is controlled externally via resolve/reject handles. */
 class DeferredNode extends BaseNode {
   private resolveRun!: (result: NodeRunResult) => void;
   private rejectRun!: (err: unknown) => void;
@@ -77,10 +70,7 @@ class DeferredNode extends BaseNode {
   }
 }
 
-/**
- * A node that captures the NodeRunOptions it receives each time run() is
- * called — useful for asserting what the scheduler passes in.
- */
+/** A node that captures the NodeRunOptions passed to each run() call. */
 class CapturingNode extends BaseNode {
   public readonly capturedOptions: NodeRunOptions[] = [];
   private readonly result: NodeRunResult;
@@ -97,10 +87,7 @@ class CapturingNode extends BaseNode {
   }
 }
 
-/**
- * A DeferredNode that also captures the AbortSignal passed by the scheduler.
- * Useful for asserting that controller.abort() is called after cancellation.
- */
+/** A DeferredNode that also captures the AbortSignal passed to each run() call. */
 class SignalCapturingDeferredNode extends DeferredNode {
   public capturedSignal: AbortSignal | undefined;
 
@@ -110,10 +97,6 @@ class SignalCapturingDeferredNode extends DeferredNode {
     return super.run(options);
   }
 }
-
-// ---------------------------------------------------------------------------
-// Test helpers
-// ---------------------------------------------------------------------------
 
 const fakeAdapter: PlatformAdapter = {
   run: vi.fn(),
@@ -136,7 +119,6 @@ const makeOptions = (overrides: Partial<SchedulerOptions> = {}): SchedulerOption
   ...overrides,
 });
 
-// Collect emitted events of a given type into an array
 const collectEvents = <K extends keyof EngineEventMap>(
   emitter: EngineEmitter,
   event: K
@@ -149,10 +131,6 @@ const collectEvents = <K extends keyof EngineEventMap>(
   return events;
 };
 
-// ---------------------------------------------------------------------------
-// Tests
-// ---------------------------------------------------------------------------
-
 describe('runScheduler', () => {
   let emitter: ReturnType<typeof createEngineEmitter>;
   let options: SchedulerOptions;
@@ -164,7 +142,6 @@ describe('runScheduler', () => {
     options = makeOptions({ emitter });
   });
 
-  // -------------------------------------------------------------------------
   describe('dependency ordering', () => {
     it('does not start node B until node A has completed when B depends_on A', async () => {
       const order: string[] = [];
@@ -206,7 +183,6 @@ describe('runScheduler', () => {
     });
   });
 
-  // -------------------------------------------------------------------------
   describe('concurrent dispatch', () => {
     it('dispatches two independent nodes concurrently — both start before either completes', async () => {
       const nodeA = new DeferredNode({ id: 'nodeA' });
@@ -227,7 +203,6 @@ describe('runScheduler', () => {
     });
   });
 
-  // -------------------------------------------------------------------------
   describe('skip propagation', () => {
     it('skips a node whose if expression evaluates to false', async () => {
       const node = new StubNode({ id: 'gated', if: 'false' });
@@ -292,7 +267,6 @@ describe('runScheduler', () => {
     });
   });
 
-  // -------------------------------------------------------------------------
   describe('failure stops new dispatches', () => {
     it('does not dispatch a node that is still pending (blocked by a dep) when a peer fails', async () => {
       // blocker keeps pendingNode from being dispatched initially.
@@ -336,9 +310,6 @@ describe('runScheduler', () => {
     });
 
     it('resolves (does not throw) with outcome: completed and success: false when failure leaves a pending node undispatched', async () => {
-      // failNode is independent; depNode depends on failNode, so it is initially pending.
-      // failNode fails immediately, setting hasFailure. depNode remains pending and is never
-      // dispatched — the scheduler must break quietly (not throw) and return success: false.
       const failNode = new StubNode({ id: 'fail' }, { status: 'failed', error: new Error('fail') });
       const depNode = new StubNode({ id: 'dep', depends_on: ['fail'] });
 
@@ -379,7 +350,6 @@ describe('runScheduler', () => {
     });
   });
 
-  // -------------------------------------------------------------------------
   describe('needs / inputs / vars context threading', () => {
     it('populates needs with completed node results so downstream nodes can read them', async () => {
       const capturedNeeds = new Map<string, unknown>();
@@ -456,7 +426,6 @@ describe('runScheduler', () => {
     });
   });
 
-  // -------------------------------------------------------------------------
   describe('sessionDir consistency', () => {
     it('passes the same sessionDir to all nodes in a single run', async () => {
       const seenSessionDirs: string[] = [];
@@ -483,7 +452,6 @@ describe('runScheduler', () => {
     });
   });
 
-  // -------------------------------------------------------------------------
   describe('exit node behavior', () => {
     it('emits workflow_exited with the reason when a node returns exited', async () => {
       const node = new StubNode(
@@ -555,7 +523,6 @@ describe('runScheduler', () => {
     });
   });
 
-  // -------------------------------------------------------------------------
   describe('break signal', () => {
     it('resolves with outcome: broke and success: true when a node returns break', async () => {
       const node = new StubNode({ id: 'breaker' }, { status: 'break' });
@@ -609,7 +576,6 @@ describe('runScheduler', () => {
     });
   });
 
-  // -------------------------------------------------------------------------
   describe('cancellation', () => {
     it('emits node_cancelled for an in-flight peer when an exit node fires', async () => {
       const nodeA = new DeferredNode({ id: 'nodeA', name: 'Node A' });
@@ -702,7 +668,6 @@ describe('runScheduler', () => {
     });
   });
 
-  // -------------------------------------------------------------------------
   describe('control-flow race: first exit/break wins', () => {
     it('break-then-exit: first settler (break) wins — outcome is broke, no workflow_exited emitted', async () => {
       const nodeA = new DeferredNode({ id: 'nodeA' });
@@ -714,14 +679,11 @@ describe('runScheduler', () => {
       // Ensure both are in-flight before settling either
       await Promise.all([nodeA.started, nodeB.started]);
 
-      // A breaks first
       nodeA.resolve({ status: 'break' });
 
-      // Yield so the scheduler processes the break signal before B settles
       await Promise.resolve();
       await Promise.resolve();
 
-      // B settles with exited — must be discarded because broke is already set
       nodeB.resolve({ status: 'exited', failure: false });
 
       const result = await schedulerDone;
@@ -741,31 +703,25 @@ describe('runScheduler', () => {
 
       await Promise.all([nodeA.started, nodeB.started]);
 
-      // A exits first
       nodeA.resolve({ status: 'exited', reason: 'first', failure: false });
 
-      // Yield so the scheduler records exitResult before B settles
       await Promise.resolve();
       await Promise.resolve();
 
-      // B exits second with a different reason and failure:true — must be fully discarded
       nodeB.resolve({ status: 'exited', reason: 'second', failure: true });
 
       const result = await schedulerDone;
 
-      // Exactly one workflow_exited event — the second is discarded
       expect(exitEvents).toHaveLength(1);
       expect(exitEvents[0]!.reason).toBe('first');
       expect(exitEvents[0]!.failure).toBe(false);
 
-      // Outcome reflects the first exit only
       expect(result.outcome).toBe('exited');
       expect(result.exitReason).toBe('first');
       expect(result.success).toBe(true);
     });
   });
 
-  // -------------------------------------------------------------------------
   describe('failure before exit/break makes run unsuccessful', () => {
     it('failure then exit: prior failure is not masked — outcome: exited, success: false', async () => {
       const nodeA = new DeferredNode({ id: 'nodeA' });
@@ -773,24 +729,19 @@ describe('runScheduler', () => {
 
       const schedulerDone = runScheduler([nodeA, nodeB], makeCtx(), options);
 
-      // Both must be in-flight before either settles
       await Promise.all([nodeA.started, nodeB.started]);
 
-      // A fails, recording hasFailure — dispatchEligible halts new dispatch but B is already in-flight
       nodeA.resolve({ status: 'failed', error: new Error('A failed') });
 
-      // Yield so the scheduler processes A's failure before B settles
       await Promise.resolve();
       await Promise.resolve();
       await Promise.resolve();
 
-      // B exits — exitResult is recorded after hasFailure was set
       nodeB.resolve({ status: 'exited', failure: false });
 
       const result = await schedulerDone;
 
       expect(result.outcome).toBe('exited');
-      // The pre-existing failure must not be masked
       expect(result.success).toBe(false);
     });
 
@@ -802,28 +753,23 @@ describe('runScheduler', () => {
 
       await Promise.all([nodeA.started, nodeB.started]);
 
-      // A fails, recording hasFailure
       nodeA.resolve({ status: 'failed', error: new Error('A failed') });
 
       await Promise.resolve();
       await Promise.resolve();
       await Promise.resolve();
 
-      // B breaks — broke is recorded after hasFailure was set
       nodeB.resolve({ status: 'break' });
 
       const result = await schedulerDone;
 
       expect(result.outcome).toBe('broke');
-      // The pre-existing failure must not be masked
       expect(result.success).toBe(false);
     });
   });
 
-  // -------------------------------------------------------------------------
   describe('evaluateIf error path', () => {
     it('resolves with success: false when if expression produces a non-boolean (e.g. numeric literal)', async () => {
-      // CEL expression '42' evaluates to a number, not a boolean — evaluateIf throws
       const node = new StubNode({ id: 'bad_if', if: '42' });
 
       const result = await runScheduler([node], makeCtx(), options);
@@ -839,14 +785,14 @@ describe('runScheduler', () => {
 
       expect(failed).toHaveLength(1);
       expect(failed[0]!.nodeId).toBe('bad_if');
-      expect(failed[0]!.error).toBeInstanceOf(Error);
-      // Fix 2: the original NodeError is forwarded rather than replaced with a generic wrapper —
-      // assert the message contains the specific diagnostic from evaluateIf.
-      expect((failed[0]!.error as Error).message).toMatch(/must evaluate to a boolean/);
+      expect(failed[0]!.error).toBeInstanceOf(NodeError);
+      const ifError = failed[0]!.error as NodeError;
+      expect(ifError.message).toBe('Failed to evaluate if expression (node: "Bad If")');
+      expect(ifError.code).toBe('ENGINE_NODE_IF_ERROR');
+      expect((ifError.cause as Error).message).toMatch(/must evaluate to a boolean/);
     });
   });
 
-  // -------------------------------------------------------------------------
   describe('retry behavior (runWithRetry)', () => {
     it('returns success when a node fails on the first attempt but succeeds on the second', async () => {
       vi.useFakeTimers();
@@ -941,10 +887,7 @@ describe('runScheduler', () => {
 
       const node = new (class extends BaseNode {
         public run(_options: NodeRunOptions): Promise<NodeRunResult> {
-          // This promise never resolves on its own — the timeout fires first
-          return new Promise<NodeRunResult>((_resolve) => {
-            // intentionally never resolved; timeout under test will fire
-          });
+          return new Promise<NodeRunResult>(() => undefined);
         }
       })({ id: 'slow_node', timeout: 5000 });
 
@@ -952,7 +895,6 @@ describe('runScheduler', () => {
 
       const schedulerDone = runScheduler([node], makeCtx(), options);
 
-      // Advance past the timeout
       await vi.advanceTimersByTimeAsync(6000);
 
       const result = await schedulerDone;
@@ -960,11 +902,17 @@ describe('runScheduler', () => {
       expect(result.success).toBe(false);
       expect(failed).toHaveLength(1);
       expect(failed[0]!.nodeId).toBe('slow_node');
-      expect((failed[0]!.error as Error).message).toMatch(/timed out/i);
+      expect(failed[0]!.error).toBeInstanceOf(NodeError);
+      const outerError = failed[0]!.error as NodeError;
+      expect(outerError.message).toBe('Node failed (node: "slow_node")');
+      expect(outerError.code).toBe('ENGINE_NODE_FAILED');
+      const causeError = outerError.cause as NodeError;
+      expect(causeError).toBeInstanceOf(NodeError);
+      expect(causeError.message).toMatch(/timed out after \d+ms \(node: "slow_node"\)/i);
+      expect(causeError.code).toBe('ENGINE_NODE_TIMEOUT');
     });
   });
 
-  // -------------------------------------------------------------------------
   describe('sharedContextMap / predecessorSessionId wiring', () => {
     it('passes predecessorSessionId to node B when sharedContextMap maps B → A and A returns a sessionId', async () => {
       const nodeA = new CapturingNode(
@@ -989,7 +937,6 @@ describe('runScheduler', () => {
       );
       const nodeB = new CapturingNode({ id: 'b', depends_on: ['a'] });
 
-      // sharedContextMap does not include 'b'
       const runOptions = makeOptions({ emitter, sharedContextMap: new Map() });
 
       await runScheduler([nodeA, nodeB], makeCtx(), runOptions);
@@ -999,7 +946,6 @@ describe('runScheduler', () => {
     });
   });
 
-  // -------------------------------------------------------------------------
   describe('lifecycle events', () => {
     it('emits node_started with correct nodeId and nodeName before run resolves', async () => {
       const node = new StubNode({ id: 'myNode', name: 'My Node' });
@@ -1060,7 +1006,13 @@ describe('runScheduler', () => {
       expect(failed).toHaveLength(1);
       expect(failed[0]!.nodeId).toBe('failer');
       expect(failed[0]!.nodeName).toBe('Failer');
-      expect(failed[0]!.error).toBe(boom);
+      expect(failed[0]!.error).toBeInstanceOf(NodeError);
+      const nodeError = failed[0]!.error as NodeError;
+      expect(nodeError.message).toBe('Node failed (node: "Failer")');
+      expect(nodeError.code).toBe('ENGINE_NODE_FAILED');
+      expect(nodeError.nodeId).toBe('failer');
+      expect(nodeError.nodeName).toBe('Failer');
+      expect(nodeError.cause).toBe(boom);
     });
 
     it('emits node_started before node_completed for the same node', async () => {
@@ -1099,7 +1051,6 @@ describe('runScheduler', () => {
     });
   });
 
-  // -------------------------------------------------------------------------
   describe('retry jitter bounds (computeRetryDelay)', () => {
     afterEach(() => {
       vi.restoreAllMocks();
@@ -1107,8 +1058,6 @@ describe('runScheduler', () => {
 
     it('lower bound: delay = 0.5 × exp when Math.random returns 0', async () => {
       vi.useFakeTimers();
-      // Math.random = 0 → jitter factor = 0.5 → delay = 0.5 × initialDelayMs × 2^(attempt-1)
-      // For attempt 1: exp = 1000, delay = 500 ms.
       vi.spyOn(Math, 'random').mockReturnValue(0);
 
       let attempt = 0;
@@ -1128,11 +1077,9 @@ describe('runScheduler', () => {
 
       const schedulerDone = runScheduler([node], makeCtx(), options);
 
-      // Verify the retry has NOT fired before the lower-bound delay.
       await vi.advanceTimersByTimeAsync(499);
       expect(attempt).toBe(1);
 
-      // Advance to exactly the lower bound — the retry must fire now.
       await vi.advanceTimersByTimeAsync(1);
 
       const result = await schedulerDone;
@@ -1142,13 +1089,6 @@ describe('runScheduler', () => {
     });
 
     it('upper excursion: delay exceeds exp and reaches up to 1.5 × exp when unclamped (Math.random near 1)', async () => {
-      // New formula: jittered = exp × (0.5 + random) where exp = initial_delay_ms × 2^(attempt-1).
-      // For attempt 1 with initial_delay_ms=1000: exp=1000, max delay ≈ 1000 × 1.5 = 1500 ms.
-      // max_delay_ms=30000 ensures the clamp never engages, so the full jittered value is used.
-      //
-      // This test would FAIL under the old downward-only formula because that formula caps at exp
-      // (i.e. bounded × 1.0 ≤ 1000 ms). Under the old formula the retry fires before 1001 ms;
-      // under the new formula it fires at ~1499.9 ms — well past the 1000 ms mark.
       vi.useFakeTimers();
       vi.spyOn(Math, 'random').mockReturnValue(0.9999);
 
@@ -1183,10 +1123,6 @@ describe('runScheduler', () => {
     });
 
     it('hard ceiling: delay is clamped to max_delay_ms when 1.5 × exp exceeds max_delay_ms', async () => {
-      // For attempt 1 with initial_delay_ms=1000: exp=1000, 1.5×exp=1500 > max_delay_ms=1200.
-      // The clamp must fire: Math.min(1200, 1499.9) = 1200 ms.
-      // Under the old formula: bounded=min(1000,1200)=1000, delay≈999.95 ms — fires before 1200 ms.
-      // Under the new formula: delay=1200 ms — does NOT fire before 1200 ms.
       vi.useFakeTimers();
       vi.spyOn(Math, 'random').mockReturnValue(0.9999);
 
@@ -1207,11 +1143,9 @@ describe('runScheduler', () => {
 
       const schedulerDone = runScheduler([node], makeCtx(), options);
 
-      // At 1199 ms the retry must NOT have fired — max_delay_ms is the hard ceiling.
       await vi.advanceTimersByTimeAsync(1199);
       expect(attempt).toBe(1);
 
-      // Advance to max_delay_ms — the retry must fire now.
       await vi.advanceTimersByTimeAsync(1);
 
       const result = await schedulerDone;
@@ -1221,7 +1155,6 @@ describe('runScheduler', () => {
     });
   });
 
-  // -------------------------------------------------------------------------
   describe('retry stops immediately on scheduler abort', () => {
     it('does not retry after the first failure when another node aborts the scheduler', async () => {
       vi.useFakeTimers();
@@ -1242,28 +1175,21 @@ describe('runScheduler', () => {
 
       const schedulerDone = runScheduler([nodeA, nodeB], makeCtx(), options);
 
-      // Wait for nodeA to start (nodeB starts immediately too since they're independent)
       await nodeA.started;
 
-      // Give nodeB's first run a chance to settle
       await Promise.resolve();
       await Promise.resolve();
       await Promise.resolve();
 
-      // At this point nodeB has failed once and is sleeping its 10s backoff.
-      // Abort the scheduler by resolving nodeA with exited.
       nodeA.resolve({ status: 'exited', failure: false });
 
-      // The scheduler should resolve WITHOUT needing to advance timers through the backoff.
       const result = await schedulerDone;
 
       expect(result.outcome).toBe('exited');
-      // nodeB must not have been retried — run count stays at 1.
       expect(runCount).toBe(1);
     });
   });
 
-  // -------------------------------------------------------------------------
   describe('per-attempt timeout signal isolation', () => {
     it('aborts the signal passed to the timed-out node after the timeout fires', async () => {
       vi.useFakeTimers();
@@ -1274,19 +1200,16 @@ describe('runScheduler', () => {
         public run(runOptions: NodeRunOptions): Promise<NodeRunResult> {
           capturedSignal = runOptions.signal;
 
-          // Never resolves on its own — timeout fires first
           return new Promise<NodeRunResult>(() => undefined);
         }
       })({ id: 'hanging_node', timeout: 3000 });
 
       const schedulerDone = runScheduler([node], makeCtx(), options);
 
-      // Confirm the signal is not yet aborted before the timeout
       await Promise.resolve();
       expect(capturedSignal).toBeDefined();
       expect(capturedSignal!.aborted).toBe(false);
 
-      // Fire the timeout
       await vi.advanceTimersByTimeAsync(3001);
 
       expect(capturedSignal!.aborted).toBe(true);
@@ -1298,34 +1221,27 @@ describe('runScheduler', () => {
     it('does not abort a sibling node signal when a peer node times out', async () => {
       vi.useFakeTimers();
 
-      // nodeA hangs and times out
       const nodeA = new (class extends BaseNode {
         public run(_options: NodeRunOptions): Promise<NodeRunResult> {
           return new Promise<NodeRunResult>(() => undefined);
         }
       })({ id: 'nodeA', timeout: 2000 });
 
-      // nodeB is an independent deferred node — we capture its signal
       const nodeB = new SignalCapturingDeferredNode({ id: 'nodeB' });
 
       const schedulerDone = runScheduler([nodeA, nodeB], makeCtx(), options);
 
       await nodeB.started;
 
-      // Verify nodeB's signal is live before the timeout
       expect(nodeB.capturedSignal).toBeDefined();
       expect(nodeB.capturedSignal!.aborted).toBe(false);
 
-      // Fire nodeA's per-attempt timeout
       await vi.advanceTimersByTimeAsync(2001);
 
-      // nodeB's signal must NOT be aborted — nodeA's timeout is isolated
       expect(nodeB.capturedSignal!.aborted).toBe(false);
 
-      // Resolve nodeB normally; the scheduler should complete successfully
       nodeB.resolve({ status: 'completed', result: {} });
 
-      // nodeA failed (timed out, no retries), so overall outcome is failed
       const result = await schedulerDone;
       expect(result.success).toBe(false);
     });
@@ -1338,11 +1254,9 @@ describe('runScheduler', () => {
         public run(_options: NodeRunOptions): Promise<NodeRunResult> {
           attempt += 1;
           if (attempt === 1) {
-            // First attempt hangs — timeout will fire
             return new Promise<NodeRunResult>(() => undefined);
           }
 
-          // Second attempt completes immediately
           return Promise.resolve({ status: 'completed', result: { retried: true } });
         }
       })({
@@ -1355,10 +1269,8 @@ describe('runScheduler', () => {
 
       const schedulerDone = runScheduler([node], makeCtx(), options);
 
-      // Advance past the first-attempt timeout
       await vi.advanceTimersByTimeAsync(1001);
 
-      // Advance past the retry backoff delay
       await vi.advanceTimersByTimeAsync(1001);
 
       const result = await schedulerDone;
@@ -1370,12 +1282,10 @@ describe('runScheduler', () => {
     });
   });
 
-  // -------------------------------------------------------------------------
   describe('timeout timer cleanup (no late firing when run beats the timeout)', () => {
     it('does not abort the attempt signal when the node completes before the timeout fires', async () => {
       vi.useFakeTimers();
 
-      // A node with a 5-second timeout whose run() resolves immediately.
       const node = new SignalCapturingDeferredNode({ id: 'fast_node', timeout: 5000 });
 
       const completed: NodeCompletedEvent[] = collectEvents(emitter, 'node_completed');
@@ -1384,20 +1294,16 @@ describe('runScheduler', () => {
 
       const schedulerDone = runScheduler([node], makeCtx(), options);
 
-      // Wait for the node to start so its signal is captured, then resolve immediately.
       await node.started;
       node.resolve({ status: 'completed', result: { value: 'done' } });
 
-      // Await the scheduler before advancing timers — it should be done already.
       const result = await schedulerDone;
 
-      // The run completed successfully before any timeout.
       expect(result.outcome).toBe('completed');
       expect(result.success).toBe(true);
       expect(completed).toHaveLength(1);
       expect(completed[0]!.nodeId).toBe('fast_node');
 
-      // Capture the signal reference before advancing timers.
       const signal = node.capturedSignal!;
       expect(signal).toBeDefined();
       expect(signal.aborted).toBe(false);
@@ -1406,20 +1312,15 @@ describe('runScheduler', () => {
       // and call attemptController.abort(), making signal.aborted true.
       await vi.advanceTimersByTimeAsync(6000);
 
-      // The leaked timer must NOT have fired: the signal stays unaborted.
       expect(signal.aborted).toBe(false);
 
-      // No extra failure/cancellation events must have been emitted after completion.
       expect(failed).toHaveLength(0);
       expect(cancelled).toHaveLength(0);
     });
   });
 
-  // -------------------------------------------------------------------------
   describe('deadlock detection', () => {
     it('rejects with EngineError code ENGINE_SCHEDULER_DEADLOCK when two nodes depend on each other', async () => {
-      // A depends_on B and B depends_on A — neither is ever eligible, nothing is dispatched,
-      // and no exit/break/failure flag is set. This is an invariant violation (unvalidated input).
       const nodeA = new StubNode({ id: 'nodeA', depends_on: ['nodeB'] });
       const nodeB = new StubNode({ id: 'nodeB', depends_on: ['nodeA'] });
 

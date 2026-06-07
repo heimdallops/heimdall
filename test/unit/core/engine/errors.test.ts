@@ -32,6 +32,81 @@ describe('EngineError', () => {
 
     expect(err.cause).toBe(root);
   });
+
+  describe('effectiveCode', () => {
+    it('returns own code when there is no cause', () => {
+      const err = new EngineError('standalone', 'CODE_A');
+
+      expect(err.effectiveCode).toBe('CODE_A');
+    });
+
+    it('returns the inner code and leaves own .code unchanged when cause is an EngineError', () => {
+      const inner = new EngineError('inner', 'CODE_INNER');
+      const outer = new EngineError('outer', 'CODE_OUTER', { cause: inner });
+
+      expect(outer.effectiveCode).toBe('CODE_INNER');
+      expect(outer.code).toBe('CODE_OUTER');
+    });
+
+    it('returns the innermost code across a three-link all-EngineError chain', () => {
+      const innermost = new EngineError('innermost', 'CODE_DEEP');
+      const middle = new EngineError('middle', 'CODE_MID', { cause: innermost });
+      const outer = new EngineError('outer', 'CODE_TOP', { cause: middle });
+
+      expect(outer.effectiveCode).toBe('CODE_DEEP');
+    });
+
+    it('stops at the deepest EngineError and ignores a plain Error leaf', () => {
+      const plainLeaf = new Error('plain');
+      const engineWrap = new EngineError('engine wrap', 'CODE_ENGINE', { cause: plainLeaf });
+      const outer = new EngineError('outer', 'CODE_OUTER', { cause: engineWrap });
+
+      expect(outer.effectiveCode).toBe('CODE_ENGINE');
+    });
+  });
+
+  describe('toString', () => {
+    it('returns the message when there is no cause', () => {
+      const err = new EngineError('standalone message', 'CODE_A');
+
+      expect(err.toString()).toBe('standalone message');
+    });
+
+    it('joins outer and inner messages when cause is a plain Error', () => {
+      const inner = new Error('inner msg');
+      const outer = new EngineError('outer msg', 'CODE_A', { cause: inner });
+
+      expect(outer.toString()).toBe('outer msg: inner msg');
+    });
+
+    it('joins all three messages outer→inner including node suffixes for NodeError links', () => {
+      const plain = new Error('plain cause');
+      const middleNode = new NodeError('middle failed', 'CODE_MID', 'node-mid', {
+        nodeName: 'Mid Node',
+        cause: plain,
+      });
+      const outerNode = new NodeError('outer failed', 'CODE_TOP', 'node-top', {
+        nodeName: 'Top Node',
+        cause: middleNode,
+      });
+
+      expect(outerNode.toString()).toBe(
+        'outer failed (node: "Top Node"): middle failed (node: "Mid Node"): plain cause'
+      );
+    });
+
+    it('appends a primitive string cause', () => {
+      const err = new EngineError('outer msg', 'CODE_A', { cause: 'some string reason' });
+
+      expect(err.toString()).toBe('outer msg: some string reason');
+    });
+
+    it('does not append a plain object cause and does not throw', () => {
+      const err = new EngineError('outer msg', 'CODE_A', { cause: { foo: 1 } });
+
+      expect(err.toString()).toBe('outer msg');
+    });
+  });
 });
 
 describe('EngineValidationError', () => {

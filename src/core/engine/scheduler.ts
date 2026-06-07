@@ -1,5 +1,5 @@
 import type { EngineEmitter } from './emitter.ts';
-import { EngineError } from './errors.ts';
+import { EngineError, NodeError } from './errors.ts';
 import type {
   BaseNode,
   ExecutionContext,
@@ -68,7 +68,7 @@ const computeRetryDelay = (attempt: number, initialDelayMs: number, maxDelayMs: 
 const runWithTimeout = (
   runPromise: Promise<NodeRunResult>,
   timeoutMs: number | undefined,
-  nodeId: string,
+  node: BaseNode,
   attemptController: AbortController
 ): Promise<NodeRunResult> => {
   if (timeoutMs === undefined || timeoutMs <= 0) {
@@ -81,7 +81,11 @@ const runWithTimeout = (
     timer = setTimeout(() => {
       // Abort only this attempt so the underlying node can stop its work.
       attemptController.abort();
-      reject(new Error(`Node "${nodeId}" timed out after ${timeoutMs}ms`));
+      reject(
+        new NodeError(`Node timed out after ${timeoutMs}ms`, 'ENGINE_NODE_TIMEOUT', node.id, {
+          nodeName: node.name,
+        })
+      );
     }, timeoutMs);
   });
 
@@ -125,7 +129,7 @@ const runWithRetry = async (
       const result = await runWithTimeout(
         node.run(buildOptions(attemptSignal)),
         node.timeout,
-        node.id,
+        node,
         attemptController
       );
 
@@ -241,7 +245,10 @@ export const runScheduler = async (
           emitter.emit('node_failed', {
             nodeId: node.id,
             nodeName: node.displayName(),
-            error: result.error instanceof Error ? result.error : new Error(String(result.error)),
+            error: new NodeError('Node failed', 'ENGINE_NODE_FAILED', node.id, {
+              nodeName: node.name,
+              cause: result.error,
+            }),
           });
       }
     });
@@ -291,19 +298,19 @@ export const runScheduler = async (
       try {
         shouldRun = entry.node.evaluateIf(buildCtx());
       } catch (err) {
-        // NodeError from evaluateIf carries the specific diagnostic; preserve it rather than replacing it.
+        // The original diagnostic (e.g. NodeError from evaluateIf) is preserved as cause.
         entry.status = 'failed';
         pendingCount--;
         hasFailure = true;
         emitter.emit('node_failed', {
           nodeId: entry.node.id,
           nodeName: entry.node.displayName(),
-          error:
-            err instanceof Error
-              ? err
-              : new Error(
-                  `Failed to evaluate if expression for node "${entry.node.id}": ${String(err)}`
-                ),
+          error: new NodeError(
+            'Failed to evaluate if expression',
+            'ENGINE_NODE_IF_ERROR',
+            entry.node.id,
+            { nodeName: entry.node.name, cause: err }
+          ),
         });
 
         return;

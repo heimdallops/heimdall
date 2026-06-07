@@ -11,6 +11,54 @@ export class EngineError extends Error {
     this.name = 'EngineError';
     this.code = code;
   }
+
+  public get effectiveCode(): string {
+    const visited = new Set<unknown>();
+    let deepestCode = this.code;
+    let current: unknown = this.cause;
+
+    while (current instanceof EngineError) {
+      if (visited.has(current)) {
+        break;
+      }
+
+      visited.add(current);
+      deepestCode = current.code;
+      current = current.cause;
+    }
+
+    return deepestCode;
+  }
+
+  public override toString(): string {
+    const parts: string[] = [this.message];
+    const visited = new Set<unknown>();
+    let current: unknown = this.cause;
+
+    while (current) {
+      if (visited.has(current)) {
+        break;
+      }
+
+      visited.add(current);
+
+      if (current instanceof Error) {
+        parts.push(current.message);
+        current = current.cause;
+      } else if (
+        typeof current === 'string' ||
+        typeof current === 'number' ||
+        typeof current === 'boolean'
+      ) {
+        parts.push(String(current));
+        break;
+      } else {
+        break;
+      }
+    }
+
+    return parts.join(': ');
+  }
 }
 
 /** Thrown by Engine.from() when the YAML is malformed or fails schema validation. */
