@@ -114,6 +114,17 @@ export const BreakNodeSchema = BaseNodeSchema.extend({
   }
 });
 
+// Any node: `id` is the only universally-required field. Type-specific fields are validated
+// by each node's own schema (run via the registry's parseNode()), not here — so the registry
+// is the single place that recognizes node types, rather than a closed union this schema
+// would have to enumerate. Loop bodies are likewise validated by LoopNode.validate(), not
+// recursively here.
+export const NodeSchema = z
+  .object({ id: z.string().regex(idPattern, 'Node id must match ^[a-zA-Z0-9_]+$') })
+  .loose();
+
+export type Node = z.infer<typeof NodeSchema>;
+
 export type LoopNode = z.infer<typeof BaseNodeSchema> & {
   loop: {
     until?: string | undefined;
@@ -123,32 +134,18 @@ export type LoopNode = z.infer<typeof BaseNodeSchema> & {
   };
 };
 
-// z.ZodType<LoopNode> is required because Zod cannot infer the return type of z.lazy() used in the recursive nodes field.
-export const LoopNodeSchema: z.ZodType<LoopNode> = BaseNodeSchema.extend({
+export const LoopNodeSchema = BaseNodeSchema.extend({
   loop: z
     .object({
       until: z.string().optional(),
       max_iterations: z.number().min(1).optional(),
-      nodes: z.lazy(() => z.array(NodeSchema).min(1)),
+      nodes: z.array(NodeSchema).min(1),
       outputs: z.record(z.string(), z.string()).optional(),
     })
     .refine((data) => data.until !== undefined || data.max_iterations !== undefined, {
       message: 'loop must specify at least one of: until, max_iterations',
     }),
 });
-
-export const NodeSchema: z.ZodType<Node> = z.lazy(() =>
-  z.union([
-    BashNodeSchema,
-    AgentNodeSchema,
-    PromptNodeSchema,
-    PromptFileNodeSchema,
-    ApprovalNodeSchema,
-    ExitNodeSchema,
-    LoopNodeSchema,
-    BreakNodeSchema,
-  ])
-);
 
 export type BashNode = z.infer<typeof BashNodeSchema>;
 export type AgentNode = z.infer<typeof AgentNodeSchema>;
@@ -157,16 +154,6 @@ export type PromptFileNode = z.infer<typeof PromptFileNodeSchema>;
 export type ApprovalNode = z.infer<typeof ApprovalNodeSchema>;
 export type ExitNode = z.infer<typeof ExitNodeSchema>;
 export type BreakNode = z.infer<typeof BreakNodeSchema>;
-
-export type Node =
-  | BashNode
-  | AgentNode
-  | PromptNode
-  | PromptFileNode
-  | ApprovalNode
-  | ExitNode
-  | LoopNode
-  | BreakNode;
 
 export const WorkflowDefinitionSchema = z.object({
   name: z.string().min(1),
