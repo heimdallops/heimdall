@@ -75,13 +75,19 @@ const runWithTimeout = (
     return runPromise;
   }
 
-  const timeout = sleep(timeoutMs).then((): never => {
-    // Abort only this attempt so the underlying node can stop its work.
-    attemptController.abort();
-    throw new Error(`Node "${nodeId}" timed out after ${timeoutMs}ms`);
+  // timer is assigned synchronously inside the Promise executor, before .finally() ever runs.
+  let timer: ReturnType<typeof setTimeout>;
+  const timeout = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => {
+      // Abort only this attempt so the underlying node can stop its work.
+      attemptController.abort();
+      reject(new Error(`Node "${nodeId}" timed out after ${timeoutMs}ms`));
+    }, timeoutMs);
   });
 
-  return Promise.race([runPromise, timeout]);
+  return Promise.race([runPromise, timeout]).finally(() => {
+    clearTimeout(timer);
+  });
 };
 
 const runWithRetry = async (
@@ -284,15 +290,20 @@ export const runScheduler = async (
       let shouldRun: boolean;
       try {
         shouldRun = entry.node.evaluateIf(buildCtx());
-      } catch {
-        // evaluateIf throws NodeError for type mismatches; treat as failure
+      } catch (err) {
+        // NodeError from evaluateIf carries the specific diagnostic; preserve it rather than replacing it.
         entry.status = 'failed';
         pendingCount--;
         hasFailure = true;
         emitter.emit('node_failed', {
           nodeId: entry.node.id,
           nodeName: entry.node.displayName(),
-          error: new Error(`Failed to evaluate if expression for node "${entry.node.id}"`),
+          error:
+            err instanceof Error
+              ? err
+              : new Error(
+                  `Failed to evaluate if expression for node "${entry.node.id}": ${String(err)}`
+                ),
         });
 
         return;

@@ -840,6 +840,9 @@ describe('runScheduler', () => {
       expect(failed).toHaveLength(1);
       expect(failed[0]!.nodeId).toBe('bad_if');
       expect(failed[0]!.error).toBeInstanceOf(Error);
+      // Fix 2: the original NodeError is forwarded rather than replaced with a generic wrapper —
+      // assert the message contains the specific diagnostic from evaluateIf.
+      expect((failed[0]!.error as Error).message).toMatch(/must evaluate to a boolean/);
     });
   });
 
@@ -1364,6 +1367,51 @@ describe('runScheduler', () => {
       expect(attempt).toBe(2);
       expect(completed).toHaveLength(1);
       expect(completed[0]!.nodeId).toBe('timeout_retry_node');
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  describe('timeout timer cleanup (no late firing when run beats the timeout)', () => {
+    it('does not abort the attempt signal when the node completes before the timeout fires', async () => {
+      vi.useFakeTimers();
+
+      // A node with a 5-second timeout whose run() resolves immediately.
+      const node = new SignalCapturingDeferredNode({ id: 'fast_node', timeout: 5000 });
+
+      const completed: NodeCompletedEvent[] = collectEvents(emitter, 'node_completed');
+      const failed: NodeFailedEvent[] = collectEvents(emitter, 'node_failed');
+      const cancelled: NodeCancelledEvent[] = collectEvents(emitter, 'node_cancelled');
+
+      const schedulerDone = runScheduler([node], makeCtx(), options);
+
+      // Wait for the node to start so its signal is captured, then resolve immediately.
+      await node.started;
+      node.resolve({ status: 'completed', result: { value: 'done' } });
+
+      // Await the scheduler before advancing timers — it should be done already.
+      const result = await schedulerDone;
+
+      // The run completed successfully before any timeout.
+      expect(result.outcome).toBe('completed');
+      expect(result.success).toBe(true);
+      expect(completed).toHaveLength(1);
+      expect(completed[0]!.nodeId).toBe('fast_node');
+
+      // Capture the signal reference before advancing timers.
+      const signal = node.capturedSignal!;
+      expect(signal).toBeDefined();
+      expect(signal.aborted).toBe(false);
+
+      // Advance well past the original timeout — if the timer leaked, it would fire here
+      // and call attemptController.abort(), making signal.aborted true.
+      await vi.advanceTimersByTimeAsync(6000);
+
+      // The leaked timer must NOT have fired: the signal stays unaborted.
+      expect(signal.aborted).toBe(false);
+
+      // No extra failure/cancellation events must have been emitted after completion.
+      expect(failed).toHaveLength(0);
+      expect(cancelled).toHaveLength(0);
     });
   });
 
