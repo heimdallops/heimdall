@@ -173,16 +173,19 @@ nodes:
   - id: step1
     unknown_key: value
 `;
-        // The Zod schema rejects the unknown shape before the registry is even consulted.
+        // The open NodeSchema accepts the node at parse time; rejection happens in buildNodes
+        // when the registry finds no matching node type.
         await expect(Workflow.from(yaml)).rejects.toBeInstanceOf(EngineValidationError);
 
-        // Also assert message or cause identifies the validation failure
+        // Also assert message identifies the specific node that was rejected
         const err = await Workflow.from(yaml).catch((e: unknown) => e);
         expect(err).toBeInstanceOf(EngineValidationError);
-        // The Zod cause describes what was wrong with the node
-        expect((err as EngineValidationError).cause).toBeDefined();
+        // The registry error names the offending node id and describes the rejection —
+        // asserting these substrings ensures regression: if the registry stops naming the
+        // node or stops describing the shape mismatch, this test will fail.
         const msg = (err as EngineValidationError).message.toLowerCase();
-        expect(msg.includes('schema') || msg.includes('validation')).toBe(true);
+        expect(msg).toContain('unrecognized');
+        expect(msg).toContain('step1');
       });
     });
 

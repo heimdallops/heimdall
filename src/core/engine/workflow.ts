@@ -200,13 +200,9 @@ export class Workflow {
   }
 
   private static buildNodes(definition: WorkflowDefinition): BaseNode[] {
-    // WorkflowDefinition types each node as the validated discriminated-union
-    // shape, but the registry's matches()/parse() interface accepts a loose
-    // Record so it can dispatch to the node-type-specific schema and construct
-    // the concrete typed node; the cast bridges those two views.
-    return definition.nodes.map((node) =>
-      nodeRegistry.parseNode(node as unknown as Record<string, unknown>)
-    );
+    // Each node is an open object (id + arbitrary fields); the registry matches its
+    // discriminant and runs the node-type-specific schema to construct the typed node.
+    return definition.nodes.map((node) => nodeRegistry.parseNode(node));
   }
 
   private static validateGraph(nodes: BaseNode[]): BaseNode[] {
