@@ -338,14 +338,31 @@ describe('ApprovalNode', () => {
   });
 
   describe('ApprovalNode.parse', () => {
-    it('throws a ZodError when required approval.message is missing', () => {
-      expect(() => ApprovalNode.parse({ id: 'a1', approval: {} })).toThrow(ZodError);
+    it('throws a ZodError identifying the missing approval.message field', () => {
+      let caught: unknown;
+      try {
+        ApprovalNode.parse({ id: 'a1', approval: {} });
+      } catch (err) {
+        caught = err;
+      }
+
+      expect(caught).toBeInstanceOf(ZodError);
+      const paths = (caught as ZodError).issues.map((i) => i.path.join('.'));
+      expect(paths).toContain('approval.message');
     });
 
-    it('throws a ZodError when id contains invalid characters', () => {
-      expect(() => ApprovalNode.parse({ id: 'bad-id', approval: { message: 'Approve?' } })).toThrow(
-        ZodError
-      );
+    it('throws a ZodError identifying the invalid id when id contains invalid characters', () => {
+      let caught: unknown;
+      try {
+        ApprovalNode.parse({ id: 'bad-id', approval: { message: 'Approve?' } });
+      } catch (err) {
+        caught = err;
+      }
+
+      expect(caught).toBeInstanceOf(ZodError);
+      const idIssue = (caught as ZodError).issues.find((i) => i.path.includes('id'));
+      expect(idIssue).toBeDefined();
+      expect(idIssue?.message).toMatch(/Node id must match/);
     });
   });
 });
