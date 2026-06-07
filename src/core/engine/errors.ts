@@ -61,7 +61,7 @@ export class EngineError extends Error {
   }
 }
 
-/** Thrown by Engine.from() when the YAML is malformed or fails schema validation. */
+/** Thrown by Workflow.from() when the YAML is malformed or fails schema validation. */
 export class EngineValidationError extends EngineError {
   public constructor(message: string, options?: EngineCauseOptions) {
     super(message, 'ENGINE_VALIDATION_ERROR', options);
