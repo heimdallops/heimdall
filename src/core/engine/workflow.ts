@@ -111,8 +111,9 @@ export class Workflow {
 
     const emitter = options.emitter ?? createEngineEmitter();
 
-    // An empty/blank XDG_DATA_HOME must fall back to the default absolute path,
-    // otherwise the run dir would resolve relative to cwd.
+    // An empty/whitespace XDG_DATA_HOME trims to '' (not undefined), so neither ?? nor ||
+    // works here (?? misses '', || is rejected by lint) — compare explicitly so an empty
+    // value falls back to the absolute default instead of resolving the run dir against cwd.
     const xdgDataHome = process.env['XDG_DATA_HOME']?.trim();
     const dataHome =
       xdgDataHome === undefined || xdgDataHome === ''
@@ -131,7 +132,6 @@ export class Workflow {
         vars: this.definition.vars ?? {},
         needs: new Map(),
         sessionDir,
-        scope: undefined,
       };
 
       result = await runScheduler(this.sortedNodes, ctx, {
@@ -200,8 +200,6 @@ export class Workflow {
   }
 
   private static buildNodes(definition: WorkflowDefinition): BaseNode[] {
-    // Each node is an open object (id + arbitrary fields); the registry matches its
-    // discriminant and runs the node-type-specific schema to construct the typed node.
     return definition.nodes.map((node) => nodeRegistry.parseNode(node));
   }
 

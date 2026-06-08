@@ -124,15 +124,25 @@ describe('Workflow', () => {
         const err = await Workflow.from(bad).catch((e: unknown) => e);
 
         expect(err).toBeInstanceOf(EngineValidationError);
-        // The message must describe what failed, not just throw a generic error
-        const msg = (err as EngineValidationError).message.toLowerCase();
-        expect(msg.includes('yaml') || msg.includes('parse')).toBe(true);
-        // The original js-yaml exception is preserved as the cause
-        expect((err as EngineValidationError).cause).toBeDefined();
+        // The cause must be the preserved js-yaml exception — a real Error whose name
+        // is 'YAMLException' (set explicitly in js-yaml's exception.js, stable across versions).
+        const { cause } = err as EngineValidationError;
+        expect(cause).toBeInstanceOf(Error);
+        expect((cause as Error).name).toBe('YAMLException');
+        // The YAMLException message describes the actual syntax fault — asserting it is
+        // non-empty ensures the cause carries diagnostic detail, not just a type label.
+        expect((cause as Error).message.length).toBeGreaterThan(0);
       });
     });
 
     describe('schema validation failure', () => {
+      // Narrow type for a Zod issue — only the fields we assert on, no `any`.
+      interface ZodIssueSummary {
+        code: string;
+        path: (string | number)[];
+        minimum?: number;
+      }
+
       it('throws EngineValidationError when the workflow is missing the required name field', async () => {
         const yaml = `
 nodes:
@@ -143,8 +153,14 @@ nodes:
         const err = await Workflow.from(yaml).catch((e: unknown) => e);
 
         expect(err).toBeInstanceOf(EngineValidationError);
-        // Behavioral check: the error wraps the schema cause so the caller can inspect it
-        expect((err as EngineValidationError).cause).toBeDefined();
+        // The cause is the ZodError from safeParse; inspect it structurally so this test
+        // can only pass when the failure is genuinely about the missing `name` field.
+        const cause = (err as EngineValidationError).cause as { issues?: ZodIssueSummary[] };
+        expect(cause).toBeDefined();
+        expect(Array.isArray(cause.issues)).toBe(true);
+        const nameIssue = cause.issues!.find((i) => i.path.length === 1 && i.path[0] === 'name');
+        expect(nameIssue).toBeDefined();
+        expect(nameIssue!.code).toBe('invalid_type');
       });
 
       it('throws EngineValidationError when nodes is an empty array (schema requires min 1)', async () => {
@@ -153,17 +169,18 @@ name: empty-nodes
 nodes: []
 `;
 
-        await expect(Workflow.from(yaml)).rejects.toBeInstanceOf(EngineValidationError);
-
-        // Also assert message identifies the violated constraint
         const err = await Workflow.from(yaml).catch((e: unknown) => e);
+
         expect(err).toBeInstanceOf(EngineValidationError);
-        // The error wraps the Zod cause that describes the minimum-length violation
-        expect((err as EngineValidationError).cause).toBeDefined();
-        const msg = (err as EngineValidationError).message.toLowerCase();
-        expect(msg.includes('schema') || msg.includes('validation') || msg.includes('nodes')).toBe(
-          true
-        );
+        // The cause is the ZodError from safeParse; assert it contains an issue
+        // specific to the nodes-minimum-length constraint, not just "some schema error".
+        const cause = (err as EngineValidationError).cause as { issues?: ZodIssueSummary[] };
+        expect(cause).toBeDefined();
+        expect(Array.isArray(cause.issues)).toBe(true);
+        const nodesIssue = cause.issues!.find((i) => i.path.length === 1 && i.path[0] === 'nodes');
+        expect(nodesIssue).toBeDefined();
+        expect(nodesIssue!.code).toBe('too_small');
+        expect(nodesIssue!.minimum).toBe(1);
       });
 
       it('throws EngineValidationError when a node has an unrecognized shape (no known node-type key)', async () => {
