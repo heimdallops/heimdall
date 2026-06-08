@@ -14,7 +14,13 @@ import {
   EngineError,
   EngineValidationError,
 } from '../../../../src/core/engine/errors.ts';
-import type { PlatformAdapter } from '../../../../src/core/engine/nodes/base.ts';
+import type {
+  NodeRunCompleted,
+  NodeRunOptions,
+  PlatformAdapter,
+} from '../../../../src/core/engine/nodes/base.ts';
+import { BaseNode } from '../../../../src/core/engine/nodes/base.ts';
+import { nodeRegistry } from '../../../../src/core/engine/nodes/registry.ts';
 import { Workflow } from '../../../../src/core/engine/workflow.ts';
 
 // ---------------------------------------------------------------------------
@@ -124,13 +130,9 @@ describe('Workflow', () => {
         const err = await Workflow.from(bad).catch((e: unknown) => e);
 
         expect(err).toBeInstanceOf(EngineValidationError);
-        // The cause must be the preserved js-yaml exception — a real Error whose name
-        // is 'YAMLException' (set explicitly in js-yaml's exception.js, stable across versions).
         const { cause } = err as EngineValidationError;
         expect(cause).toBeInstanceOf(Error);
         expect((cause as Error).name).toBe('YAMLException');
-        // The YAMLException message describes the actual syntax fault — asserting it is
-        // non-empty ensures the cause carries diagnostic detail, not just a type label.
         expect((cause as Error).message.length).toBeGreaterThan(0);
       });
     });
@@ -153,8 +155,6 @@ nodes:
         const err = await Workflow.from(yaml).catch((e: unknown) => e);
 
         expect(err).toBeInstanceOf(EngineValidationError);
-        // The cause is the ZodError from safeParse; inspect it structurally so this test
-        // can only pass when the failure is genuinely about the missing `name` field.
         const cause = (err as EngineValidationError).cause as { issues?: ZodIssueSummary[] };
         expect(cause).toBeDefined();
         expect(Array.isArray(cause.issues)).toBe(true);
@@ -172,8 +172,6 @@ nodes: []
         const err = await Workflow.from(yaml).catch((e: unknown) => e);
 
         expect(err).toBeInstanceOf(EngineValidationError);
-        // The cause is the ZodError from safeParse; assert it contains an issue
-        // specific to the nodes-minimum-length constraint, not just "some schema error".
         const cause = (err as EngineValidationError).cause as { issues?: ZodIssueSummary[] };
         expect(cause).toBeDefined();
         expect(Array.isArray(cause.issues)).toBe(true);
@@ -190,16 +188,10 @@ nodes:
   - id: step1
     unknown_key: value
 `;
-        // The open NodeSchema accepts the node at parse time; rejection happens in buildNodes
-        // when the registry finds no matching node type.
-        await expect(Workflow.from(yaml)).rejects.toBeInstanceOf(EngineValidationError);
 
-        // Also assert message identifies the specific node that was rejected
         const err = await Workflow.from(yaml).catch((e: unknown) => e);
+
         expect(err).toBeInstanceOf(EngineValidationError);
-        // The registry error names the offending node id and describes the rejection —
-        // asserting these substrings ensures regression: if the registry stops naming the
-        // node or stops describing the shape mismatch, this test will fail.
         const msg = (err as EngineValidationError).message.toLowerCase();
         expect(msg).toContain('unrecognized');
         expect(msg).toContain('step1');
@@ -216,9 +208,6 @@ nodes:
     depends_on: [ghost]
 `;
 
-        await expect(Workflow.from(yaml)).rejects.toBeInstanceOf(EngineConfigError);
-
-        // The error message must name the offending reference so the user knows what to fix
         const err = await Workflow.from(yaml).catch((e: unknown) => e);
         expect((err as EngineConfigError).message).toContain('ghost');
       });
@@ -235,9 +224,6 @@ nodes:
     depends_on: [nodeA]
 `;
 
-        await expect(Workflow.from(yaml)).rejects.toBeInstanceOf(EngineConfigError);
-
-        // The error message must name the nodes involved in the cycle
         const err = await Workflow.from(yaml).catch((e: unknown) => e);
         expect((err as EngineConfigError).message).toMatch(/nodeA|nodeB/);
       });
@@ -250,33 +236,59 @@ nodes:
     break: ~
 `;
 
-        await expect(Workflow.from(yaml)).rejects.toBeInstanceOf(EngineConfigError);
-
-        // The message must identify that break is disallowed at this level
         const err = await Workflow.from(yaml).catch((e: unknown) => e);
         expect((err as EngineConfigError).message).toContain('breaker');
       });
     });
 
     describe('node.validate() called during DAG validation', () => {
-      // BreakNode.validate() is a no-op, but the top-level disallowance is enforced via
-      // validateNoNodeTypes. There is no mechanism in the YAML-driven registry to inject
-      // a custom node whose validate() throws without modifying production code.
-      // Coverage gap: testing that a node whose validate() throws causes EngineConfigError
-      // requires either (a) a node type registered in the registry whose validate() can be
-      // triggered to fail via YAML, or (b) dependency injection of a pre-built node list
-      // into Workflow.from. Neither is possible with the current public API.
-      // This gap is noted for the production-code agent: consider exposing a factory
-      // overload (Workflow.fromNodes) or a test-seam mechanism for validate() injection.
       it('returns a resolved Workflow when all nodes pass validate()', async () => {
-        // Bash nodes have a no-op validate(); this confirms the validate() loop does not
-        // throw for well-formed nodes and the workflow is usable.
         const workflow = await Workflow.from(minimalWorkflow);
 
         expect(workflow).toBeInstanceOf(Workflow);
         // The workflow exposes a non-empty inputs map only when inputs are declared;
         // for the minimal workflow, the map is empty — asserting size is a meaningful check.
         expect(workflow.inputs.size).toBe(0);
+      });
+
+      it('rejects with EngineConfigError and the specific validate() reason when a node validate() throws', async () => {
+        // Register a test-only node type whose validate() throws EngineConfigError.
+        //
+        // Isolation: nodeRegistry has no unregister/reset — the type array is private and
+        // append-only. Registration is done here (inside the test, as late as possible) and
+        // is safe because matches() keys off 'test_fail_validate', a field that no real
+        // workflow YAML uses, so the registered type is inert for every other test.
+        class FailingValidateNode extends BaseNode<NodeRunCompleted> {
+          public static matches(raw: Record<string, unknown>): boolean {
+            return 'test_fail_validation' in raw;
+          }
+
+          public static parse(raw: Record<string, unknown>): BaseNode {
+            return new FailingValidateNode({ id: raw['id'] as string });
+          }
+
+          public override validate(): void {
+            throw new EngineConfigError(`node '${this.id}' is invalid for test reasons`);
+          }
+          public override run(_o: NodeRunOptions): Promise<NodeRunCompleted> {
+            return Promise.resolve({ status: 'completed', result: { output: '' } });
+          }
+        }
+        nodeRegistry.register(FailingValidateNode);
+
+        const yaml = `
+name: fail-validate
+nodes:
+  - id: bad
+    test_fail_validate: true
+`;
+
+        const err = await Workflow.from(yaml).catch((e: unknown) => e);
+
+        // The engine must surface the specific validate() reason, not swallow it.
+        expect(err).toBeInstanceOf(EngineConfigError);
+        expect((err as EngineConfigError).message).toContain('test reasons');
+        expect((err as EngineConfigError).message).toContain('bad');
       });
     });
   });
@@ -499,13 +511,7 @@ nodes:
 
       // After a successful run, heimdall/runs/ should be empty (or missing)
       const runsDir = join(xdgRoot, 'heimdall', 'runs');
-      let entries: string[] = [];
-      try {
-        entries = await readdir(runsDir);
-      } catch {
-        // Directory does not exist — also acceptable (no run dirs were left behind)
-        entries = [];
-      }
+      const entries = await readdir(runsDir);
 
       expect(entries).toHaveLength(0);
     });
@@ -537,17 +543,23 @@ nodes:
     it('executes A, B, C in dependency order and emits node_completed for each in correct sequence', async () => {
       const workflow = await Workflow.from(threeNodeChainWorkflow);
       const emitter = createEngineEmitter();
-      const completedOrder: string[] = [];
+      const events: string[] = [];
 
-      emitter.on('node_completed', (e) => completedOrder.push(e.nodeId));
+      emitter.on('node_started', (e) => events.push(`started:${e.nodeId}`));
+      emitter.on('node_completed', (e) => events.push(`completed:${e.nodeId}`));
 
       const result = await workflow.run({ inputs: {}, emitter, cwd: '/tmp', adapter: fakeAdapter });
 
       expect(result.success).toBe(true);
 
-      // Execution order must respect the depends_on chain
-      expect(completedOrder.indexOf('nodeA')).toBeLessThan(completedOrder.indexOf('nodeB'));
-      expect(completedOrder.indexOf('nodeB')).toBeLessThan(completedOrder.indexOf('nodeC'));
+      expect(events).toEqual([
+        'started:nodeA',
+        'completed:nodeA',
+        'started:nodeB',
+        'completed:nodeB',
+        'started:nodeC',
+        'completed:nodeC',
+      ]);
     });
 
     it('gives nodeC access to nodeB output via needs (chained context)', async () => {

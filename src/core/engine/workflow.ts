@@ -111,9 +111,8 @@ export class Workflow {
 
     const emitter = options.emitter ?? createEngineEmitter();
 
-    // An empty/whitespace XDG_DATA_HOME trims to '' (not undefined), so neither ?? nor ||
-    // works here (?? misses '', || is rejected by lint) — compare explicitly so an empty
-    // value falls back to the absolute default instead of resolving the run dir against cwd.
+    // An unset or empty XDG_DATA_HOME falls back to the default; otherwise the run dir
+    // would resolve relative to cwd.
     const xdgDataHome = process.env['XDG_DATA_HOME']?.trim();
     const dataHome =
       xdgDataHome === undefined || xdgDataHome === ''
