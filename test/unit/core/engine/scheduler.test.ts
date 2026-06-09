@@ -773,6 +773,26 @@ describe('runScheduler', () => {
       expect(ifError.code).toBe('ENGINE_NODE_IF_ERROR');
       expect((ifError.cause as Error).message).toMatch(/must evaluate to a boolean/);
     });
+
+    it('does not dispatch a peer after an if-evaluation failure that occurs during a skip cascade', async () => {
+      // S (if:false) → skipped first, triggering a re-scan; X (if:'42') → throws mid-scan; Y must never start.
+      const S = new StubNode({ id: 'S', if: 'false' });
+      const X = new StubNode({ id: 'X', if: '42' });
+      const Y = new StubNode({ id: 'Y' });
+      const failed: NodeFailedEvent[] = collectEvents(emitter, 'node_failed');
+      const skipped: NodeSkippedEvent[] = collectEvents(emitter, 'node_skipped');
+      const started: NodeStartedEvent[] = collectEvents(emitter, 'node_started');
+
+      const result = await runScheduler([S, X, Y], makeCtx(), options);
+
+      expect(Y.runCount).toBe(0);
+      expect(started.some((e) => e.nodeId === 'Y')).toBe(false);
+      expect(result.success).toBe(false);
+      expect(failed.some((e) => e.nodeId === 'X')).toBe(true);
+      const xFailure = failed.find((e) => e.nodeId === 'X')!.error as NodeError;
+      expect(xFailure.code).toBe('ENGINE_NODE_IF_ERROR');
+      expect(skipped.some((e) => e.nodeId === 'S')).toBe(true);
+    });
   });
 
   describe('retry behavior (runWithRetry)', () => {

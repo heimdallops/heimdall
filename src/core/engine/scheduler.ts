@@ -258,74 +258,85 @@ export const runScheduler = async (
   };
 
   const dispatchEligible = (): void => {
-    if (exitResult || broke) {
-      return;
-    }
-
-    if (hasFailure) {
-      // halt on first failure — do not start new work while the run is in a failed state
-      return;
-    }
-
-    for (const entry of state.values()) {
-      if (entry.status !== 'pending') {
-        continue;
-      }
-
-      const deps = entry.node.getDependencies();
-      const allSettled = deps.every((depId) => {
-        const depStatus = state.get(depId)?.status;
-
-        return depStatus === 'completed' || depStatus === 'skipped';
-      });
-
-      if (!allSettled) {
-        continue;
-      }
-
-      const anySkipped = deps.some((depId) => state.get(depId)?.status === 'skipped');
-      if (anySkipped) {
-        entry.status = 'skipped';
-        pendingCount--;
-        emitter.emit('node_skipped', { nodeId: entry.node.id, nodeName: entry.node.displayName() });
-        // A newly skipped node may unblock further nodes — recurse
-        dispatchEligible();
-
-        continue;
-      }
-
-      let shouldRun: boolean;
-      try {
-        shouldRun = entry.node.evaluateIf(buildCtx());
-      } catch (err) {
-        // The original diagnostic (e.g. NodeError from evaluateIf) is preserved as cause.
-        entry.status = 'failed';
-        pendingCount--;
-        hasFailure = true;
-        emitter.emit('node_failed', {
-          nodeId: entry.node.id,
-          nodeName: entry.node.displayName(),
-          error: new NodeError(
-            'Failed to evaluate if expression',
-            'ENGINE_NODE_IF_ERROR',
-            entry.node.id,
-            { nodeName: entry.node.name, cause: err }
-          ),
-        });
-
+    // A skip can unblock dependents, so re-scan after any progress instead of recursing.
+    let progressed = true;
+    while (progressed) {
+      if (exitResult || broke || hasFailure) {
         return;
       }
 
-      if (!shouldRun) {
-        entry.status = 'skipped';
-        pendingCount--;
-        emitter.emit('node_skipped', { nodeId: entry.node.id, nodeName: entry.node.displayName() });
-        dispatchEligible();
+      progressed = false;
 
-        continue;
+      for (const entry of state.values()) {
+        // Re-check halt guards before each decision so a failure mid-scan stops peers too.
+        if (exitResult || broke || hasFailure) {
+          return;
+        }
+
+        if (entry.status !== 'pending') {
+          continue;
+        }
+
+        const deps = entry.node.getDependencies();
+        const allSettled = deps.every((depId) => {
+          const depStatus = state.get(depId)?.status;
+
+          return depStatus === 'completed' || depStatus === 'skipped';
+        });
+
+        if (!allSettled) {
+          continue;
+        }
+
+        const anySkipped = deps.some((depId) => state.get(depId)?.status === 'skipped');
+        if (anySkipped) {
+          entry.status = 'skipped';
+          pendingCount--;
+          emitter.emit('node_skipped', {
+            nodeId: entry.node.id,
+            nodeName: entry.node.displayName(),
+          });
+          progressed = true;
+
+          continue;
+        }
+
+        let shouldRun: boolean;
+        try {
+          shouldRun = entry.node.evaluateIf(buildCtx());
+        } catch (err) {
+          // The original diagnostic (e.g. NodeError from evaluateIf) is preserved as cause.
+          entry.status = 'failed';
+          pendingCount--;
+          hasFailure = true;
+          emitter.emit('node_failed', {
+            nodeId: entry.node.id,
+            nodeName: entry.node.displayName(),
+            error: new NodeError(
+              'Failed to evaluate if expression',
+              'ENGINE_NODE_IF_ERROR',
+              entry.node.id,
+              { nodeName: entry.node.name, cause: err }
+            ),
+          });
+
+          return;
+        }
+
+        if (!shouldRun) {
+          entry.status = 'skipped';
+          pendingCount--;
+          emitter.emit('node_skipped', {
+            nodeId: entry.node.id,
+            nodeName: entry.node.displayName(),
+          });
+          progressed = true;
+
+          continue;
+        }
+
+        dispatchNode(entry);
       }
-
-      dispatchNode(entry);
     }
   };
 
