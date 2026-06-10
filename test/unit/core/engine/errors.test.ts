@@ -95,10 +95,18 @@ describe('EngineError', () => {
       );
     });
 
-    it('appends a primitive string cause', () => {
+    it('does not append a string cause — returns just the outer message', () => {
       const err = new EngineError('outer msg', 'CODE_A', { cause: 'some string reason' });
 
-      expect(err.toString()).toBe('outer msg: some string reason');
+      expect(err.toString()).toBe('outer msg');
+    });
+
+    it('does not append a falsy primitive cause — returns just the outer message', () => {
+      const errZero = new EngineError('outer msg', 'CODE_A', { cause: 0 });
+      const errFalse = new EngineError('outer msg', 'CODE_A', { cause: false });
+
+      expect(errZero.toString()).toBe('outer msg');
+      expect(errFalse.toString()).toBe('outer msg');
     });
 
     it('does not append a plain object cause and does not throw', () => {

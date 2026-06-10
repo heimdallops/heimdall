@@ -1286,6 +1286,62 @@ describe('runScheduler', () => {
     });
   });
 
+  describe('cancellation grace period', () => {
+    it('resolves after CANCELLATION_GRACE_MS when an in-flight node never settles after abort', async () => {
+      vi.useFakeTimers();
+
+      const nodeA = new DeferredNode({ id: 'nodeA' });
+      const nodeB = new DeferredNode({ id: 'nodeB' });
+
+      const schedulerDone = runScheduler([nodeA, nodeB], makeCtx(), options);
+
+      await Promise.all([nodeA.started, nodeB.started]);
+
+      nodeA.resolve({ status: 'exited', failure: false });
+
+      await waitForEvent(emitter, 'node_cancelled', (e) => e.nodeId === 'nodeB');
+
+      let settled = false;
+      void schedulerDone.then(() => {
+        settled = true;
+      });
+
+      await vi.advanceTimersByTimeAsync(100);
+      expect(settled).toBe(false);
+
+      await vi.advanceTimersByTimeAsync(5 * 60 * 1000);
+
+      const result = await schedulerDone;
+
+      expect(result.outcome).toBe('exited');
+      expect(result.success).toBe(true);
+    });
+
+    it('resolves promptly without waiting the grace period when the cancelled node settles quickly', async () => {
+      vi.useFakeTimers();
+
+      const nodeA = new DeferredNode({ id: 'nodeA' });
+      const nodeB = new DeferredNode({ id: 'nodeB' });
+
+      const schedulerDone = runScheduler([nodeA, nodeB], makeCtx(), options);
+
+      await Promise.all([nodeA.started, nodeB.started]);
+
+      nodeA.resolve({ status: 'exited', failure: false });
+
+      await waitForEvent(emitter, 'node_cancelled', (e) => e.nodeId === 'nodeB');
+
+      nodeB.resolve({ status: 'completed', result: {} });
+
+      await vi.advanceTimersByTimeAsync(0);
+
+      const result = await schedulerDone;
+
+      expect(result.outcome).toBe('exited');
+      expect(result.success).toBe(true);
+    });
+  });
+
   describe('deadlock detection', () => {
     it('rejects with EngineError code ENGINE_SCHEDULER_DEADLOCK when two nodes depend on each other', async () => {
       const nodeA = new StubNode({ id: 'nodeA', depends_on: ['nodeB'] });

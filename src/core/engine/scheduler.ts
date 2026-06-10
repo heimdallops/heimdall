@@ -34,6 +34,9 @@ const RETRY_DEFAULTS = {
   max_delay_ms: 30000,
 } as const;
 
+// Bounds the wait for in-flight nodes to honor an abort after exit/break, so a node that ignores its signal can't hang the scheduler forever.
+const CANCELLATION_GRACE_MS = 5 * 60 * 1000;
+
 // Resolves after ms, or immediately if the signal fires — avoids blocking shutdown during backoff.
 const sleep = (ms: number, signal?: AbortSignal): Promise<void> =>
   new Promise((resolve) => {
@@ -259,8 +262,8 @@ export const runScheduler = async (
 
   const dispatchEligible = (): void => {
     // A skip can unblock dependents, so re-scan after any progress instead of recursing.
-    let progressed = true;
-    while (progressed) {
+    let progressed: boolean;
+    do {
       if (exitResult || broke || hasFailure) {
         return;
       }
@@ -337,15 +340,16 @@ export const runScheduler = async (
 
         dispatchNode(entry);
       }
-    }
+    } while (progressed);
   };
 
   dispatchEligible();
 
-  while (pendingCount > 0 || inFlightSet.size > 0) {
+  // Wake on each settlement to dispatch newly-unblocked nodes. Stops as soon as exit/break is recorded — the in-flight drain is handled below.
+  while (!(exitResult || broke) && (pendingCount > 0 || inFlightSet.size > 0)) {
     if (inFlightSet.size === 0) {
-      // Expected when exit/break/failure halted dispatch, leaving pending nodes undispatched; otherwise the graph is deadlocked.
-      if (exitResult || broke || hasFailure) {
+      // A failure halted dispatch, leaving pending nodes undispatched; anything else means the graph is deadlocked.
+      if (hasFailure) {
         break;
       }
 
@@ -356,8 +360,30 @@ export const runScheduler = async (
     }
 
     await Promise.race(inFlightSet);
-
     dispatchEligible();
+  }
+
+  // Exit/break drains all in-flight nodes at once, bounded by a single grace period so a node that ignores its abort can't hang the scheduler forever.
+  if ((exitResult || broke) && inFlightSet.size > 0) {
+    const graceController = new AbortController();
+    const graceTimeout = sleep(CANCELLATION_GRACE_MS, graceController.signal).then(
+      () => 'grace' as const
+    );
+
+    const winner = await Promise.race([
+      Promise.allSettled(inFlightSet).then(() => 'drained' as const),
+      graceTimeout,
+    ]);
+
+    if (winner === 'grace') {
+      // Detach un-settled promises so late rejections from nodes ignoring the abort can't surface as unhandled rejections after we return.
+      for (const promise of inFlightSet) {
+        promise.catch(() => undefined);
+      }
+    }
+
+    // Clear the grace timer so a fast drain doesn't leave a 5-minute timeout keeping the process alive.
+    graceController.abort();
   }
 
   if (exitResult) {

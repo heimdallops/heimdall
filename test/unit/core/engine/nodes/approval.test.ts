@@ -299,6 +299,58 @@ describe('ApprovalNode', () => {
     });
   });
 
+  describe('abort signal handling', () => {
+    it('resolves with failed/ENGINE_NODE_CANCELLED without emitting approval_requested when signal is already aborted', async () => {
+      const emitter = createEngineEmitter();
+      const requestedEvents: ApprovalRequestedEvent[] = [];
+      emitter.on('approval_requested', (e) => requestedEvents.push(e));
+
+      const node = makeNode({ id: 'a1', approval: { message: 'Approve?' } });
+      const result = await node.run({
+        ctx: makeCtx(),
+        adapter: fakeAdapter,
+        emitter,
+        signal: AbortSignal.abort(),
+      });
+
+      expect(result.status).toBe('failed');
+      expect((result as { status: 'failed'; error: { code: string } }).error.code).toBe(
+        'ENGINE_NODE_CANCELLED'
+      );
+      expect(requestedEvents).toHaveLength(0);
+    });
+
+    it('resolves with failed/ENGINE_NODE_CANCELLED when signal aborts while awaiting approval', async () => {
+      const emitter = createEngineEmitter();
+      const requestedEvents: ApprovalRequestedEvent[] = [];
+
+      emitter.on('approval_requested', (e) => {
+        requestedEvents.push(e);
+      });
+
+      const controller = new AbortController();
+      const node = makeNode({ id: 'a1', approval: { message: 'Approve?' } });
+      const runPromise = node.run({
+        ctx: makeCtx(),
+        adapter: fakeAdapter,
+        emitter,
+        signal: controller.signal,
+      });
+
+      expect(requestedEvents).toHaveLength(1);
+
+      controller.abort();
+
+      const result = await runPromise;
+
+      expect(result.status).toBe('failed');
+      expect((result as { status: 'failed'; error: { code: string } }).error.code).toBe(
+        'ENGINE_NODE_CANCELLED'
+      );
+      expect(requestedEvents).toHaveLength(1);
+    });
+  });
+
   describe('double-resolve guard', () => {
     it('throws NodeError on the second call and resolves the Promise with the first result', async () => {
       const emitter = createEngineEmitter();
