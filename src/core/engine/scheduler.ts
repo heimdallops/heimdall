@@ -212,11 +212,11 @@ export const runScheduler = async (
       switch (result.status) {
         case 'exited':
           entry.status = 'completed';
-          exitResult = { ...result };
+          exitResult = { reason: result.reason, failure: result.failure };
 
           cancelInFlight();
 
-          emitter.emit('workflow_exited', { ...result });
+          emitter.emit('workflow_exited', { reason: result.reason, failure: result.failure });
 
           return;
 
