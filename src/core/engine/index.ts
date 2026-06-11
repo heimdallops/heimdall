@@ -3,6 +3,7 @@ export type {
   ApprovalResult,
   EngineEmitter,
   EngineEventMap,
+  NodeCancelledEvent,
   NodeCompletedEvent,
   NodeFailedEvent,
   NodeResult,

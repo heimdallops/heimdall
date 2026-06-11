@@ -39,7 +39,12 @@ const runWithResolve = (
     capturedResolve = event.resolve;
   });
 
-  const runPromise = node.run({ ctx, adapter: fakeAdapter, emitter });
+  const runPromise = node.run({
+    ctx,
+    adapter: fakeAdapter,
+    emitter,
+    signal: new AbortController().signal,
+  });
 
   if (!capturedResolve) {
     throw new Error(
@@ -64,7 +69,12 @@ describe('ApprovalNode', () => {
       });
 
       const node = makeNode({ id: 'approval1', approval: { message: 'Please approve' } });
-      await node.run({ ctx: makeCtx(), adapter: fakeAdapter, emitter });
+      await node.run({
+        ctx: makeCtx(),
+        adapter: fakeAdapter,
+        emitter,
+        signal: new AbortController().signal,
+      });
 
       expect(capturedNodeId).toBe('approval1');
     });
@@ -86,6 +96,7 @@ describe('ApprovalNode', () => {
         ctx: makeCtx({ name: 'World' }),
         adapter: fakeAdapter,
         emitter,
+        signal: new AbortController().signal,
       });
 
       expect(capturedMessage).toBe('Hello World');
@@ -104,7 +115,12 @@ describe('ApprovalNode', () => {
         id: 'a1',
         approval: { message: 'Approve?', enable_feedback: true },
       });
-      await node.run({ ctx: makeCtx(), adapter: fakeAdapter, emitter });
+      await node.run({
+        ctx: makeCtx(),
+        adapter: fakeAdapter,
+        emitter,
+        signal: new AbortController().signal,
+      });
 
       expect(capturedEnableFeedback).toBe(true);
     });
@@ -119,7 +135,12 @@ describe('ApprovalNode', () => {
       });
 
       const node = makeNode({ id: 'a1', approval: { message: 'Approve?' } });
-      await node.run({ ctx: makeCtx(), adapter: fakeAdapter, emitter });
+      await node.run({
+        ctx: makeCtx(),
+        adapter: fakeAdapter,
+        emitter,
+        signal: new AbortController().signal,
+      });
 
       expect(capturedEnableFeedback).toBe(false);
     });
@@ -278,6 +299,58 @@ describe('ApprovalNode', () => {
     });
   });
 
+  describe('abort signal handling', () => {
+    it('resolves with failed/ENGINE_NODE_CANCELLED without emitting approval_requested when signal is already aborted', async () => {
+      const emitter = createEngineEmitter();
+      const requestedEvents: ApprovalRequestedEvent[] = [];
+      emitter.on('approval_requested', (e) => requestedEvents.push(e));
+
+      const node = makeNode({ id: 'a1', approval: { message: 'Approve?' } });
+      const result = await node.run({
+        ctx: makeCtx(),
+        adapter: fakeAdapter,
+        emitter,
+        signal: AbortSignal.abort(),
+      });
+
+      expect(result.status).toBe('failed');
+      expect((result as { status: 'failed'; error: { code: string } }).error.code).toBe(
+        'ENGINE_NODE_CANCELLED'
+      );
+      expect(requestedEvents).toHaveLength(0);
+    });
+
+    it('resolves with failed/ENGINE_NODE_CANCELLED when signal aborts while awaiting approval', async () => {
+      const emitter = createEngineEmitter();
+      const requestedEvents: ApprovalRequestedEvent[] = [];
+
+      emitter.on('approval_requested', (e) => {
+        requestedEvents.push(e);
+      });
+
+      const controller = new AbortController();
+      const node = makeNode({ id: 'a1', approval: { message: 'Approve?' } });
+      const runPromise = node.run({
+        ctx: makeCtx(),
+        adapter: fakeAdapter,
+        emitter,
+        signal: controller.signal,
+      });
+
+      expect(requestedEvents).toHaveLength(1);
+
+      controller.abort();
+
+      const result = await runPromise;
+
+      expect(result.status).toBe('failed');
+      expect((result as { status: 'failed'; error: { code: string } }).error.code).toBe(
+        'ENGINE_NODE_CANCELLED'
+      );
+      expect(requestedEvents).toHaveLength(1);
+    });
+  });
+
   describe('double-resolve guard', () => {
     it('throws NodeError on the second call and resolves the Promise with the first result', async () => {
       const emitter = createEngineEmitter();
@@ -288,7 +361,12 @@ describe('ApprovalNode', () => {
       });
 
       const node = makeNode({ id: 'a1', approval: { message: 'Approve?' } });
-      const runPromise = node.run({ ctx: makeCtx(), adapter: fakeAdapter, emitter });
+      const runPromise = node.run({
+        ctx: makeCtx(),
+        adapter: fakeAdapter,
+        emitter,
+        signal: new AbortController().signal,
+      });
 
       if (!capturedResolve) {
         throw new Error(
@@ -319,7 +397,12 @@ describe('ApprovalNode', () => {
       const node = makeNode({ id: 'a1', approval: { message: 'Approve?' } });
 
       await expect(
-        node.run({ ctx: makeCtx(), adapter: fakeAdapter, emitter })
+        node.run({
+          ctx: makeCtx(),
+          adapter: fakeAdapter,
+          emitter,
+          signal: new AbortController().signal,
+        })
       ).rejects.toMatchObject({
         name: 'NodeError',
         code: 'ENGINE_APPROVAL_NO_LISTENER',

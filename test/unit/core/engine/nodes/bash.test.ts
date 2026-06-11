@@ -29,7 +29,7 @@ const emitter = createEngineEmitter();
 const makeNode = (raw: Record<string, unknown>): BashNode => BashNode.parse(raw);
 
 const run = (node: BashNode, ctx: ExecutionContext = makeCtx()): Promise<NodeRunResult> =>
-  node.run({ ctx, adapter: fakeAdapter, emitter });
+  node.run({ ctx, adapter: fakeAdapter, emitter, signal: new AbortController().signal });
 
 const catchRejection = async (promise: Promise<unknown>): Promise<unknown> => {
   try {
@@ -386,6 +386,44 @@ describe('BashNode', () => {
 
       expect(capturedPath).toBeTruthy();
       await expect(access(capturedPath)).rejects.toThrow();
+    });
+  });
+
+  describe('cancellation', () => {
+    it('resolves to status: failed (not completed) when the signal is already aborted before run starts', async () => {
+      const node = makeNode({ id: 'n1', bash: 'sleep 30' });
+      const abortedSignal = AbortSignal.abort();
+
+      const result = await node.run({
+        ctx: makeCtx(),
+        adapter: fakeAdapter,
+        emitter,
+        signal: abortedSignal,
+      });
+
+      expect(result.status).toBe('failed');
+      // Must not have produced a completed result
+      expect('result' in result).toBe(false);
+    });
+
+    it('resolves to status: failed when the signal is aborted shortly after run starts', async () => {
+      const node = makeNode({ id: 'n1', bash: 'sleep 30' });
+      const controller = new AbortController();
+
+      // Abort immediately after calling run — execa cancels via cancelSignal before sleep finishes
+      const runPromise = node.run({
+        ctx: makeCtx(),
+        adapter: fakeAdapter,
+        emitter,
+        signal: controller.signal,
+      });
+
+      controller.abort();
+
+      const result = await runPromise;
+
+      expect(result.status).toBe('failed');
+      expect('result' in result).toBe(false);
     });
   });
 

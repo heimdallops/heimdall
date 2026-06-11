@@ -9,7 +9,7 @@ import { execa } from 'execa';
 import { interpolate } from '../cel.ts';
 import { NodeError } from '../errors.ts';
 import { BashNodeSchema } from '../schema.ts';
-import type { BaseNodeData, NodeRunCompleted, NodeRunOptions } from './base.ts';
+import type { BaseNodeData, NodeRunCompleted, NodeRunFailed, NodeRunOptions } from './base.ts';
 import { BaseNode } from './base.ts';
 import { nodeRegistry } from './registry.ts';
 
@@ -45,7 +45,7 @@ interface BashNodeData extends BaseNodeData {
   outputFormat: 'text' | 'json';
 }
 
-export class BashNode extends BaseNode<NodeRunCompleted> {
+export class BashNode extends BaseNode<NodeRunCompleted | NodeRunFailed> {
   private readonly bash: string;
   private readonly env: Record<string, string> | undefined;
   private readonly outputFormat: 'text' | 'json';
@@ -77,8 +77,8 @@ export class BashNode extends BaseNode<NodeRunCompleted> {
     this.outputFormat = data.outputFormat;
   }
 
-  public override async run(options: NodeRunOptions): Promise<NodeRunCompleted> {
-    const { ctx } = options;
+  public override async run(options: NodeRunOptions): Promise<NodeRunCompleted | NodeRunFailed> {
+    const { ctx, signal } = options;
     const celContext = ctx as unknown as Record<string, unknown>;
 
     let interpolatedBash: string;
@@ -119,10 +119,16 @@ export class BashNode extends BaseNode<NodeRunCompleted> {
         ...interpolatedEnv,
         HEIMDALL_OUTPUT: outputFile.path,
       },
+      cancelSignal: signal,
       reject: false,
       stdout: 'inherit',
       stderr: 'inherit',
     });
+
+    // Aborted via cancelSignal — surface a failed result rather than a NodeError since the abort, not the exit code, is the cause.
+    if (execResult.isCanceled) {
+      return { status: 'failed', error: execResult };
+    }
 
     if (execResult.exitCode !== 0) {
       throw new NodeError(
