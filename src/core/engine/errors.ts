@@ -35,26 +35,14 @@ export class EngineError extends Error {
     const visited = new Set<unknown>();
     let current: unknown = this.cause;
 
-    while (current) {
+    while (current instanceof Error) {
       if (visited.has(current)) {
         break;
       }
 
       visited.add(current);
-
-      if (current instanceof Error) {
-        parts.push(current.message);
-        current = current.cause;
-      } else if (
-        typeof current === 'string' ||
-        typeof current === 'number' ||
-        typeof current === 'boolean'
-      ) {
-        parts.push(String(current));
-        break;
-      } else {
-        break;
-      }
+      parts.push(current.message);
+      current = current.cause;
     }
 
     return parts.join(': ');
