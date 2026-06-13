@@ -31,7 +31,6 @@ import { WorkflowDefinitionSchema } from './schema.ts';
 export interface WorkflowRunOptions {
   readonly inputs: Record<string, string | number | bigint | boolean>;
   readonly emitter?: EngineEmitter | undefined;
-  readonly cwd: string;
   readonly adapter: PlatformAdapter;
 }
 

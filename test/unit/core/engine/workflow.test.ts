@@ -260,7 +260,7 @@ nodes:
         // workflow YAML uses, so the registered type is inert for every other test.
         class FailingValidateNode extends BaseNode<NodeRunCompleted> {
           public static matches(raw: Record<string, unknown>): boolean {
-            return 'test_fail_validation' in raw;
+            return 'test_fail_validate' in raw;
           }
 
           public static parse(raw: Record<string, unknown>): BaseNode {
@@ -342,7 +342,6 @@ nodes:
       const runPromise = workflow.run({
         inputs: {}, // 'token' is not supplied
         emitter,
-        cwd: '/tmp',
         adapter: fakeAdapter,
       });
 
@@ -355,9 +354,7 @@ nodes:
     it('includes the missing input name in the error message so the user knows what to supply', async () => {
       const workflow = await Workflow.from(workflowWithRequiredInput);
 
-      const err = await workflow
-        .run({ inputs: {}, cwd: '/tmp', adapter: fakeAdapter })
-        .catch((e: unknown) => e);
+      const err = await workflow.run({ inputs: {}, adapter: fakeAdapter }).catch((e: unknown) => e);
 
       expect(err).toBeInstanceOf(EngineConfigError);
       expect((err as EngineConfigError).message).toContain('token');
@@ -371,7 +368,6 @@ nodes:
 
       const result = await workflow.run({
         inputs: { env: 'production' }, // omit region — should use default
-        cwd: '/tmp',
         adapter: fakeAdapter,
       });
 
@@ -388,22 +384,20 @@ nodes:
       const workflow = await Workflow.from(minimalWorkflow);
 
       // First run must succeed
-      const first = await workflow.run({ inputs: {}, cwd: '/tmp', adapter: fakeAdapter });
+      const first = await workflow.run({ inputs: {}, adapter: fakeAdapter });
       expect(first.success).toBe(true);
 
       // Second call must be rejected
-      await expect(
-        workflow.run({ inputs: {}, cwd: '/tmp', adapter: fakeAdapter })
-      ).rejects.toBeInstanceOf(EngineError);
+      await expect(workflow.run({ inputs: {}, adapter: fakeAdapter })).rejects.toBeInstanceOf(
+        EngineError
+      );
     });
 
     it('throws EngineError with a message that explains the guard semantics on a second call', async () => {
       const workflow = await Workflow.from(minimalWorkflow);
-      await workflow.run({ inputs: {}, cwd: '/tmp', adapter: fakeAdapter });
+      await workflow.run({ inputs: {}, adapter: fakeAdapter });
 
-      const err = await workflow
-        .run({ inputs: {}, cwd: '/tmp', adapter: fakeAdapter })
-        .catch((e: unknown) => e);
+      const err = await workflow.run({ inputs: {}, adapter: fakeAdapter }).catch((e: unknown) => e);
 
       expect((err as EngineError).message.toLowerCase()).toMatch(/once|already|single/);
     });
@@ -414,8 +408,8 @@ nodes:
       const workflow = await Workflow.from(minimalWorkflow);
 
       // Fire both calls without awaiting between them
-      const first = workflow.run({ inputs: {}, cwd: '/tmp', adapter: fakeAdapter });
-      const second = workflow.run({ inputs: {}, cwd: '/tmp', adapter: fakeAdapter });
+      const first = workflow.run({ inputs: {}, adapter: fakeAdapter });
+      const second = workflow.run({ inputs: {}, adapter: fakeAdapter });
 
       // The first must complete successfully; the second must be rejected with EngineError
       const [firstResult] = await Promise.allSettled([first, second]);
@@ -439,7 +433,7 @@ nodes:
       const emitter = createEngineEmitter();
       const completed = collectEvents(emitter, 'workflow_completed');
 
-      await workflow.run({ inputs: {}, emitter, cwd: '/tmp', adapter: fakeAdapter });
+      await workflow.run({ inputs: {}, emitter, adapter: fakeAdapter });
 
       expect(completed).toHaveLength(1);
       expect(completed[0]!.success).toBe(true);
@@ -453,7 +447,7 @@ nodes:
       emitter.on('node_completed', () => eventLog.push('node_completed'));
       emitter.on('workflow_completed', () => eventLog.push('workflow_completed'));
 
-      await workflow.run({ inputs: {}, emitter, cwd: '/tmp', adapter: fakeAdapter });
+      await workflow.run({ inputs: {}, emitter, adapter: fakeAdapter });
 
       const nodeCompletedIdx = eventLog.lastIndexOf('node_completed');
       const workflowCompletedIdx = eventLog.indexOf('workflow_completed');
@@ -472,7 +466,7 @@ nodes:
       const emitter = createEngineEmitter();
       const completed = collectEvents(emitter, 'workflow_completed');
 
-      const result = await workflow.run({ inputs: {}, emitter, cwd: '/tmp', adapter: fakeAdapter });
+      const result = await workflow.run({ inputs: {}, emitter, adapter: fakeAdapter });
 
       expect(completed).toHaveLength(1);
       expect(completed[0]!.success).toBe(false);
@@ -490,7 +484,7 @@ nodes:
       const emitter = createEngineEmitter();
       const completed = collectEvents(emitter, 'node_completed');
 
-      const result = await workflow.run({ inputs: {}, emitter, cwd: '/tmp', adapter: fakeAdapter });
+      const result = await workflow.run({ inputs: {}, emitter, adapter: fakeAdapter });
 
       expect(result.success).toBe(true);
       // The node genuinely ran — not just a pass-through
@@ -507,7 +501,7 @@ nodes:
     it('removes the run directory on success', async () => {
       const workflow = await Workflow.from(minimalWorkflow);
 
-      await workflow.run({ inputs: {}, cwd: '/tmp', adapter: fakeAdapter });
+      await workflow.run({ inputs: {}, adapter: fakeAdapter });
 
       // After a successful run, heimdall/runs/ should be empty (or missing)
       const runsDir = join(xdgRoot, 'heimdall', 'runs');
@@ -526,7 +520,7 @@ nodes:
       const workflow = await Workflow.from(yaml);
 
       // Assert the failure path is genuinely exercised before checking the run dir
-      const result = await workflow.run({ inputs: {}, cwd: '/tmp', adapter: fakeAdapter });
+      const result = await workflow.run({ inputs: {}, adapter: fakeAdapter });
       expect(result.success).toBe(false);
 
       const runsDir = join(xdgRoot, 'heimdall', 'runs');
@@ -548,7 +542,7 @@ nodes:
       emitter.on('node_started', (e) => events.push(`started:${e.nodeId}`));
       emitter.on('node_completed', (e) => events.push(`completed:${e.nodeId}`));
 
-      const result = await workflow.run({ inputs: {}, emitter, cwd: '/tmp', adapter: fakeAdapter });
+      const result = await workflow.run({ inputs: {}, emitter, adapter: fakeAdapter });
 
       expect(result.success).toBe(true);
 
@@ -593,7 +587,7 @@ nodes:
       const emitter = createEngineEmitter();
       const completed = collectEvents(emitter, 'node_completed');
 
-      const result = await workflow.run({ inputs: {}, emitter, cwd: '/tmp', adapter: fakeAdapter });
+      const result = await workflow.run({ inputs: {}, emitter, adapter: fakeAdapter });
 
       expect(result.success).toBe(true);
       expect(completed).toHaveLength(3);
@@ -618,7 +612,7 @@ nodes:
       emitter.on('node_started', (e) => eventLog.push({ event: 'started', nodeId: e.nodeId }));
       emitter.on('node_completed', (e) => eventLog.push({ event: 'completed', nodeId: e.nodeId }));
 
-      await workflow.run({ inputs: {}, emitter, cwd: '/tmp', adapter: fakeAdapter });
+      await workflow.run({ inputs: {}, emitter, adapter: fakeAdapter });
 
       for (const id of ['nodeA', 'nodeB', 'nodeC']) {
         const startedIdx = eventLog.findIndex((e) => e.event === 'started' && e.nodeId === id);
