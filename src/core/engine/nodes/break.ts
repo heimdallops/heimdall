@@ -27,6 +27,13 @@ export class BreakNode extends BaseNode<NodeRunBreak> {
     super(data);
   }
 
+  // A skipped break produces no output and no dependent needs its result, so it must not cascade
+  // its skip. This makes `if:` on a break read as a guard: condition false → skipped → dependents
+  // run; condition true → break fires → dependents are cancelled by the loop exit.
+  public override propagatesSkip(): boolean {
+    return false;
+  }
+
   public override run(_options: NodeRunOptions): Promise<NodeRunBreak> {
     return Promise.resolve({ status: 'break' });
   }
