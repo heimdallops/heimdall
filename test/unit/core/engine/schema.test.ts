@@ -195,7 +195,7 @@ describe('LoopNodeSchema', () => {
     loop,
   });
 
-  it('rejects a loop node with neither until nor max_iterations', () => {
+  it('rejects a loop node with none of until, while, or max_iterations', () => {
     const result = LoopNodeSchema.safeParse(
       baseLoop({ nodes: [{ id: 'inner', bash: 'echo loop' }] })
     );
@@ -205,8 +205,13 @@ describe('LoopNodeSchema', () => {
       return;
     }
 
+    // The error names every option that satisfies the requirement, so all three are listed.
     const messages = result.error.issues.map((i) => i.message);
-    expect(messages.some((m) => m.includes('until') || m.includes('max_iterations'))).toBe(true);
+    expect(
+      messages.some(
+        (m) => m.includes('until') && m.includes('while') && m.includes('max_iterations')
+      )
+    ).toBe(true);
   });
 
   it('rejects a loop node with an empty inner nodes array', () => {
