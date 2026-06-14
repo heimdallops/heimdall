@@ -68,7 +68,12 @@ const BaseNodeSchema = z.object({
 
 export const BashNodeSchema = BaseNodeSchema.extend({
   bash: z.string(),
-  env: z.record(z.string(), z.string()).optional(),
+  env: z
+    .record(
+      z.string().regex(/^[A-Za-z_][A-Za-z0-9_]*$/, 'env key must be a valid shell identifier'),
+      z.string()
+    )
+    .optional(),
   output_format: z.enum(['text', 'json']).optional(),
 });
 

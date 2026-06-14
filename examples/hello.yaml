@@ -1,0 +1,27 @@
+name: hello
+description: A simple example workflow
+
+inputs:
+  name:
+    type: string
+    description: Your name
+    default: world
+
+nodes:
+  - id: greet
+    name: Greet
+    bash: |
+      echo -n "Hello, ${{ inputs.name }}!" > "$HEIMDALL_OUTPUT"
+
+  - id: confirm
+    name: Confirm
+    depends_on: [greet]
+    approval:
+      message: "${{ needs.greet.output }} — shout it?"
+      exit_on_no: true
+
+  - id: shout
+    name: Shout it
+    depends_on: [confirm]
+    bash: |
+      echo "${{ needs.greet.output }}" | tr '[:lower:]' '[:upper:]'

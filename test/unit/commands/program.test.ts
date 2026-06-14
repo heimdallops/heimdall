@@ -4,11 +4,11 @@ import { createProgram } from '../../../src/cli/program.ts';
 import { registerCommands } from '../../../src/cli/register-commands.ts';
 
 describe('program registration', () => {
-  it('starts without concrete commands registered', () => {
+  it('registers the run command', () => {
     const program = createProgram();
     registerCommands(program);
 
     const commandNames = program.commands.map((command) => command.name());
-    expect(commandNames).toEqual([]);
+    expect(commandNames).toContain('run');
   });
 });

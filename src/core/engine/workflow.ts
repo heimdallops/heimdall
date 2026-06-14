@@ -7,7 +7,7 @@ import './nodes/bash.ts';
 import { randomUUID } from 'node:crypto';
 import { mkdir, rm } from 'node:fs/promises';
 import { homedir } from 'node:os';
-import { join } from 'node:path';
+import { isAbsolute, join } from 'node:path';
 
 import { load as loadYaml } from 'js-yaml';
 
@@ -113,6 +113,10 @@ export class Workflow {
     // An unset or empty XDG_DATA_HOME falls back to the default; otherwise the run dir
     // would resolve relative to cwd.
     const xdgDataHome = process.env['XDG_DATA_HOME']?.trim();
+    if (xdgDataHome !== undefined && xdgDataHome !== '' && !isAbsolute(xdgDataHome)) {
+      throw new EngineConfigError('XDG_DATA_HOME must be an absolute path when set');
+    }
+
     const dataHome =
       xdgDataHome === undefined || xdgDataHome === ''
         ? join(homedir(), '.local', 'share')
