@@ -1,5 +1,4 @@
 import '../../../../../src/core/engine/nodes/bash.ts';
-import '../../../../../src/core/engine/nodes/break.ts';
 
 import { describe, expect, it } from 'vitest';
 import { ZodError } from 'zod';
@@ -15,6 +14,7 @@ import type {
   PlatformAdapter,
 } from '../../../../../src/core/engine/nodes/base.ts';
 import { BaseNode } from '../../../../../src/core/engine/nodes/base.ts';
+import { BreakNode } from '../../../../../src/core/engine/nodes/break.ts';
 import { LoopNode } from '../../../../../src/core/engine/nodes/loop.ts';
 
 const fakeAdapter = {} as PlatformAdapter;
@@ -369,10 +369,12 @@ describe('LoopNode', () => {
     it('on break: outputs reflect the partial iteration', async () => {
       // Body nodes run serially (stopper depends_on counter) each iteration:
       //   counter: runs every iteration and increments its val
-      //   stopper: depends on counter; returns completed on iteration 0, break on iteration 1
+      //   stopper: a real BreakNode guarded by if='scope.iteration >= 1'; skipped on iteration 0,
+      //            fires on iteration 1
       //
-      // After iteration 0: lastFullNodes = { counter:{val:0}, stopper:{} }, completedIterations = 1
-      // Iteration 1: counter runs (val:1) then stopper returns break.
+      // Iteration 0 (scope.iteration=0): counter runs → {val:0}; stopper if=false → skipped.
+      //   Full iteration completes → lastFullNodes = { counter:{val:0} }, completedIterations = 1.
+      // Iteration 1 (scope.iteration=1): counter runs → {val:1}; stopper if=true → breaks.
       //   The partial iteration does NOT increment completedIterations → total_iterations = 1.
       //   partialNodes (the snapshot on break) = { counter:{val:1} }  (stopper broke — not in snapshot)
       //
@@ -389,13 +391,7 @@ describe('LoopNode', () => {
 
             return { status: 'completed', result: { val } };
           }),
-          new FactoryNode(
-            { id: 'stopper', depends_on: ['counter'] },
-            (i) =>
-              i === 0
-                ? { status: 'completed', result: {} } // iteration 0: full
-                : { status: 'break' } // iteration 1: break
-          ),
+          new BreakNode({ id: 'stopper', if: 'scope.iteration >= 1', depends_on: ['counter'] }),
         ],
         outputs: { final_val: 'scope.nodes.counter.val' },
       });
@@ -411,18 +407,18 @@ describe('LoopNode', () => {
     });
 
     it('on break: a node absent in the partial iteration is undefined, not backfilled', async () => {
-      // Setup: body has three concurrent nodes — worker, optional, and stopper (none have depends_on).
-      //   optional overrides evaluateIf: runs only when scope.iteration < 1 (iteration 0 only).
-      //   stopper is a FactoryNode: returns completed on call 0, break on call 1.
+      // Setup: body has three nodes — worker, optional, and stopper.
+      //   optional: a FactoryNode guarded by if='scope.iteration < 1'; runs on iteration 0 only.
+      //   stopper: a real BreakNode guarded by if='scope.iteration >= 1', depends_on=['worker'];
+      //            skipped on iteration 0, fires on iteration 1 after worker completes.
       //
-      // Iteration 0 (scope.iteration=0): all three nodes are dispatched concurrently.
-      //   worker → completed {pass:1}; optional → evaluateIf true → completed {kept:true};
-      //   stopper (call 0) → completed {}.
-      //   lastFullNodes = { worker:{pass:1}, optional:{kept:true}, stopper:{} }, completedIterations = 1.
+      // Iteration 0 (scope.iteration=0): worker → completed {pass:1}; optional if=true → completed
+      //   {kept:true}; stopper if=false → skipped.
+      //   Full iteration completes → lastFullNodes = { worker:{pass:1}, optional:{kept:true} },
+      //   completedIterations = 1.
       //
-      // Iteration 1 (scope.iteration=1): all three nodes are dispatched concurrently again.
-      //   worker → completed {pass:2}; optional → evaluateIf false → skipped (absent from snapshot);
-      //   stopper (call 1) → break (absent from snapshot).
+      // Iteration 1 (scope.iteration=1): worker → completed {pass:2}; optional if=false → skipped
+      //   (absent from snapshot); stopper if=true → fires (break) after worker completes.
       //   partialNodes = { worker:{pass:2} }  (only nodes that completed before the break)
       //
       // scope.nodes on break = partialNodes (clean snapshot, NO cross-iteration backfill).
@@ -440,20 +436,13 @@ describe('LoopNode', () => {
 
             return { status: 'completed', result: { pass: workerCallIdx } };
           }),
-          // optionalNode: only runs when scope.iteration < 1 (iteration 0 only)
-          new (class extends BaseNode {
-            public override run(_opts: NodeRunOptions): Promise<NodeRunResult> {
-              return Promise.resolve({ status: 'completed', result: { kept: true } });
-            }
-
-            public override evaluateIf(ctx: ExecutionContext): boolean {
-              return (ctx.scope?.iteration ?? 0) < 1;
-            }
-          })({ id: 'optional' }),
-          // stopper: breaks on iteration 1
-          new FactoryNode({ id: 'stopper' }, (i) =>
-            i === 0 ? { status: 'completed', result: {} } : { status: 'break' }
-          ),
+          // optional: only runs on iteration 0 (if=false on iteration 1)
+          new FactoryNode({ id: 'optional', if: 'scope.iteration < 1' }, () => ({
+            status: 'completed',
+            result: { kept: true },
+          })),
+          // stopper: a real BreakNode that fires on iteration 1 after worker completes
+          new BreakNode({ id: 'stopper', if: 'scope.iteration >= 1', depends_on: ['worker'] }),
         ],
         outputs: {
           // worker completed in the partial iteration — its value IS present
