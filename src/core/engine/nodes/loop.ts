@@ -105,7 +105,6 @@ export class LoopNode extends BaseNode<NodeRunCompleted | NodeRunExited | NodeRu
 
       const scope: LoopContext = {
         iteration: completedIterations,
-        // Previous iteration's snapshot (empty on iteration 0).
         nodes: lastIterationNodes,
         needs: loopNeeds,
         outer: parentScope,
@@ -123,7 +122,14 @@ export class LoopNode extends BaseNode<NodeRunCompleted | NodeRunExited | NodeRu
         adapter,
         emitter,
         sharedContextMap: this.bodySharedContextMap,
+        signal,
       });
+
+      // A mid-iteration abort makes the just-returned result derive from cancelled body nodes, so
+      // surface cancellation rather than the aborted run's outcome.
+      if (signal.aborted) {
+        return this.cancelledResult();
+      }
 
       if (res.outcome === 'exited') {
         return { status: 'exited', reason: res.exitReason, failure: !res.success };
@@ -138,9 +144,10 @@ export class LoopNode extends BaseNode<NodeRunCompleted | NodeRunExited | NodeRu
         };
       }
 
-      // Holds the partial snapshot on a break, the full snapshot otherwise.
-      // Writing it on the break path is safe because it's only read as the next
-      // pass's scope, which a break makes unreachable.
+      // The just-run iteration's snapshot — partial on a break, full otherwise. It feeds
+      // `outputs` after the loop, and the next iteration's `scope.nodes` when the loop
+      // continues. Assigning the partial on the break path is safe because the next-iteration
+      // read is unreachable after a break, so the partial snapshot only ever reaches `outputs`.
       lastIterationNodes = res.nodeResults;
 
       if (res.outcome === 'broke') {

@@ -832,6 +832,71 @@ describe('LoopNode', () => {
       });
       expect(body.runCount).toBe(0);
     });
+
+    it('propagates cancellation into the inner scheduler when aborted mid-iteration', async () => {
+      // Gate the abort on a promise resolved by the body node when it starts — no timers.
+      let resolveStarted!: () => void;
+      const started = new Promise<void>((resolve) => {
+        resolveStarted = resolve;
+      });
+
+      let bodyAborted = false;
+      let resolveBodyDone!: (result: NodeRunResult) => void;
+      const bodyDone = new Promise<NodeRunResult>((resolve) => {
+        resolveBodyDone = resolve;
+      });
+
+      // A body node that:
+      //  (a) signals it has started (allows the test to gate the abort),
+      //  (b) registers a one-time abort listener on opts.signal to record that it was aborted,
+      //  (c) returns a pending promise that stays in-flight until its signal fires.
+      const hangingBody = new (class extends BaseNode {
+        public override run(opts: NodeRunOptions): Promise<NodeRunResult> {
+          // (a) Unblock the test's abort sequence.
+          resolveStarted();
+
+          // (b) Record that the abort reached this in-flight body node.
+          opts.signal.addEventListener(
+            'abort',
+            () => {
+              bodyAborted = true;
+              resolveBodyDone({ status: 'failed', error: new Error('aborted') });
+            },
+            { once: true }
+          );
+
+          // (c) Stay in-flight until our signal fires.
+          return bodyDone;
+        }
+      })({ id: 'hanging' });
+
+      // max_iterations >= 2 so the loop would otherwise keep running past the first iteration.
+      const loop = makeLoopNode({ max_iterations: 5 }, [hangingBody]);
+      const controller = new AbortController();
+
+      // Start the run WITHOUT awaiting so the body can get dispatched.
+      const runPromise = loop.run({
+        ctx: makeCtx(),
+        adapter: fakeAdapter,
+        emitter: createEngineEmitter(),
+        signal: controller.signal,
+      });
+
+      // Wait until the body node is in-flight, THEN abort.
+      await started;
+      controller.abort();
+
+      const result = await runPromise;
+
+      // The abort must have reached the in-flight body node.
+      expect(bodyAborted).toBe(true);
+
+      // LoopNode must surface cancellation — not the body's own failed result.
+      expect(result.status).toBe('failed');
+      expect((result as { status: 'failed'; error: unknown }).error).toMatchObject({
+        code: 'ENGINE_NODE_CANCELLED',
+      });
+    });
   });
 
   describe('validate', () => {

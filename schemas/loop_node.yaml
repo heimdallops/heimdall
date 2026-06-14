@@ -21,7 +21,7 @@ allOf:
               the loop to control exit explicitly from within the iteration.
           max_iterations:
             type: integer
-            description: Max number of iterations before the loop exits even if until does not evaluate to a truthy value.
+            description: Max number of iterations before the loop exits even if until does not evaluate to true.
             minimum: 1
           nodes:
             type: array
