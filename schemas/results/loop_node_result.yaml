@@ -6,10 +6,11 @@ properties:
   total_iterations:
     type: integer
     description: >-
-      Total number of iterations completed when the loop exited. A loop that
-      ran once has total_iterations: 1. Accessible to downstream nodes via
-      needs.<loop_id>.total_iterations.
-    minimum: 1
+      Number of fully-completed iterations when the loop exited. A loop that
+      completed one iteration has total_iterations: 1; a loop whose body hit a
+      break_node before completing any iteration has total_iterations: 0.
+      Accessible to downstream nodes via needs.<loop_id>.total_iterations.
+    minimum: 0
   output:
     type: object
     description: >-

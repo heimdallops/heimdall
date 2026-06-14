@@ -26,6 +26,8 @@ export interface SchedulerResult {
   outcome: 'completed' | 'exited' | 'broke';
   success: boolean;
   exitReason?: string | undefined;
+  // Accumulated results of completed nodes, keyed by node id.
+  nodeResults: ReadonlyMap<string, NodeResult>;
 }
 
 const RETRY_DEFAULTS = {
@@ -391,12 +393,13 @@ export const runScheduler = async (
       outcome: 'exited',
       success: !exitResult.failure && !hasFailure,
       exitReason: exitResult.reason,
+      nodeResults: new Map(needs),
     };
   }
 
   if (broke) {
-    return { outcome: 'broke', success: !hasFailure };
+    return { outcome: 'broke', success: !hasFailure, nodeResults: new Map(needs) };
   }
 
-  return { outcome: 'completed', success: !hasFailure };
+  return { outcome: 'completed', success: !hasFailure, nodeResults: new Map(needs) };
 };
