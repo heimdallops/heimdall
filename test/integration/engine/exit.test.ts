@@ -80,6 +80,7 @@ nodes:
     const result = await workflow.run({ inputs: {}, adapter: fakeAdapter });
 
     expect(result.success).toBe(false);
+    expect(result.exitReason).toBe('fatal error');
   });
 
   it('produces an undefined exitReason when the exit node omits reason', async () => {
