@@ -366,90 +366,36 @@ describe('LoopNode', () => {
       expect(capturedScopes[1]?.nodes.get('tracker')).toEqual({ pass: 0 });
     });
 
-    it('on break: outputs reflect the partial iteration', async () => {
-      // Body nodes run serially (stopper depends_on counter) each iteration:
-      //   counter: runs every iteration and increments its val
-      //   stopper: a real BreakNode guarded by if='scope.iteration >= 1'; skipped on iteration 0,
-      //            fires on iteration 1
-      //
-      // Iteration 0 (scope.iteration=0): counter runs → {val:0}; stopper if=false → skipped.
-      //   Full iteration completes → lastFullNodes = { counter:{val:0} }, completedIterations = 1.
-      // Iteration 1 (scope.iteration=1): counter runs → {val:1}; stopper if=true → breaks.
-      //   The partial iteration does NOT increment completedIterations → total_iterations = 1.
-      //   partialNodes (the snapshot on break) = { counter:{val:1} }  (stopper broke — not in snapshot)
-      //
-      // outputs.final_val = scope.nodes.counter.val → 1 (counter completed in the partial iteration)
-      // total_iterations = 1 (only iteration 0 fully completed; the broken iteration 1 is not counted)
-
-      let counterIdx = 0;
-      const loop = new LoopNode({
-        id: 'loop1',
-        maxIterations: 10,
-        bodyNodes: [
-          new FactoryNode({ id: 'counter' }, () => {
-            const val = counterIdx++;
-
-            return { status: 'completed', result: { val } };
-          }),
-          new BreakNode({ id: 'stopper', if: 'scope.iteration >= 1', depends_on: ['counter'] }),
-        ],
-        outputs: { final_val: 'scope.nodes.counter.val' },
-      });
-
-      const result = await runLoop(loop);
-
-      expect(result.status).toBe('completed');
-      const loopResult = (result as { status: 'completed'; result: NodeResult }).result;
-      // Only iteration 0 fully completed; the partial broken iteration 1 is not counted
-      expect(loopResult['total_iterations']).toBe(1);
-      // counter completed in the partial iteration with val=1, so outputs see that value
-      expect(loopResult['output']).toEqual({ final_val: 1 });
-    });
-
-    it('on break: a node absent in the partial iteration is undefined, not backfilled', async () => {
-      // Setup: body has three nodes — worker, optional, and stopper.
-      //   optional: a FactoryNode guarded by if='scope.iteration < 1'; runs on iteration 0 only.
-      //   stopper: a real BreakNode guarded by if='scope.iteration >= 1', depends_on=['worker'];
-      //            skipped on iteration 0, fires on iteration 1 after worker completes.
-      //
-      // Iteration 0 (scope.iteration=0): worker → completed {pass:1}; optional if=true → completed
-      //   {kept:true}; stopper if=false → skipped.
-      //   Full iteration completes → lastFullNodes = { worker:{pass:1}, optional:{kept:true} },
-      //   completedIterations = 1.
-      //
-      // Iteration 1 (scope.iteration=1): worker → completed {pass:2}; optional if=false → skipped
-      //   (absent from snapshot); stopper if=true → fires (break) after worker completes.
-      //   partialNodes = { worker:{pass:2} }  (only nodes that completed before the break)
-      //
-      // scope.nodes on break = partialNodes (clean snapshot, NO cross-iteration backfill).
-      // 'optional' is absent → scope.nodes.optional is undefined.
-      // A guarded reference returns the fallback; an unguarded reference throws ENGINE_CEL_ERROR.
+    it('on break: scope.nodes is the partial snapshot — completed nodes present, skipped and cut-off nodes absent (not backfilled)', async () => {
       let workerCallIdx = 0;
+      let afterRunCount = 0;
       const loop = new LoopNode({
         id: 'loop1',
         maxIterations: 10,
         until: undefined,
         bodyNodes: [
-          // worker: runs every iteration, increments pass
           new FactoryNode({ id: 'worker' }, () => {
             workerCallIdx++;
 
             return { status: 'completed', result: { pass: workerCallIdx } };
           }),
-          // optional: only runs on iteration 0 (if=false on iteration 1)
           new FactoryNode({ id: 'optional', if: 'scope.iteration < 1' }, () => ({
             status: 'completed',
             result: { kept: true },
           })),
-          // stopper: a real BreakNode that fires on iteration 1 after worker completes
           new BreakNode({ id: 'stopper', if: 'scope.iteration >= 1', depends_on: ['worker'] }),
+          // `after` depends on the break: it runs while the break is skipped (a skipped break
+          // does not cascade its skip) and is cancelled once the break fires.
+          new FactoryNode({ id: 'after', depends_on: ['stopper'] }, () => {
+            afterRunCount += 1;
+
+            return { status: 'completed', result: { done: true } };
+          }),
         ],
         outputs: {
-          // worker completed in the partial iteration — its value IS present
           worker_pass: 'scope.nodes.worker.pass',
-          // optional was skipped in the partial iteration — it is ABSENT (not backfilled from iter 0)
-          // has() guard returns the fallback, proving it is undefined, not the prior iteration's value
           kept: 'has(scope.nodes.optional) ? scope.nodes.optional.kept : "absent"',
+          after_done: 'has(scope.nodes.after) ? scope.nodes.after.done : "cut_off"',
         },
       });
 
@@ -457,13 +403,11 @@ describe('LoopNode', () => {
 
       expect(result.status).toBe('completed');
       const loopResult = (result as { status: 'completed'; result: NodeResult }).result;
-      // Only iteration 0 fully completed; the broken iteration 1 is not counted
       expect(loopResult['total_iterations']).toBe(1);
-      // worker completed in the partial iteration (pass=2) — present in the snapshot
       expect(loopResult['output']).toMatchObject({ worker_pass: 2 });
-      // optional was absent in the partial iteration — NOT backfilled from iter 0;
-      // the has() guard returns "absent", proving scope.nodes.optional is undefined
       expect(loopResult['output']).toMatchObject({ kept: 'absent' });
+      expect(afterRunCount).toBe(1);
+      expect(loopResult['output']).toMatchObject({ after_done: 'cut_off' });
     });
   });
 
