@@ -109,6 +109,13 @@ export abstract class BaseNode<R extends NodeRunResult = NodeRunResult> {
     return false;
   }
 
+  // Default true: a skipped node cascades its skip to dependents. Control-flow nodes
+  // (break/exit) override to false — they produce no output, so a skipped one settles its ordering
+  // edges without forcing its dependents to skip.
+  public propagatesSkip(): boolean {
+    return true;
+  }
+
   public evaluateIf(ctx: ExecutionContext): boolean {
     if (this.ifExpr === undefined) {
       return true;

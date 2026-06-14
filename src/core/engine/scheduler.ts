@@ -291,7 +291,14 @@ export const runScheduler = async (
           continue;
         }
 
-        const anySkipped = deps.some((depId) => state.get(depId)?.status === 'skipped');
+        // A skipped dependency only cascades its skip when its node propagates skip. Control-flow
+        // nodes (break/exit) settle their ordering edges but stay transparent to skip-propagation,
+        // so a dependent of a skipped break/exit still runs.
+        const anySkipped = deps.some((depId) => {
+          const dep = state.get(depId);
+
+          return dep?.status === 'skipped' && dep.node.propagatesSkip();
+        });
         if (anySkipped) {
           entry.status = 'skipped';
           pendingCount--;
