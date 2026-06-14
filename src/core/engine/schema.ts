@@ -128,6 +128,7 @@ export type Node = z.infer<typeof NodeSchema>;
 export type LoopNode = z.infer<typeof BaseNodeSchema> & {
   loop: {
     until?: string | undefined;
+    while?: string | undefined;
     max_iterations?: number | undefined;
     nodes: Node[];
     outputs?: Record<string, string> | undefined;
@@ -138,12 +139,18 @@ export const LoopNodeSchema = BaseNodeSchema.extend({
   loop: z
     .object({
       until: z.string().optional(),
+      while: z.string().optional(),
       max_iterations: z.number().int().min(1).optional(),
       nodes: z.array(NodeSchema).min(1),
       outputs: z.record(z.string(), z.string()).optional(),
     })
-    .refine((data) => data.until !== undefined || data.max_iterations !== undefined, {
-      message: 'loop must specify at least one of: until, max_iterations',
+    .refine(
+      (data) =>
+        data.until !== undefined || data.while !== undefined || data.max_iterations !== undefined,
+      { message: 'loop must specify at least one of: until, while, max_iterations' }
+    )
+    .refine((data) => !(data.until !== undefined && data.while !== undefined), {
+      message: 'loop cannot specify both until and while',
     }),
 });
 

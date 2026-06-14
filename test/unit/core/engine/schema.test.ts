@@ -240,6 +240,35 @@ describe('LoopNodeSchema', () => {
     expect(result.success).toBe(true);
   });
 
+  it('accepts a loop node with only while and at least one inner node', () => {
+    const result = LoopNodeSchema.safeParse(
+      baseLoop({
+        while: 'scope.iteration < 3',
+        nodes: [{ id: 'inner', bash: 'echo loop' }],
+      })
+    );
+
+    expect(result.success).toBe(true);
+  });
+
+  it('rejects a loop node that specifies both until and while', () => {
+    const result = LoopNodeSchema.safeParse(
+      baseLoop({
+        until: 'scope.iteration >= 3',
+        while: 'scope.iteration < 3',
+        nodes: [{ id: 'inner', bash: 'echo loop' }],
+      })
+    );
+
+    expect(result.success).toBe(false);
+    if (result.success) {
+      return;
+    }
+
+    const messages = result.error.issues.map((i) => i.message);
+    expect(messages.some((m) => m.includes('cannot specify both until and while'))).toBe(true);
+  });
+
   it('rejects a non-integer max_iterations (e.g. 2.5) with a ZodError', () => {
     expect(() =>
       LoopNodeSchema.parse(

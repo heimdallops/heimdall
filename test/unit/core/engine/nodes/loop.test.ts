@@ -84,6 +84,7 @@ const makeLoopNode = (
   opts: {
     id?: string;
     until?: string;
+    while?: string;
     max_iterations?: number;
     outputs?: Record<string, string>;
     depends_on?: string[];
@@ -94,6 +95,7 @@ const makeLoopNode = (
     id: opts.id ?? 'loop1',
     ...(opts.depends_on !== undefined ? { depends_on: opts.depends_on } : {}),
     until: opts.until,
+    while: opts.while,
     maxIterations: opts.max_iterations,
     bodyNodes,
     outputs: opts.outputs,
@@ -155,6 +157,89 @@ describe('LoopNode', () => {
       expect(
         (result as { status: 'completed'; result: NodeResult }).result['total_iterations']
       ).toBe(2);
+    });
+  });
+
+  describe('while is a pre-condition', () => {
+    it('runs the body zero times when while is false before the first iteration', async () => {
+      // while is checked BEFORE the body runs, so a condition that is false up front
+      // skips every iteration — the defining difference from until (a post-condition).
+      const body = new ScopeCapturingNode({ id: 'step' });
+      const loop = makeLoopNode({ while: 'false' }, [body]);
+
+      const result = await runLoop(loop);
+
+      expect(result.status).toBe('completed');
+      expect(body.runCount).toBe(0);
+      expect(
+        (result as { status: 'completed'; result: NodeResult }).result['total_iterations']
+      ).toBe(0);
+    });
+
+    it('runs the body while the condition holds and stops once it becomes false', async () => {
+      // scope.iteration is 0,1,2 at the start of each iteration. while is checked first:
+      // 0<3, 1<3, 2<3 pass (3 runs); on the 4th check 3<3 is false → stop.
+      const body = new ScopeCapturingNode({ id: 'step' });
+      const loop = makeLoopNode({ while: 'scope.iteration < 3' }, [body]);
+
+      const result = await runLoop(loop);
+
+      expect(result.status).toBe('completed');
+      expect(body.runCount).toBe(3);
+      expect(body.capturedScopes.map((s) => s?.iteration)).toEqual([0, 1, 2]);
+      expect(
+        (result as { status: 'completed'; result: NodeResult }).result['total_iterations']
+      ).toBe(3);
+    });
+
+    it('caps a while loop with max_iterations when the condition stays true', async () => {
+      const body = new ScopeCapturingNode({ id: 'step' });
+      const loop = makeLoopNode({ while: 'true', max_iterations: 2 }, [body]);
+
+      const result = await runLoop(loop);
+
+      expect(result.status).toBe('completed');
+      expect(body.runCount).toBe(2);
+      expect(
+        (result as { status: 'completed'; result: NodeResult }).result['total_iterations']
+      ).toBe(2);
+    });
+
+    it('evaluates while against the loop eval context (scope.needs resolves external deps)', async () => {
+      const depResult: NodeResult = { threshold: 2 };
+      const externalNeeds = new Map<string, NodeResult>([['dep', depResult]]);
+
+      const body = new ScopeCapturingNode({ id: 'step' });
+      const loop = new LoopNode({
+        id: 'loop1',
+        depends_on: ['dep'],
+        while: 'scope.iteration < scope.needs.dep.threshold',
+        until: undefined,
+        maxIterations: undefined,
+        bodyNodes: [body],
+        outputs: undefined,
+      });
+
+      const ctx = makeCtx({ needs: externalNeeds });
+      const result = await loop.run({
+        ctx,
+        adapter: fakeAdapter,
+        emitter: createEngineEmitter(),
+        signal: new AbortController().signal,
+      });
+
+      expect(result.status).toBe('completed');
+      // threshold = 2, so while stops the loop after 2 iterations
+      expect(body.runCount).toBe(2);
+    });
+
+    it('throws a NodeError (ENGINE_CEL_ERROR) when while does not evaluate to a boolean', async () => {
+      const body = new ScopeCapturingNode({ id: 'step' });
+      const loop = makeLoopNode({ while: '1 + 1' }, [body]);
+
+      await expect(runLoop(loop)).rejects.toMatchObject({ code: 'ENGINE_CEL_ERROR' });
+      // while is a pre-condition: the bad expression is evaluated before the body ever runs
+      expect(body.runCount).toBe(0);
     });
   });
 
