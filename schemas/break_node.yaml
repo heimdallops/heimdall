@@ -3,6 +3,12 @@ description: >-
   Exits the innermost enclosing loop immediately. Any in-flight parallel nodes
   in the current iteration are stopped, and the iteration count is not
   incremented. Only valid inside a loop_node's nodes list.
+
+
+  Combined with `if:`, the condition acts as a guard: when it is true the break
+  fires and the loop exits; when it is false the node is skipped. A skipped break
+  produces no output, so it does not cascade its skip to dependents — nodes that
+  `depends_on` it still run.
 allOf:
   - $ref: node.yaml
   - type: object
