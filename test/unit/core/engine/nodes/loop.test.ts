@@ -241,6 +241,16 @@ describe('LoopNode', () => {
       // while is a pre-condition: the bad expression is evaluated before the body ever runs
       expect(body.runCount).toBe(0);
     });
+
+    it('throws a NodeError (ENGINE_CEL_ERROR) for an empty while instead of looping unconditionally', async () => {
+      // An empty string is a configured (but invalid) expression, not "unset": it must fail
+      // CEL evaluation rather than be treated as no-while and loop forever.
+      const body = new ScopeCapturingNode({ id: 'step' });
+      const loop = makeLoopNode({ while: '' }, [body]);
+
+      await expect(runLoop(loop)).rejects.toMatchObject({ code: 'ENGINE_CEL_ERROR' });
+      expect(body.runCount).toBe(0);
+    });
   });
 
   describe('BreakNode exits the loop early', () => {

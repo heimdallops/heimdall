@@ -233,8 +233,9 @@ export class LoopNode extends BaseNode<NodeRunCompleted | NodeRunExited | NodeRu
     return result;
   }
 
-  // while must yield a boolean, mirroring evaluateUntil; the loop proceeds only while it is
-  // true. Returns true when no while is configured so the loop runs unconditionally.
+  // while must yield a boolean, mirroring BaseNode.evaluateIf; the loop proceeds only while it
+  // is true. Returns true when no while is configured so the loop runs unconditionally. An empty
+  // string is a configured expression (not "unset"), so it falls through to evalCel and fails.
   private evaluateWhile(
     ctx: ExecutionContext,
     nodes: ReadonlyMap<string, NodeResult>,
@@ -242,7 +243,7 @@ export class LoopNode extends BaseNode<NodeRunCompleted | NodeRunExited | NodeRu
     parentScope: LoopContext | undefined,
     iteration: number
   ): boolean {
-    if (!this.while) {
+    if (this.while === undefined) {
       return true;
     }
 

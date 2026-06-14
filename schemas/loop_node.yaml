@@ -33,7 +33,10 @@ allOf:
               node's own depends_on outputs.
           max_iterations:
             type: integer
-            description: Max number of iterations before the loop exits even if until does not evaluate to true.
+            description: >-
+              Max number of iterations before the loop exits, regardless of
+              until or while. Caps the loop even when until never evaluates to
+              true, when while never evaluates to false, or when neither is set.
             minimum: 1
           nodes:
             type: array
