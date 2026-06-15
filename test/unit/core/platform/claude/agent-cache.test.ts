@@ -65,6 +65,7 @@ describe('agent cache', () => {
     const projectDir = join(fakeHome, 'project');
     const cwd = join(projectDir, 'subdir');
     await mkdir(cwd, { recursive: true });
+    await mkdir(join(projectDir, '.git'), { recursive: true });
 
     await writeAgent(cwd, 'local.md', validAgent('local'));
     await writeAgent(projectDir, 'project.md', validAgent('project'));
@@ -94,23 +95,93 @@ describe('agent cache', () => {
     expect(adapter.agents.get('shared')).toContain('local body');
   });
 
-  it('does not include intermediate dirs when cwd is above home', async () => {
+  it('walks from cwd up to the git root (inclusive) and stops there — agents above the git root are not discovered', async () => {
     const root = await makeTempDir();
-    const cwd = join(root, 'cwd');
-    const fakeHome = join(cwd, 'home');
+    const fakeHome = join(root, 'home');
+    const gitRoot = join(root, 'workspace');
+    const cwd = join(gitRoot, 'project');
     await mkdir(fakeHome, { recursive: true });
+    await mkdir(cwd, { recursive: true });
+    await mkdir(join(gitRoot, '.git'), { recursive: true });
     vi.spyOn(os, 'homedir').mockReturnValue(fakeHome);
 
-    // noise placed above cwd (at root) — must NOT appear in cache
-    await writeAgent(root, 'noise.md', validAgent('noise'));
+    await writeAgent(root, 'above-root-agent.md', validAgent('above-root-agent'));
+    await writeAgent(gitRoot, 'git-root-agent.md', validAgent('git-root-agent'));
     await writeAgent(cwd, 'cwd-agent.md', validAgent('cwd-agent'));
     await writeAgent(fakeHome, 'home-agent.md', validAgent('home-agent'));
 
     const adapter = await ClaudeCodeAdapter.create(cwd);
 
     expect(adapter.agents.has('cwd-agent')).toBe(true);
+    expect(adapter.agents.has('git-root-agent')).toBe(true);
     expect(adapter.agents.has('home-agent')).toBe(true);
-    expect(adapter.agents.has('noise')).toBe(false);
+    expect(adapter.agents.has('above-root-agent')).toBe(false);
+  });
+
+  it('a .git FILE (worktree form) at the git root is recognized as the boundary', async () => {
+    const root = await makeTempDir();
+    const fakeHome = join(root, 'home');
+    const gitRoot = join(root, 'workspace');
+    const cwd = join(gitRoot, 'project');
+    await mkdir(fakeHome, { recursive: true });
+    await mkdir(cwd, { recursive: true });
+    await writeFile(join(gitRoot, '.git'), 'gitdir: /some/other/path/.git', 'utf8');
+    vi.spyOn(os, 'homedir').mockReturnValue(fakeHome);
+
+    await writeAgent(root, 'above-root-agent.md', validAgent('above-root-agent'));
+    await writeAgent(gitRoot, 'git-root-agent.md', validAgent('git-root-agent'));
+    await writeAgent(cwd, 'cwd-agent.md', validAgent('cwd-agent'));
+    await writeAgent(fakeHome, 'home-agent.md', validAgent('home-agent'));
+
+    const adapter = await ClaudeCodeAdapter.create(cwd);
+
+    expect(adapter.agents.has('cwd-agent')).toBe(true);
+    expect(adapter.agents.has('git-root-agent')).toBe(true);
+    expect(adapter.agents.has('home-agent')).toBe(true);
+    expect(adapter.agents.has('above-root-agent')).toBe(false);
+  });
+
+  it('without a git repo, walks up ancestor directories (not just cwd)', async () => {
+    const root = await makeTempDir();
+    const fakeHome = join(root, 'home');
+    const workspace = join(root, 'workspace');
+    const cwd = join(workspace, 'project');
+    await mkdir(fakeHome, { recursive: true });
+    await mkdir(cwd, { recursive: true });
+    vi.spyOn(os, 'homedir').mockReturnValue(fakeHome);
+
+    await writeAgent(root, 'root-agent.md', validAgent('root-agent'));
+    await writeAgent(workspace, 'ancestor-agent.md', validAgent('ancestor-agent'));
+    await writeAgent(cwd, 'cwd-agent.md', validAgent('cwd-agent'));
+    await writeAgent(fakeHome, 'home-agent.md', validAgent('home-agent'));
+
+    const adapter = await ClaudeCodeAdapter.create(cwd);
+
+    expect(adapter.agents.has('cwd-agent')).toBe(true);
+    expect(adapter.agents.has('ancestor-agent')).toBe(true);
+    expect(adapter.agents.has('root-agent')).toBe(true);
+    expect(adapter.agents.has('home-agent')).toBe(true);
+  });
+
+  it('under home with no git repo, walk stops at the home boundary — agents above home are not discovered', async () => {
+    const root = await makeTempDir();
+    const fakeHome = join(root, 'home');
+    const projDir = join(fakeHome, 'proj');
+    const cwd = join(projDir, 'a');
+    await mkdir(cwd, { recursive: true });
+    vi.spyOn(os, 'homedir').mockReturnValue(fakeHome);
+
+    await writeAgent(root, 'above-home-agent.md', validAgent('above-home-agent'));
+    await writeAgent(fakeHome, 'home-agent.md', validAgent('home-agent'));
+    await writeAgent(projDir, 'proj-agent.md', validAgent('proj-agent'));
+    await writeAgent(cwd, 'cwd-agent.md', validAgent('cwd-agent'));
+
+    const adapter = await ClaudeCodeAdapter.create(cwd);
+
+    expect(adapter.agents.has('cwd-agent')).toBe(true);
+    expect(adapter.agents.has('proj-agent')).toBe(true);
+    expect(adapter.agents.has('home-agent')).toBe(true);
+    expect(adapter.agents.has('above-home-agent')).toBe(false);
   });
 
   it('lexicographically first file path wins within the same directory', async () => {
@@ -161,7 +232,7 @@ describe('agent cache', () => {
     expect(adapter.agents.size).toBe(0);
   });
 
-  it('skips a symlink that points outside the trusted base directory', async () => {
+  it('includes an agent via a symlink that targets a file outside .claude/agents/', async () => {
     const cwd = await makeTempDir();
     const outsideDir = await makeTempDir();
     const agentsDir = join(cwd, '.claude', 'agents');
@@ -173,7 +244,8 @@ describe('agent cache', () => {
 
     const adapter = await ClaudeCodeAdapter.create(cwd);
 
-    expect(adapter.agents.has('escape')).toBe(false);
+    expect(adapter.agents.has('escape')).toBe(true);
+    expect(adapter.agents.get('escape')).toBe(validAgent('escape'));
   });
 
   it('stores raw content so all frontmatter is available to parseAgent', async () => {
@@ -184,5 +256,58 @@ describe('agent cache', () => {
     const adapter = await ClaudeCodeAdapter.create(cwd);
 
     expect(adapter.agents.get('rich')).toBe(raw);
+  });
+
+  it('follows symlinked directories inside .claude/agents/ and recurses through them fully', async () => {
+    const cwd = await makeTempDir();
+    const outsideDir = await makeTempDir();
+
+    await writeFile(join(outsideDir, 'external-agent.md'), validAgent('external-agent'), 'utf8');
+
+    const nestedSubDir = join(outsideDir, 'sub');
+    await mkdir(nestedSubDir, { recursive: true });
+    await writeFile(join(nestedSubDir, 'nested-agent.md'), validAgent('nested-agent'), 'utf8');
+
+    const agentsDir = join(cwd, '.claude', 'agents');
+    await mkdir(agentsDir, { recursive: true });
+    await symlink(outsideDir, join(agentsDir, 'linked-dir'));
+
+    await writeFile(join(agentsDir, 'real.md'), validAgent('real'), 'utf8');
+
+    const adapter = await ClaudeCodeAdapter.create(cwd);
+
+    expect(adapter.agents.has('real')).toBe(true);
+    expect(adapter.agents.has('external-agent')).toBe(true);
+    expect(adapter.agents.has('nested-agent')).toBe(true);
+  });
+
+  it('completes without hanging when a symlinked directory creates a cycle back to an ancestor', async () => {
+    const cwd = await makeTempDir();
+    const fakeHome = await makeTempDir();
+    vi.spyOn(os, 'homedir').mockReturnValue(fakeHome);
+
+    const agentsDir = join(cwd, '.claude', 'agents');
+    await mkdir(agentsDir, { recursive: true });
+
+    await writeFile(join(agentsDir, 'real.md'), validAgent('real'), 'utf8');
+
+    await symlink(agentsDir, join(agentsDir, 'cycle-link'));
+
+    let timeoutHandle: ReturnType<typeof setTimeout> | undefined;
+    const timeoutGuard = new Promise<never>((_resolve, reject) => {
+      timeoutHandle = setTimeout(() => {
+        reject(
+          new Error(
+            'ClaudeCodeAdapter.create did not terminate within 3000ms — cycle guard may be broken'
+          )
+        );
+      }, 3000);
+    });
+
+    const adapter = await Promise.race([ClaudeCodeAdapter.create(cwd), timeoutGuard]);
+    clearTimeout(timeoutHandle);
+
+    expect(adapter.agents.size).toBe(1);
+    expect(adapter.agents.has('real')).toBe(true);
   });
 });

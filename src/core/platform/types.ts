@@ -73,16 +73,12 @@ export interface PlatformAdapter<TOptions extends BasePlatformOptions> {
    */
   run(prompt: string, options: TOptions, sessionId?: string): PlatformStream;
   /**
-   * Looks up an agent file by name and returns its raw file contents.
+   * Looks up an agent by name and returns its raw file contents. The resolution
+   * strategy — where agents are searched for and how their identity is
+   * determined — is platform-specific.
    *
-   * Search order: starting at cwd, each ancestor directory up to `~` is checked
-   * for `.claude/agents/` (cwd-closest wins). If cwd is outside the home
-   * directory tree, only cwd and `~/.claude/agents/` are checked. Within each
-   * directory, agents are matched by the `name` field in their frontmatter,
-   * not by filename.
-   *
-   * @param name - The agent name to search for (matched against frontmatter `name:` field).
-   * @returns The raw Markdown contents of the agent file.
+   * @param name - The agent name to search for.
+   * @returns The raw file contents of the agent.
    * @throws `PlatformAgentNotFoundError` if no agent with the given name exists.
    */
   findAgent(name: string): Promise<string>;

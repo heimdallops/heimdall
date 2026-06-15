@@ -1,3 +1,4 @@
+import { AbortError as SDKAbortError } from '@anthropic-ai/claude-agent-sdk';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { ClaudeStream } from '../../../../../src/core/platform/claude/stream.ts';
@@ -248,8 +249,6 @@ describe('ClaudeStream', () => {
       // before any message is processed.
 
       it("triggers 'error' event with PlatformCancellationError", async () => {
-        const { AbortError: SDKAbortError } = await import('@anthropic-ai/claude-agent-sdk');
-
         mockGeneratorFactory = async function* (): AsyncGenerator<SDKMessage, void> {
           await Promise.resolve();
           // Simulate the SDK throwing AbortError when cancelled
@@ -269,8 +268,6 @@ describe('ClaudeStream', () => {
       });
 
       it("does not emit 'done' after 'error'", async () => {
-        const { AbortError: SDKAbortError } = await import('@anthropic-ai/claude-agent-sdk');
-
         mockGeneratorFactory = async function* (): AsyncGenerator<SDKMessage, void> {
           await Promise.resolve();
           throw new SDKAbortError('aborted');
@@ -287,8 +284,6 @@ describe('ClaudeStream', () => {
       });
 
       it('rejects sessionId() with PlatformCancellationError', async () => {
-        const { AbortError: SDKAbortError } = await import('@anthropic-ai/claude-agent-sdk');
-
         mockGeneratorFactory = async function* (): AsyncGenerator<SDKMessage, void> {
           await Promise.resolve();
           throw new SDKAbortError('aborted');
@@ -324,8 +319,6 @@ describe('ClaudeStream', () => {
       });
 
       it('passes abortController.signal to the SDK on cancel()', async () => {
-        const { AbortError: SDKAbortError } = await import('@anthropic-ai/claude-agent-sdk');
-
         mockGeneratorFactory = async function* (): AsyncGenerator<SDKMessage, void> {
           await Promise.resolve();
           throw new SDKAbortError('aborted');
@@ -377,8 +370,6 @@ describe('ClaudeStream', () => {
       // whether cancel() was called — this exercises the wrapping behavior.
 
       it('wraps AbortError thrown by the SDK mid-stream in PlatformCancellationError', async () => {
-        const { AbortError: SDKAbortError } = await import('@anthropic-ai/claude-agent-sdk');
-
         mockGeneratorFactory = async function* (): AsyncGenerator<SDKMessage, void> {
           await Promise.resolve();
           yield makeChunk('first chunk'); // execution begins, chunk emitted

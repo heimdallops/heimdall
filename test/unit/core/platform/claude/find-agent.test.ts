@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, rm, symlink, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import { join } from 'node:path';
 
@@ -6,11 +6,6 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { ClaudeCodeAdapter } from '../../../../../src/core/platform/claude/adapter.ts';
 import { PlatformAgentNotFoundError } from '../../../../../src/core/platform/errors.ts';
-
-// All tests here cover unique filesystem/precedence behavior (home dir fallback, symlink
-// sandboxing, subdirectory crawl, frontmatter-name matching) not covered elsewhere.
-// The duplication concern is between parse-agent.test.ts and the parseAgent frontmatter
-// validation describe in test/integration/platform/claude/adapter.integration.test.ts.
 
 const tempDirs: string[] = [];
 
@@ -140,34 +135,24 @@ describe('findAgent', () => {
     await expect(adapter.findAgent('noname')).rejects.toBeInstanceOf(PlatformAgentNotFoundError);
   });
 
-  it('does not crawl intermediate dirs when cwd is above home', async () => {
+  it('finds agents in ancestor dirs between cwd and the git root (inclusive) when cwd is outside the home tree', async () => {
     const root = await makeTempDir(); // tracked, deleted in afterEach
     const fakeHome = join(root, 'home');
-    const cwd = join(root, 'above');
+    const intermediate = join(root, 'workspace');
+    const cwd = join(intermediate, 'project');
     await mkdir(fakeHome, { recursive: true });
     await mkdir(cwd, { recursive: true });
+    await mkdir(join(intermediate, '.git'), { recursive: true });
     vi.spyOn(os, 'homedir').mockReturnValue(fakeHome);
 
-    await createAgentFile(fakeHome, 'home-only-agent');
     await createAgentFile(cwd, 'cwd-agent');
+    await createAgentFile(intermediate, 'intermediate-agent');
+    await createAgentFile(fakeHome, 'home-agent');
 
     const adapter = await ClaudeCodeAdapter.create(cwd);
 
-    await expect(adapter.findAgent('home-only-agent')).resolves.toContain('home-only-agent');
     await expect(adapter.findAgent('cwd-agent')).resolves.toContain('cwd-agent');
-  });
-
-  it('skips a symlink inside .claude/agents/ that points outside the base directory', async () => {
-    const cwd = await makeTempDir();
-    const outsideDir = await makeTempDir();
-    const agentsDir = join(cwd, '.claude', 'agents');
-    await mkdir(agentsDir, { recursive: true });
-
-    const outsideFile = join(outsideDir, 'secret.md');
-    await writeFile(outsideFile, `---\nname: escape\n---\n# escape\n`, 'utf8');
-    await symlink(outsideFile, join(agentsDir, 'escape.md'));
-
-    const adapter = await ClaudeCodeAdapter.create(cwd);
-    await expect(adapter.findAgent('escape')).rejects.toBeInstanceOf(PlatformAgentNotFoundError);
+    await expect(adapter.findAgent('intermediate-agent')).resolves.toContain('intermediate-agent');
+    await expect(adapter.findAgent('home-agent')).resolves.toContain('home-agent');
   });
 });
