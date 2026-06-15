@@ -14,14 +14,29 @@ allOf:
               CEL expression that exits the loop when it evaluates to true.
               Evaluated after each iteration (a post-condition, like a
               do-while loop), so the loop body always runs at least once.
-              Do not wrap in ${{ }}. Within the expression, scope.iteration
-              and scope.nodes.<id> (this loop's body results) are available,
-              and needs.<id> / scope.needs.<id> refer to this loop node's own
-              depends_on outputs. Use "true" combined with a break_node inside
-              the loop to control exit explicitly from within the iteration.
+              Mutually exclusive with while. Do not wrap in ${{ }}. Within the
+              expression, scope.iteration and scope.nodes.<id> (this loop's body
+              results) are available, and needs.<id> / scope.needs.<id> refer to
+              this loop node's own depends_on outputs. Use "true" combined with a
+              break_node inside the loop to control exit explicitly from within
+              the iteration.
+          while:
+            type: string
+            description: >-
+              CEL expression that continues the loop while it evaluates to true.
+              Evaluated before each iteration (a pre-condition, like a while
+              loop), so the loop body may run zero times if it is false up front.
+              Mutually exclusive with until. Do not wrap in ${{ }}. Within the
+              expression, scope.iteration and scope.nodes.<id> (the previous
+              iteration's body results, empty on the first iteration) are
+              available, and needs.<id> / scope.needs.<id> refer to this loop
+              node's own depends_on outputs.
           max_iterations:
             type: integer
-            description: Max number of iterations before the loop exits even if until does not evaluate to true.
+            description: >-
+              Max number of iterations before the loop exits, regardless of
+              until or while. Caps the loop even when until never evaluates to
+              true, when while never evaluates to false, or when neither is set.
             minimum: 1
           nodes:
             type: array
@@ -50,6 +65,12 @@ allOf:
           - required:
               - until
           - required:
+              - while
+          - required:
               - max_iterations
+        not:
+          required:
+            - until
+            - while
     required:
       - loop

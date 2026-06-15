@@ -24,6 +24,7 @@ import { nodeRegistry } from './registry.ts';
 
 interface LoopNodeData extends BaseNodeData {
   until?: string | undefined;
+  while?: string | undefined;
   maxIterations?: number | undefined;
   bodyNodes: BaseNode[];
   outputs?: Record<string, string> | undefined;
@@ -31,6 +32,7 @@ interface LoopNodeData extends BaseNodeData {
 
 export class LoopNode extends BaseNode<NodeRunCompleted | NodeRunExited | NodeRunFailed> {
   private readonly until: string | undefined;
+  private readonly while: string | undefined;
   private readonly maxIterations: number | undefined;
   private readonly bodyNodes: BaseNode[];
   private readonly outputs: Record<string, string> | undefined;
@@ -52,6 +54,7 @@ export class LoopNode extends BaseNode<NodeRunCompleted | NodeRunExited | NodeRu
       ...(data.timeout !== undefined ? { timeout: data.timeout } : {}),
       ...(data.retries !== undefined ? { retries: data.retries } : {}),
       until: data.loop.until,
+      while: data.loop.while,
       maxIterations: data.loop.max_iterations,
       bodyNodes,
       outputs: data.loop.outputs,
@@ -61,6 +64,7 @@ export class LoopNode extends BaseNode<NodeRunCompleted | NodeRunExited | NodeRu
   public constructor(data: LoopNodeData) {
     super(data);
     this.until = data.until;
+    this.while = data.while;
     this.maxIterations = data.maxIterations;
     this.bodyNodes = data.bodyNodes;
     this.outputs = data.outputs;
@@ -103,6 +107,12 @@ export class LoopNode extends BaseNode<NodeRunCompleted | NodeRunExited | NodeRu
     for (;;) {
       if (signal.aborted) {
         return this.cancelledResult();
+      }
+
+      if (
+        !this.evaluateWhile(ctx, lastIterationNodes, loopNeeds, parentScope, completedIterations)
+      ) {
+        break;
       }
 
       const scope: LoopContext = {
@@ -216,6 +226,50 @@ export class LoopNode extends BaseNode<NodeRunCompleted | NodeRunExited | NodeRu
     if (typeof result !== 'boolean') {
       throw new NodeError(
         `until expression must evaluate to a boolean, got ${typeof result}`,
+        'ENGINE_CEL_ERROR',
+        this.id,
+        { nodeName: this.name }
+      );
+    }
+
+    return result;
+  }
+
+  // while must yield a boolean, mirroring BaseNode.evaluateIf; the loop proceeds only while it
+  // is true. Returns true when no while is configured so the loop runs unconditionally. An empty
+  // string is a configured expression (not "unset"), so it falls through to evalCel and fails.
+  private evaluateWhile(
+    ctx: ExecutionContext,
+    nodes: ReadonlyMap<string, NodeResult>,
+    loopNeeds: ReadonlyMap<string, NodeResult>,
+    parentScope: LoopContext | undefined,
+    iteration: number
+  ): boolean {
+    if (this.while === undefined) {
+      return true;
+    }
+
+    const evalCtx: ExecutionContext = {
+      inputs: ctx.inputs,
+      vars: ctx.vars,
+      needs: loopNeeds,
+      sessionDir: ctx.sessionDir,
+      scope: { iteration, nodes, needs: loopNeeds, outer: parentScope },
+    };
+
+    let result: unknown;
+    try {
+      result = evalCel(this.while, evalCtx as unknown as Record<string, unknown>);
+    } catch (err) {
+      throw new NodeError('Failed to evaluate while expression', 'ENGINE_CEL_ERROR', this.id, {
+        nodeName: this.name,
+        cause: err,
+      });
+    }
+
+    if (typeof result !== 'boolean') {
+      throw new NodeError(
+        `while expression must evaluate to a boolean, got ${typeof result}`,
         'ENGINE_CEL_ERROR',
         this.id,
         { nodeName: this.name }
