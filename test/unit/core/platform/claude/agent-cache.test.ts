@@ -283,6 +283,9 @@ describe('agent cache', () => {
 
   it('completes without hanging when a symlinked directory creates a cycle back to an ancestor', async () => {
     const cwd = await makeTempDir();
+    const fakeHome = await makeTempDir();
+    vi.spyOn(os, 'homedir').mockReturnValue(fakeHome);
+
     const agentsDir = join(cwd, '.claude', 'agents');
     await mkdir(agentsDir, { recursive: true });
 
