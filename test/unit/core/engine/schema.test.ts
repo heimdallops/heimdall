@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { ZodError } from 'zod';
 
 import {
   ApprovalNodeSchema,
@@ -237,6 +238,22 @@ describe('LoopNodeSchema', () => {
     );
 
     expect(result.success).toBe(true);
+  });
+
+  it('rejects a non-integer max_iterations (e.g. 2.5) with a ZodError', () => {
+    expect(() =>
+      LoopNodeSchema.parse(
+        baseLoop({ max_iterations: 2.5, nodes: [{ id: 'inner', bash: 'echo loop' }] })
+      )
+    ).toThrow(ZodError);
+  });
+
+  it('rejects max_iterations of 0 (must be >= 1) with a ZodError', () => {
+    expect(() =>
+      LoopNodeSchema.parse(
+        baseLoop({ max_iterations: 0, nodes: [{ id: 'inner', bash: 'echo loop' }] })
+      )
+    ).toThrow(ZodError);
   });
 });
 

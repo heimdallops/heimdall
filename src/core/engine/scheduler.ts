@@ -20,12 +20,17 @@ export interface SchedulerOptions {
   adapter: PlatformAdapter;
   emitter: EngineEmitter;
   sharedContextMap: Map<string, string>;
+  // External cancellation signal (e.g. a LoopNode's attempt signal). When it fires, the scheduler
+  // stops dispatching, drains in-flight nodes through the grace period, and aborts node runs.
+  signal?: AbortSignal | undefined;
 }
 
 export interface SchedulerResult {
   outcome: 'completed' | 'exited' | 'broke';
   success: boolean;
   exitReason?: string | undefined;
+  // Accumulated results of completed nodes, keyed by node id.
+  nodeResults: ReadonlyMap<string, NodeResult>;
 }
 
 const RETRY_DEFAULTS = {
@@ -155,6 +160,7 @@ export const runScheduler = async (
   options: SchedulerOptions
 ): Promise<SchedulerResult> => {
   const { adapter, emitter, sharedContextMap } = options;
+  const externalSignal = options.signal;
 
   // Mutable needs map — shared by reference across all concurrent dispatches so nodes always see the latest completed results
   const needs = new Map<string, NodeResult>(ctx.needs);
@@ -170,6 +176,12 @@ export const runScheduler = async (
 
   const inFlightSet = new Set<Promise<void>>();
   const controller = new AbortController();
+
+  // Node runs abort when EITHER the scheduler's internal control-flow signal (exit/break) or the
+  // external cancellation signal fires.
+  const nodeRunSignal = externalSignal
+    ? AbortSignal.any([externalSignal, controller.signal])
+    : controller.signal;
 
   const buildCtx = (): ExecutionContext => ({ ...ctx, needs });
 
@@ -203,7 +215,7 @@ export const runScheduler = async (
       predecessorSessionId,
     });
 
-    const promise = runWithRetry(node, controller.signal, buildOptions).then((result) => {
+    const promise = runWithRetry(node, nodeRunSignal, buildOptions).then((result) => {
       // Once a control-flow signal (exit/break) is recorded or this node was cancelled, discard the settlement
       if (exitResult || broke || entry.status === 'cancelled') {
         return;
@@ -264,7 +276,7 @@ export const runScheduler = async (
     // A skip can unblock dependents, so re-scan after any progress instead of recursing.
     let progressed: boolean;
     do {
-      if (exitResult || broke || hasFailure) {
+      if (exitResult || broke || hasFailure || externalSignal?.aborted) {
         return;
       }
 
@@ -272,7 +284,7 @@ export const runScheduler = async (
 
       for (const entry of state.values()) {
         // Re-check halt guards before each decision so a failure mid-scan stops peers too.
-        if (exitResult || broke || hasFailure) {
+        if (exitResult || broke || hasFailure || externalSignal?.aborted) {
           return;
         }
 
@@ -352,8 +364,11 @@ export const runScheduler = async (
 
   dispatchEligible();
 
-  // Wake on each settlement to dispatch newly-unblocked nodes. Stops as soon as exit/break is recorded — the in-flight drain is handled below.
-  while (!(exitResult || broke) && (pendingCount > 0 || inFlightSet.size > 0)) {
+  // Wake on each settlement to dispatch newly-unblocked nodes. Stops as soon as exit/break is recorded or the external signal aborts — the in-flight drain is handled below.
+  while (
+    !(exitResult || broke || externalSignal?.aborted) &&
+    (pendingCount > 0 || inFlightSet.size > 0)
+  ) {
     if (inFlightSet.size === 0) {
       // A failure halted dispatch, leaving pending nodes undispatched; anything else means the graph is deadlocked.
       if (hasFailure) {
@@ -370,8 +385,14 @@ export const runScheduler = async (
     dispatchEligible();
   }
 
-  // Exit/break drains all in-flight nodes at once, bounded by a single grace period so a node that ignores its abort can't hang the scheduler forever.
-  if ((exitResult || broke) && inFlightSet.size > 0) {
+  // On external abort (and not already torn down by exit/break), mark in-flight nodes cancelled and
+  // emit node_cancelled for each, mirroring the exit/break teardown.
+  if (externalSignal?.aborted && !(exitResult || broke)) {
+    cancelInFlight();
+  }
+
+  // Exit/break/external-abort drains all in-flight nodes at once, bounded by a single grace period so a node that ignores its abort can't hang the scheduler forever.
+  if ((exitResult || broke || externalSignal?.aborted) && inFlightSet.size > 0) {
     const graceController = new AbortController();
     const graceTimeout = sleep(CANCELLATION_GRACE_MS, graceController.signal).then(
       () => 'grace' as const
@@ -398,12 +419,13 @@ export const runScheduler = async (
       outcome: 'exited',
       success: !exitResult.failure && !hasFailure,
       exitReason: exitResult.reason,
+      nodeResults: new Map(needs),
     };
   }
 
   if (broke) {
-    return { outcome: 'broke', success: !hasFailure };
+    return { outcome: 'broke', success: !hasFailure, nodeResults: new Map(needs) };
   }
 
-  return { outcome: 'completed', success: !hasFailure };
+  return { outcome: 'completed', success: !hasFailure, nodeResults: new Map(needs) };
 };

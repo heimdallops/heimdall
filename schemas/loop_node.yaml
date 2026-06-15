@@ -11,13 +11,17 @@ allOf:
           until:
             type: string
             description: >-
-              CEL expression that must evaluate to true to exit the loop.
-              Do not wrap in ${{ }}. Use "true" combined with a break_node
-              inside the loop to control exit explicitly from within the
-              iteration.
+              CEL expression that exits the loop when it evaluates to true.
+              Evaluated after each iteration (a post-condition, like a
+              do-while loop), so the loop body always runs at least once.
+              Do not wrap in ${{ }}. Within the expression, scope.iteration
+              and scope.nodes.<id> (this loop's body results) are available,
+              and needs.<id> / scope.needs.<id> refer to this loop node's own
+              depends_on outputs. Use "true" combined with a break_node inside
+              the loop to control exit explicitly from within the iteration.
           max_iterations:
             type: integer
-            description: Max number of iterations before the loop exits even if until does not evaluate to a truthy value.
+            description: Max number of iterations before the loop exits even if until does not evaluate to true.
             minimum: 1
           nodes:
             type: array
@@ -31,7 +35,13 @@ allOf:
               Declares the values exposed to downstream nodes after the loop exits.
               Each key becomes a field on needs.<loop_id>.output. Values are CEL
               expressions evaluated in the loop's final iteration context, where
-              scope.nodes.<id> and scope.iteration are available.
+              scope.iteration and scope.nodes.<id> (this loop's body results) are
+              available, and needs.<id> / scope.needs.<id> refer to this loop
+              node's own depends_on outputs. Guard a node that may not have run
+              (e.g. a conditional `if` node) with has(), such as
+              "has(scope.nodes.<id>) ? scope.nodes.<id>.output : <default>". On an
+              early break exit, scope.nodes contains only the nodes that completed
+              before the break fired; others are absent.
             additionalProperties:
               type: string
         required:
