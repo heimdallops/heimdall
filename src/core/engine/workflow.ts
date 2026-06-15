@@ -19,6 +19,7 @@ import {
   validateDependencyReferences,
   validateNoNodeTypes,
   validateSharedContextFanIn,
+  validateUniqueIds,
 } from './dag-utils.ts';
 import type { EngineEmitter } from './emitter.ts';
 import { createEngineEmitter } from './emitter.ts';
@@ -204,6 +205,7 @@ export class Workflow {
   }
 
   private static validateGraph(nodes: BaseNode[]): BaseNode[] {
+    validateUniqueIds(nodes);
     validateDependencyReferences(nodes);
     validateSharedContextFanIn(nodes);
     const sortedNodes = topologicalSort(nodes);

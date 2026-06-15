@@ -228,6 +228,23 @@ nodes:
         expect((err as EngineConfigError).message).toMatch(/nodeA|nodeB/);
       });
 
+      it('throws EngineConfigError naming the duplicated id when two top-level nodes share the same id', async () => {
+        const yaml = `
+name: dup-ids
+nodes:
+  - id: step1
+    bash: "true"
+  - id: step1
+    bash: "echo duplicate"
+`;
+
+        const err = await Workflow.from(yaml).catch((e: unknown) => e);
+
+        expect(err).toBeInstanceOf(EngineConfigError);
+        expect((err as EngineConfigError).message).toContain('step1');
+        expect((err as EngineConfigError).message).toMatch(/Duplicate node id/);
+      });
+
       it('throws EngineConfigError when a BreakNode appears at the top level', async () => {
         const yaml = `
 name: top-level-break

@@ -900,6 +900,22 @@ describe('LoopNode', () => {
   });
 
   describe('validate', () => {
+    it('throws EngineConfigError naming the duplicated id when two body nodes share the same id', () => {
+      const nodeA = new ScopeCapturingNode({ id: 'dup' });
+      const nodeB = new ScopeCapturingNode({ id: 'dup' });
+      const loop = makeLoopNode({ max_iterations: 1 }, [nodeA, nodeB]);
+
+      let thrown: unknown;
+      try {
+        loop.validate();
+      } catch (e) {
+        thrown = e;
+      }
+
+      expect(thrown).toBeInstanceOf(EngineConfigError);
+      expect((thrown as Error).message).toBe("Duplicate node id(s): ['dup']");
+    });
+
     it('throws EngineConfigError when a body node references an unknown depends_on id', () => {
       const body = new ScopeCapturingNode({ id: 'step', depends_on: ['nonexistent'] });
       const loop = makeLoopNode({ max_iterations: 1 }, [body]);

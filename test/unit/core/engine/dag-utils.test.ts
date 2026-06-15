@@ -6,6 +6,7 @@ import {
   validateDependencyReferences,
   validateNoNodeTypes,
   validateSharedContextFanIn,
+  validateUniqueIds,
 } from '../../../../src/core/engine/dag-utils.ts';
 import { EngineConfigError } from '../../../../src/core/engine/errors.ts';
 import type { NodeRunOptions, NodeRunResult } from '../../../../src/core/engine/nodes/base.ts';
@@ -62,6 +63,69 @@ class NonAgenticSharedContextNode extends BaseNode {
     return Promise.resolve({ status: 'completed', result: {} });
   }
 }
+
+describe('validateUniqueIds', () => {
+  it('does not throw when the node list is empty', () => {
+    expect(() => {
+      validateUniqueIds([]);
+    }).not.toThrow();
+  });
+
+  it('does not throw when all node ids are distinct', () => {
+    const nodes = [
+      new StubNode({ id: 'alpha' }),
+      new StubNode({ id: 'beta' }),
+      new StubNode({ id: 'gamma' }),
+    ];
+
+    expect(() => {
+      validateUniqueIds(nodes);
+    }).not.toThrow();
+  });
+
+  it('throws EngineConfigError naming only the duplicated id when a non-duplicated id is also present', () => {
+    const nodes = [
+      new StubNode({ id: 'unique' }),
+      new StubNode({ id: 'dup' }),
+      new StubNode({ id: 'dup' }),
+    ];
+
+    let thrown: unknown;
+    try {
+      validateUniqueIds(nodes);
+    } catch (e) {
+      thrown = e;
+    }
+
+    expect(thrown).toBeInstanceOf(EngineConfigError);
+    expect((thrown as Error).message).toBe("Duplicate node id(s): ['dup']");
+  });
+
+  it('reports all distinct duplicated ids when multiple different ids are each duplicated', () => {
+    const nodes = [
+      new StubNode({ id: 'a' }),
+      new StubNode({ id: 'unique' }),
+      new StubNode({ id: 'b' }),
+      new StubNode({ id: 'a' }),
+      new StubNode({ id: 'b' }),
+      new StubNode({ id: 'b' }),
+    ];
+
+    let thrown: unknown;
+    try {
+      validateUniqueIds(nodes);
+    } catch (e) {
+      thrown = e;
+    }
+
+    expect(thrown).toBeInstanceOf(EngineConfigError);
+    const { message } = thrown as Error;
+    expect(message).toContain("'a'");
+    expect(message).toContain("'b'");
+    expect(message).not.toContain("'unique'");
+    expect(message).toMatch(/^Duplicate node id\(s\):/);
+  });
+});
 
 describe('validateDependencyReferences', () => {
   it('includes the referencing node id and missing dependency id in the error message', () => {
