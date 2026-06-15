@@ -46,7 +46,12 @@ describe('BreakNode', () => {
       const node = BreakNode.parse({ id: 'b1', break: true });
       const emitter = createEngineEmitter();
 
-      const result = await node.run({ ctx: makeCtx(), adapter: fakeAdapter, emitter });
+      const result = await node.run({
+        ctx: makeCtx(),
+        adapter: fakeAdapter,
+        emitter,
+        signal: new AbortController().signal,
+      });
 
       expect(result).toEqual({ status: 'break' });
     });

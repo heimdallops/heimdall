@@ -30,6 +30,10 @@ export default [
       '@typescript-eslint/no-confusing-void-expression': 'error',
       '@typescript-eslint/no-explicit-any': 'error',
       '@typescript-eslint/no-floating-promises': 'error',
+      // An async function need not contain `await` — `async` is also used to normalize
+      // the return contract (e.g. so synchronous throws surface as Promise rejections).
+      // no-floating-promises still enforces that returned Promises are handled.
+      '@typescript-eslint/require-await': 'off',
       '@typescript-eslint/no-unused-vars': 'off',
       'no-console': 'error',
       'no-restricted-syntax': [
@@ -62,7 +66,6 @@ export default [
       'prefer-promise-reject-errors': 'error',
       'prefer-spread': 'error',
       'prefer-template': 'error',
-      'require-await': 'error',
       'simple-import-sort/imports': 'error',
       'simple-import-sort/exports': 'error',
       'unused-imports/no-unused-imports': 'error',

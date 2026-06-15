@@ -3,6 +3,7 @@ export type {
   ApprovalResult,
   EngineEmitter,
   EngineEventMap,
+  NodeCancelledEvent,
   NodeCompletedEvent,
   NodeFailedEvent,
   NodeResult,
@@ -14,3 +15,5 @@ export type {
 } from './emitter.ts';
 export { createEngineEmitter } from './emitter.ts';
 export { EngineConfigError, EngineError, EngineValidationError } from './errors.ts';
+export type { WorkflowResult, WorkflowRunOptions } from './workflow.ts';
+export { Workflow } from './workflow.ts';

@@ -2,7 +2,13 @@ import { interpolate } from '../cel.ts';
 import type { ApprovalResult } from '../emitter.ts';
 import { NodeError } from '../errors.ts';
 import { ApprovalNodeSchema } from '../schema.ts';
-import type { BaseNodeData, NodeRunCompleted, NodeRunExited, NodeRunOptions } from './base.ts';
+import type {
+  BaseNodeData,
+  NodeRunCompleted,
+  NodeRunExited,
+  NodeRunFailed,
+  NodeRunOptions,
+} from './base.ts';
 import { BaseNode } from './base.ts';
 import { nodeRegistry } from './registry.ts';
 
@@ -17,7 +23,7 @@ interface ApprovalNodeData extends BaseNodeData {
   enableFeedback: boolean;
 }
 
-export class ApprovalNode extends BaseNode<NodeRunCompleted | NodeRunExited> {
+export class ApprovalNode extends BaseNode<NodeRunCompleted | NodeRunExited | NodeRunFailed> {
   private readonly message: string;
   private readonly exitOnNo: boolean;
   private readonly enableFeedback: boolean;
@@ -49,8 +55,10 @@ export class ApprovalNode extends BaseNode<NodeRunCompleted | NodeRunExited> {
     this.enableFeedback = data.enableFeedback;
   }
 
-  public override async run(options: NodeRunOptions): Promise<NodeRunCompleted | NodeRunExited> {
-    const { ctx, emitter } = options;
+  public override async run(
+    options: NodeRunOptions
+  ): Promise<NodeRunCompleted | NodeRunExited | NodeRunFailed> {
+    const { ctx, emitter, signal } = options;
 
     let interpolatedMessage: string;
     try {
@@ -75,8 +83,27 @@ export class ApprovalNode extends BaseNode<NodeRunCompleted | NodeRunExited> {
       );
     }
 
-    return await new Promise<NodeRunCompleted | NodeRunExited>((resolve) => {
+    if (signal.aborted) {
+      return this.cancelledResult();
+    }
+
+    return await new Promise<NodeRunCompleted | NodeRunExited | NodeRunFailed>((resolve) => {
       let resolved = false;
+
+      const onAbort = (): void => {
+        if (resolved) {
+          return;
+        }
+
+        resolved = true;
+        resolve(this.cancelledResult());
+      };
+
+      const settle = (value: NodeRunCompleted | NodeRunExited): void => {
+        resolved = true;
+        signal.removeEventListener('abort', onAbort);
+        resolve(value);
+      };
 
       const guardedResolve = (approvalResult: ApprovalResult): void => {
         if (resolved) {
@@ -88,15 +115,13 @@ export class ApprovalNode extends BaseNode<NodeRunCompleted | NodeRunExited> {
           );
         }
 
-        resolved = true;
-
         // Only suppress early exit when feedback is both enabled and provided — the caller can't act on it otherwise.
         if (
           this.exitOnNo &&
           !approvalResult.approved &&
           !(this.enableFeedback && approvalResult.feedback)
         ) {
-          resolve({ status: 'exited', reason: 'Approval declined', failure: false });
+          settle({ status: 'exited', reason: 'Approval declined', failure: false });
 
           return;
         }
@@ -108,8 +133,10 @@ export class ApprovalNode extends BaseNode<NodeRunCompleted | NodeRunExited> {
             : {}),
         };
 
-        resolve({ status: 'completed', result });
+        settle({ status: 'completed', result });
       };
+
+      signal.addEventListener('abort', onAbort, { once: true });
 
       emitter.emit('approval_requested', {
         nodeId: this.id,
@@ -119,6 +146,15 @@ export class ApprovalNode extends BaseNode<NodeRunCompleted | NodeRunExited> {
         resolve: guardedResolve,
       });
     });
+  }
+
+  private cancelledResult(): NodeRunFailed {
+    return {
+      status: 'failed',
+      error: new NodeError('Approval cancelled', 'ENGINE_NODE_CANCELLED', this.id, {
+        nodeName: this.name,
+      }),
+    };
   }
 }
 

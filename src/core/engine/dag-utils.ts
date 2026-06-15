@@ -1,6 +1,25 @@
 import { EngineConfigError } from './errors.ts';
 import type { BaseNode } from './nodes/base.ts';
 
+export const validateUniqueIds = (nodes: BaseNode[]): void => {
+  const seen = new Set<string>();
+  const duplicates = new Set<string>();
+
+  for (const node of nodes) {
+    if (seen.has(node.id)) {
+      duplicates.add(node.id);
+    } else {
+      seen.add(node.id);
+    }
+  }
+
+  if (duplicates.size > 0) {
+    throw new EngineConfigError(
+      `Duplicate node id(s): [${[...duplicates].map((id) => `'${id}'`).join(', ')}]`
+    );
+  }
+};
+
 export const validateDependencyReferences = (nodes: BaseNode[]): void => {
   const knownIds = new Set(nodes.map((n) => n.id));
 

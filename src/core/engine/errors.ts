@@ -11,9 +11,45 @@ export class EngineError extends Error {
     this.name = 'EngineError';
     this.code = code;
   }
+
+  public get effectiveCode(): string {
+    const visited = new Set<unknown>();
+    let deepestCode = this.code;
+    let current: unknown = this.cause;
+
+    while (current instanceof EngineError) {
+      if (visited.has(current)) {
+        break;
+      }
+
+      visited.add(current);
+      deepestCode = current.code;
+      current = current.cause;
+    }
+
+    return deepestCode;
+  }
+
+  public override toString(): string {
+    const parts: string[] = [this.message];
+    const visited = new Set<unknown>();
+    let current: unknown = this.cause;
+
+    while (current instanceof Error) {
+      if (visited.has(current)) {
+        break;
+      }
+
+      visited.add(current);
+      parts.push(current.message);
+      current = current.cause;
+    }
+
+    return parts.join(': ');
+  }
 }
 
-/** Thrown by Engine.from() when the YAML is malformed or fails schema validation. */
+/** Thrown by Workflow.from() when the YAML is malformed or fails schema validation. */
 export class EngineValidationError extends EngineError {
   public constructor(message: string, options?: EngineCauseOptions) {
     super(message, 'ENGINE_VALIDATION_ERROR', options);

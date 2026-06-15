@@ -18,6 +18,11 @@ export interface NodeSkippedEvent {
   nodeName: string;
 }
 
+export interface NodeCancelledEvent {
+  nodeId: string;
+  nodeName: string;
+}
+
 export interface NodeFailedEvent {
   nodeId: string;
   nodeName: string;
@@ -25,7 +30,7 @@ export interface NodeFailedEvent {
 }
 
 export interface WorkflowExitedEvent {
-  reason?: string;
+  reason?: string | undefined;
   failure: boolean;
 }
 
@@ -39,7 +44,7 @@ export interface WorktreeDirtyEvent {
 
 export interface ApprovalResult {
   approved: boolean;
-  feedback?: string;
+  feedback?: string | undefined;
 }
 
 export interface ApprovalRequestedEvent {
@@ -54,6 +59,7 @@ export interface EngineEventMap {
   node_started: [NodeStartedEvent];
   node_completed: [NodeCompletedEvent];
   node_skipped: [NodeSkippedEvent];
+  node_cancelled: [NodeCancelledEvent];
   node_failed: [NodeFailedEvent];
   workflow_exited: [WorkflowExitedEvent];
   workflow_completed: [WorkflowCompletedEvent];
