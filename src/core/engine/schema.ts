@@ -138,7 +138,7 @@ export const LoopNodeSchema = BaseNodeSchema.extend({
   loop: z
     .object({
       until: z.string().optional(),
-      max_iterations: z.number().min(1).optional(),
+      max_iterations: z.number().int().min(1).optional(),
       nodes: z.array(NodeSchema).min(1),
       outputs: z.record(z.string(), z.string()).optional(),
     })
