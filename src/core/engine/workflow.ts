@@ -3,6 +3,7 @@
 // those node types.
 import './nodes/approval.ts';
 import './nodes/bash.ts';
+import './nodes/exit.ts';
 import './nodes/loop.ts';
 
 import { randomUUID } from 'node:crypto';
