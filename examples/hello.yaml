@@ -17,7 +17,7 @@ nodes:
     name: Confirm
     depends_on: [greet]
     approval:
-      message: "${{ needs.greet.output }} — shout it?"
+      message: '${{ needs.greet.output }} — shout it?'
       exit_on_no: true
 
   - id: shout

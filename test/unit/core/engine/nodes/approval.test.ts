@@ -410,7 +410,9 @@ describe('ApprovalNode', () => {
       });
 
       if (!capturedReject) {
-        throw new Error('approval_requested was not emitted synchronously — capturedReject not populated');
+        throw new Error(
+          'approval_requested was not emitted synchronously — capturedReject not populated'
+        );
       }
 
       const cause = new Error('tty closed');

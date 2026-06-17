@@ -28,32 +28,35 @@ heimdall run <file> [--input key=value]...
 
 **Arguments**
 
-| Argument | Description |
-|---|---|
+| Argument | Description                                         |
+| -------- | --------------------------------------------------- |
 | `<file>` | Path to a workflow YAML file (relative or absolute) |
 
 **Options**
 
-| Option | Description |
-|---|---|
-| `-i, --input <key=value>` | Pass a runtime input to the workflow. Repeatable. |
-| `--json` | Suppress progress output; write a single JSON result to stdout |
-| `--quiet` | Suppress progress output; still prints final success/failure |
-| `--verbose` | Show additional detail for each node |
+| Option                    | Description                                                    |
+| ------------------------- | -------------------------------------------------------------- |
+| `-i, --input <key=value>` | Pass a runtime input to the workflow. Repeatable.              |
+| `--json`                  | Suppress progress output; write a single JSON result to stdout |
+| `--quiet`                 | Suppress progress output; still prints final success/failure   |
+| `--verbose`               | Show additional detail for each node                           |
 
 **Examples**
 
 Run a workflow with no inputs:
+
 ```sh
 heimdall run deploy.yaml
 ```
 
 Pass runtime inputs (repeatable):
+
 ```sh
 heimdall run deploy.yaml --input env=production --input region=us-east-1
 ```
 
 Machine-readable output:
+
 ```sh
 heimdall run deploy.yaml --json
 # stdout: {"success":true}
@@ -61,12 +64,12 @@ heimdall run deploy.yaml --json
 
 **Exit codes**
 
-| Code | Meaning |
-|---|---|
-| `0` | Workflow completed successfully |
-| `1` | Workflow ran but failed, or an unexpected error occurred |
-| `2` | Bad invocation — missing file, unknown input key, missing required input, or invalid YAML |
-| `3` | Configuration error — unreadable file or invalid workflow graph |
+| Code | Meaning                                                                                   |
+| ---- | ----------------------------------------------------------------------------------------- |
+| `0`  | Workflow completed successfully                                                           |
+| `1`  | Workflow ran but failed, or an unexpected error occurred                                  |
+| `2`  | Bad invocation — missing file, unknown input key, missing required input, or invalid YAML |
+| `3`  | Configuration error — unreadable file or invalid workflow graph                           |
 
 **Workflow YAML**
 

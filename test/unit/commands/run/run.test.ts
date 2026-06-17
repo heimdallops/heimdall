@@ -779,9 +779,7 @@ describe('run command — run()', () => {
       });
       await run(ctx, makeInput());
 
-      const warning = vi
-        .mocked(ctx.printer.warn)
-        .mock.calls.find(([msg]) => msg.includes("Gate"));
+      const warning = vi.mocked(ctx.printer.warn).mock.calls.find(([msg]) => msg.includes('Gate'));
       expect(warning).toBeDefined();
       // The message must be human-readable, not a serialized JSON event.
       expect(warning![0]).not.toContain('"event"');
