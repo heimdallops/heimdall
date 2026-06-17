@@ -25,7 +25,7 @@ allOf:
           Set to an empty array to disable all tools.
         items:
           type: string
-      denied_tools:
+      disallowed_tools:
         type: array
         description: Tools Claude cannot use, applied after allowed_tools.
         items:

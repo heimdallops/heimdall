@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { ZodError } from 'zod';
 
 import {
   ApprovalNodeSchema,
@@ -194,7 +195,7 @@ describe('LoopNodeSchema', () => {
     loop,
   });
 
-  it('rejects a loop node with neither until nor max_iterations', () => {
+  it('rejects a loop node with none of until, while, or max_iterations', () => {
     const result = LoopNodeSchema.safeParse(
       baseLoop({ nodes: [{ id: 'inner', bash: 'echo loop' }] })
     );
@@ -204,8 +205,13 @@ describe('LoopNodeSchema', () => {
       return;
     }
 
+    // The error names every option that satisfies the requirement, so all three are listed.
     const messages = result.error.issues.map((i) => i.message);
-    expect(messages.some((m) => m.includes('until') || m.includes('max_iterations'))).toBe(true);
+    expect(
+      messages.some(
+        (m) => m.includes('until') && m.includes('while') && m.includes('max_iterations')
+      )
+    ).toBe(true);
   });
 
   it('rejects a loop node with an empty inner nodes array', () => {
@@ -237,6 +243,51 @@ describe('LoopNodeSchema', () => {
     );
 
     expect(result.success).toBe(true);
+  });
+
+  it('accepts a loop node with only while and at least one inner node', () => {
+    const result = LoopNodeSchema.safeParse(
+      baseLoop({
+        while: 'scope.iteration < 3',
+        nodes: [{ id: 'inner', bash: 'echo loop' }],
+      })
+    );
+
+    expect(result.success).toBe(true);
+  });
+
+  it('rejects a loop node that specifies both until and while', () => {
+    const result = LoopNodeSchema.safeParse(
+      baseLoop({
+        until: 'scope.iteration >= 3',
+        while: 'scope.iteration < 3',
+        nodes: [{ id: 'inner', bash: 'echo loop' }],
+      })
+    );
+
+    expect(result.success).toBe(false);
+    if (result.success) {
+      return;
+    }
+
+    const messages = result.error.issues.map((i) => i.message);
+    expect(messages.some((m) => m.includes('cannot specify both until and while'))).toBe(true);
+  });
+
+  it('rejects a non-integer max_iterations (e.g. 2.5) with a ZodError', () => {
+    expect(() =>
+      LoopNodeSchema.parse(
+        baseLoop({ max_iterations: 2.5, nodes: [{ id: 'inner', bash: 'echo loop' }] })
+      )
+    ).toThrow(ZodError);
+  });
+
+  it('rejects max_iterations of 0 (must be >= 1) with a ZodError', () => {
+    expect(() =>
+      LoopNodeSchema.parse(
+        baseLoop({ max_iterations: 0, nodes: [{ id: 'inner', bash: 'echo loop' }] })
+      )
+    ).toThrow(ZodError);
   });
 });
 

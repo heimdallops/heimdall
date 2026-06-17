@@ -20,6 +20,7 @@ import type {
 } from '../../../../src/core/engine/nodes/base.ts';
 import type { BaseNodeData } from '../../../../src/core/engine/nodes/base.ts';
 import { BaseNode } from '../../../../src/core/engine/nodes/base.ts';
+import { BreakNode } from '../../../../src/core/engine/nodes/break.ts';
 import type { SchedulerOptions } from '../../../../src/core/engine/scheduler.ts';
 import { runScheduler } from '../../../../src/core/engine/scheduler.ts';
 
@@ -282,6 +283,45 @@ describe('runScheduler', () => {
       const startedIds = started.map((e) => e.nodeId);
       expect(startedIds).not.toContain('nodeA');
       expect(startedIds).not.toContain('nodeB');
+    });
+  });
+
+  describe('skip propagation through control-flow nodes', () => {
+    it('runs a node downstream of a skipped break — a skipped break does not cascade its skip', async () => {
+      const stop = new BreakNode({ id: 'stop', if: 'false' });
+      const after = new StubNode({ id: 'after', depends_on: ['stop'] });
+      const skipped: NodeSkippedEvent[] = collectEvents(emitter, 'node_skipped');
+
+      const result = await runScheduler([stop, after], makeCtx(), options);
+
+      expect(after.runCount).toBe(1);
+      const skippedIds = skipped.map((e) => e.nodeId);
+      expect(skippedIds).toContain('stop');
+      expect(skippedIds).not.toContain('after');
+      expect(result.outcome).toBe('completed');
+    });
+
+    it('does not run a node downstream of a break that fires — the break halts the run', async () => {
+      const stop = new BreakNode({ id: 'stop', if: 'true' });
+      const after = new StubNode({ id: 'after', depends_on: ['stop'] });
+
+      const result = await runScheduler([stop, after], makeCtx(), options);
+
+      expect(after.runCount).toBe(0);
+      expect(result.outcome).toBe('broke');
+    });
+
+    it('still skips a dependent when a data dependency is skipped, even if a skipped break is also a dependency', async () => {
+      const data = new StubNode({ id: 'data', if: 'false' });
+      const stop = new BreakNode({ id: 'stop', if: 'false' });
+      const after = new StubNode({ id: 'after', depends_on: ['data', 'stop'] });
+      const skipped: NodeSkippedEvent[] = collectEvents(emitter, 'node_skipped');
+
+      await runScheduler([data, stop, after], makeCtx(), options);
+
+      expect(after.runCount).toBe(0);
+      const skippedIds = skipped.map((e) => e.nodeId);
+      expect(skippedIds).toContain('after');
     });
   });
 
