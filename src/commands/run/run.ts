@@ -1,6 +1,7 @@
 import { readFile } from 'node:fs/promises';
 import { resolve as resolvePath } from 'node:path';
-import { createInterface } from 'node:readline';
+
+import { confirm, input } from '@inquirer/prompts';
 
 import type { CliContext } from '../../cli/context.ts';
 import { createEngineEmitter } from '../../core/engine/emitter.ts';
@@ -32,22 +33,9 @@ const noopAdapter: PlatformAdapter = {
   },
 };
 
-const promptLine = async (prompt: string): Promise<string> => {
-  const rl = createInterface({ input: process.stdin, output: process.stdout });
-  try {
-    return await new Promise<string>((res) => {
-      rl.question(prompt, (answer) => {
-        res(answer);
-      });
-    });
-  } finally {
-    rl.close();
-  }
-};
-
-export const run = async (ctx: CliContext, input: RunInput): Promise<void> => {
+export const run = async (ctx: CliContext, runInput: RunInput): Promise<void> => {
   const { printer, cwd, config } = ctx;
-  const filePath = resolvePath(cwd, input.file);
+  const filePath = resolvePath(cwd, runInput.file);
 
   let yaml: string;
 
@@ -57,7 +45,7 @@ export const run = async (ctx: CliContext, input: RunInput): Promise<void> => {
     const isNotFound =
       typeof err === 'object' && err !== null && (err as NodeJS.ErrnoException).code === 'ENOENT';
     throw new CliError(
-      isNotFound ? `File not found: ${input.file}` : `Could not read file: ${input.file}`,
+      isNotFound ? `File not found: ${runInput.file}` : `Could not read file: ${runInput.file}`,
       {
         code: isNotFound ? ERROR_CODE.FILE_NOT_FOUND : ERROR_CODE.WORKFLOW_CONFIG_ERROR,
         exitCode: isNotFound ? EXIT_CODE.USAGE : EXIT_CODE.CONFIG,
@@ -92,7 +80,7 @@ export const run = async (ctx: CliContext, input: RunInput): Promise<void> => {
 
   const declaredInputs = workflow.inputs;
 
-  for (const key of Object.keys(input.inputs)) {
+  for (const key of Object.keys(runInput.inputs)) {
     if (!declaredInputs.has(key)) {
       throw new CliError(`Unknown input: '${key}' is not declared in this workflow`, {
         code: ERROR_CODE.UNKNOWN_INPUT,
@@ -104,7 +92,7 @@ export const run = async (ctx: CliContext, input: RunInput): Promise<void> => {
   const missing: string[] = [];
 
   for (const [name, declaration] of declaredInputs) {
-    if (!(name in input.inputs) && declaration.default === undefined) {
+    if (!(name in runInput.inputs) && declaration.default === undefined) {
       missing.push(name);
     }
   }
@@ -155,13 +143,13 @@ export const run = async (ctx: CliContext, input: RunInput): Promise<void> => {
     // the mechanism for continuing the engine.
     void (async (): Promise<void> => {
       try {
-        printer.info(`Approval requested for '${nodeName}': ${message}`);
-        const answer = await promptLine('[y/N]: ');
-        const normalised = answer.trim().toLowerCase();
-        const approved = normalised === 'y' || normalised === 'yes';
+        const approved = await confirm({
+          message: `Approval requested for '${nodeName}': ${message}`,
+          default: false,
+        });
 
         if (approved && enableFeedback) {
-          const feedback = await promptLine('Feedback (optional): ');
+          const feedback = await input({ message: 'Feedback (optional):' });
           resolve({ approved: true, feedback: feedback.trim() || undefined });
         } else {
           resolve({ approved });
@@ -174,7 +162,7 @@ export const run = async (ctx: CliContext, input: RunInput): Promise<void> => {
 
   let result: WorkflowResult;
   try {
-    result = await workflow.run({ inputs: input.inputs, emitter, adapter: noopAdapter });
+    result = await workflow.run({ inputs: runInput.inputs, emitter, adapter: noopAdapter });
   } catch (err) {
     if (err instanceof EngineConfigError) {
       throw new CliError(err.toString(), {

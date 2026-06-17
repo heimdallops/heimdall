@@ -25,8 +25,9 @@ vi.mock('node:fs/promises', () => ({
   readFile: vi.fn(),
 }));
 
-vi.mock('node:readline', () => ({
-  createInterface: vi.fn(),
+vi.mock('@inquirer/prompts', () => ({
+  confirm: vi.fn(),
+  input: vi.fn(),
 }));
 
 vi.mock('../../../../src/core/engine/emitter.ts', () => ({
@@ -44,7 +45,7 @@ const { run } = await import('../../../../src/commands/run/run.ts');
 
 // Import the mocked modules so we can configure them.
 const { readFile } = await import('node:fs/promises');
-const { createInterface } = await import('node:readline');
+const { confirm, input } = await import('@inquirer/prompts');
 const { createEngineEmitter } = await import('../../../../src/core/engine/emitter.ts');
 
 // ---------------------------------------------------------------------------
@@ -570,19 +571,6 @@ describe('run command — run()', () => {
   // -------------------------------------------------------------------------
 
   describe('approval_requested — interactive mode', () => {
-    const makeReadlineStub = (
-      answers: string[]
-    ): { question: ReturnType<typeof vi.fn>; close: ReturnType<typeof vi.fn> } => {
-      let callIndex = 0;
-
-      return {
-        question: vi.fn((_prompt: string, cb: (answer: string) => void): void => {
-          cb(answers[callIndex++] ?? '');
-        }),
-        close: vi.fn(),
-      };
-    };
-
     const makeApprovalWorkflowStub = (
       enableFeedback: boolean,
       onResolve: (result: ApprovalResult) => void
@@ -609,9 +597,8 @@ describe('run command — run()', () => {
       return stub;
     };
 
-    it('prompts with [y/N]: when stdin returns "y"', async () => {
-      const rlStub = makeReadlineStub(['y']);
-      vi.mocked(createInterface).mockReturnValue(rlStub as never);
+    it('confirms approval when the user approves', async () => {
+      vi.mocked(confirm).mockResolvedValue(true);
 
       const workflowStub = makeApprovalWorkflowStub(false, vi.fn());
       workflowFromMock.mockResolvedValue(workflowStub as never);
@@ -619,13 +606,13 @@ describe('run command — run()', () => {
       const ctx = makeCtx();
       await run(ctx, makeInput());
 
-      const { question } = rlStub;
-      expect(question).toHaveBeenCalledWith('[y/N]: ', expect.any(Function));
+      expect(confirm).toHaveBeenCalledWith(
+        expect.objectContaining({ message: expect.stringContaining('Gate') as string })
+      );
     });
 
-    it('calls resolve({approved:false}) when stdin returns "n"', async () => {
-      const rlStub = makeReadlineStub(['n']);
-      vi.mocked(createInterface).mockReturnValue(rlStub as never);
+    it('calls resolve({approved:false}) when the user denies', async () => {
+      vi.mocked(confirm).mockResolvedValue(false);
 
       let resolvedResult: ApprovalResult | undefined;
       const workflowStub = makeApprovalWorkflowStub(false, (result): void => {
@@ -641,8 +628,8 @@ describe('run command — run()', () => {
     });
 
     it('prompts for feedback after approval when enableFeedback is true and user approves', async () => {
-      const rlStub = makeReadlineStub(['yes', 'looks good']);
-      vi.mocked(createInterface).mockReturnValue(rlStub as never);
+      vi.mocked(confirm).mockResolvedValue(true);
+      vi.mocked(input).mockResolvedValue('looks good');
 
       let resolvedResult: ApprovalResult | undefined;
       const workflowStub = makeApprovalWorkflowStub(true, (result): void => {
@@ -658,15 +645,7 @@ describe('run command — run()', () => {
     });
 
     it('does NOT prompt for feedback when enableFeedback is true but user denies', async () => {
-      let questionCallCount = 0;
-      const rlStub = {
-        question: vi.fn((_prompt: string, cb: (answer: string) => void): void => {
-          questionCallCount++;
-          cb('n');
-        }),
-        close: vi.fn(),
-      };
-      vi.mocked(createInterface).mockReturnValue(rlStub as never);
+      vi.mocked(confirm).mockResolvedValue(false);
 
       const workflowStub = makeApprovalWorkflowStub(true, vi.fn());
       workflowFromMock.mockResolvedValue(workflowStub as never);
@@ -674,8 +653,8 @@ describe('run command — run()', () => {
       const ctx = makeCtx();
       await run(ctx, makeInput());
 
-      // Only the [y/N] question; no feedback question
-      expect(questionCallCount).toBe(1);
+      // Denied: no feedback prompt should be shown.
+      expect(input).not.toHaveBeenCalled();
     });
   });
 
@@ -710,8 +689,8 @@ describe('run command — run()', () => {
 
       expect(resolvedResult).toBeDefined();
       expect(resolvedResult!.approved).toBe(false);
-      // createInterface should NOT have been called — no stdin prompt
-      expect(createInterface).not.toHaveBeenCalled();
+      // No interactive prompt should be shown in JSON mode.
+      expect(confirm).not.toHaveBeenCalled();
     });
 
     it('writes an approval_requested JSON event to stderr in JSON mode', async () => {
