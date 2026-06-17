@@ -251,6 +251,31 @@ describe('BashNode', () => {
     });
   });
 
+  describe('host environment passthrough', () => {
+    it('passes arbitrary host environment variables through to the script', async () => {
+      // A non-allowlisted host variable (e.g. a CLI credential like GH_TOKEN)
+      // must reach the script so tools such as `gh`/`aws` keep working.
+      const varName = `HEIMDALL_TEST_PASSTHROUGH_${randomUUID().replace(/-/g, '')}`;
+      process.env[varName] = 'from-host';
+
+      try {
+        const node = makeNode({
+          id: 'n1',
+          bash: `echo -n "$${varName}" > "$HEIMDALL_OUTPUT"`,
+        });
+
+        const result = await run(node);
+
+        expect(result).toEqual({
+          status: 'completed',
+          result: { output: 'from-host' },
+        });
+      } finally {
+        delete process.env[varName];
+      }
+    });
+  });
+
   describe('env interpolation', () => {
     it('interpolates CEL expressions in env values before passing them to the script', async () => {
       const node = makeNode({

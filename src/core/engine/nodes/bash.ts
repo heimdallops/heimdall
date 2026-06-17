@@ -35,21 +35,6 @@ class OutputFile implements AsyncDisposable {
   }
 }
 
-// Allowlist prevents leaking credentials (API keys, tokens) into user-authored bash scripts.
-const SAFE_ENV_PASSTHROUGH = new Set([
-  'PATH',
-  'HOME',
-  'USER',
-  'LOGNAME',
-  'SHELL',
-  'TERM',
-  'TMPDIR',
-  'LANG',
-  'LC_ALL',
-  'LC_CTYPE',
-  'TZ',
-]);
-
 interface BashNodeResult extends Record<string, unknown> {
   output: unknown;
 }
@@ -128,17 +113,12 @@ export class BashNode extends BaseNode<NodeRunCompleted | NodeRunFailed> {
     // Keep the fd open so the script writes and we read via the same handle, avoiding a TOCTOU race on the tmp path.
     await using outputFile = await OutputFile.create();
 
-    const baseEnv: Record<string, string> = {};
-    for (const key of SAFE_ENV_PASSTHROUGH) {
-      const val = process.env[key];
-      if (val !== undefined) {
-        baseEnv[key] = val;
-      }
-    }
-
+    // Inherit the full host environment so scripts can use tooling that relies
+    // on it (e.g. `gh`, `aws`). Users who need isolation should run Heimdall in
+    // a container rather than expect the engine to scrub variables.
     const execResult = await execa('bash', ['-c', interpolatedBash], {
       env: {
-        ...baseEnv,
+        ...process.env,
         ...interpolatedEnv,
         HEIMDALL_OUTPUT: outputFile.path,
       },
