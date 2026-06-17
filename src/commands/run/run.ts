@@ -33,19 +33,19 @@ const noopAdapter: PlatformAdapter = {
   },
 };
 
-export const run = async (ctx: CliContext, runInput: RunInput): Promise<void> => {
-  const { printer, cwd, config } = ctx;
-  const filePath = resolvePath(cwd, runInput.file);
-
-  let yaml: string;
-
+/**
+ * Read a workflow file, translating filesystem failures into CliErrors.
+ * `filePath` is the resolved absolute path read from disk; `displayPath` is the
+ * user-supplied path surfaced in error messages.
+ */
+const readWorkflowFile = async (filePath: string, displayPath: string): Promise<string> => {
   try {
-    yaml = await readFile(filePath, 'utf8');
+    return await readFile(filePath, 'utf8');
   } catch (err) {
     const isNotFound =
       typeof err === 'object' && err !== null && (err as NodeJS.ErrnoException).code === 'ENOENT';
     throw new CliError(
-      isNotFound ? `File not found: ${runInput.file}` : `Could not read file: ${runInput.file}`,
+      isNotFound ? `File not found: ${displayPath}` : `Could not read file: ${displayPath}`,
       {
         code: isNotFound ? ERROR_CODE.FILE_NOT_FOUND : ERROR_CODE.WORKFLOW_CONFIG_ERROR,
         exitCode: isNotFound ? EXIT_CODE.USAGE : EXIT_CODE.CONFIG,
@@ -53,6 +53,13 @@ export const run = async (ctx: CliContext, runInput: RunInput): Promise<void> =>
       }
     );
   }
+};
+
+export const run = async (ctx: CliContext, runInput: RunInput): Promise<void> => {
+  const { printer, cwd, config } = ctx;
+  const filePath = resolvePath(cwd, runInput.file);
+
+  const yaml = await readWorkflowFile(filePath, runInput.file);
 
   let workflow: Workflow;
 
