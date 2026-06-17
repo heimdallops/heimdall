@@ -1,9 +1,10 @@
 import { readFile } from 'node:fs/promises';
 import { resolve as resolvePath } from 'node:path';
 
-import { confirm, input } from '@inquirer/prompts';
+import { confirm, input, select } from '@inquirer/prompts';
 
 import type { CliContext } from '../../cli/context.ts';
+import type { ApprovalResult } from '../../core/engine/emitter.ts';
 import { createEngineEmitter } from '../../core/engine/emitter.ts';
 import { EngineConfigError, EngineValidationError } from '../../core/engine/errors.ts';
 import type { PlatformAdapter } from '../../core/engine/nodes/base.ts';
@@ -53,6 +54,45 @@ const readWorkflowFile = async (filePath: string, displayPath: string): Promise<
       }
     );
   }
+};
+
+/**
+ * Interactively collect an approval decision. When feedback is enabled it is
+ * offered as a third choice alongside approve/reject rather than as a separate
+ * follow-up question.
+ */
+const promptApproval = async (
+  nodeName: string,
+  message: string,
+  enableFeedback: boolean
+): Promise<ApprovalResult> => {
+  const heading = `Approval requested for '${nodeName}': ${message}`;
+
+  if (!enableFeedback) {
+    return { approved: await confirm({ message: heading, default: false }) };
+  }
+
+  const choice = await select<'approve' | 'feedback' | 'reject'>({
+    message: heading,
+    default: 'reject',
+    choices: [
+      { name: 'Approve', value: 'approve' },
+      { name: 'Approve with feedback', value: 'feedback' },
+      { name: 'Reject', value: 'reject' },
+    ],
+  });
+
+  if (choice === 'reject') {
+    return { approved: false };
+  }
+
+  if (choice === 'approve') {
+    return { approved: true };
+  }
+
+  const feedback = await input({ message: 'Feedback:' });
+
+  return { approved: true, feedback: feedback.trim() || undefined };
 };
 
 export const run = async (ctx: CliContext, runInput: RunInput): Promise<void> => {
@@ -137,32 +177,25 @@ export const run = async (ctx: CliContext, runInput: RunInput): Promise<void> =>
     printer.warn(`Node cancelled: ${nodeName}`);
   });
 
-  emitter.on('approval_requested', ({ nodeId, nodeName, message, enableFeedback, resolve }) => {
+  emitter.on('approval_requested', ({ nodeName, message, enableFeedback, resolve, reject }) => {
     if (config.json) {
-      ctx.stderr.write(`${JSON.stringify({ event: 'approval_requested', nodeId, message })}\n`);
+      // --json controls the final result format, not interactivity: there is no
+      // TTY to prompt on, so auto-decline and surface it as a normal log line.
+      printer.warn(`Approval requested for '${nodeName}' auto-declined in --json mode: ${message}`);
       resolve({ approved: false });
 
       return;
     }
 
     // Run interactive prompt asynchronously; the emitter listener must return
-    // synchronously but we can fire-and-forget the prompt since resolve() is
-    // the mechanism for continuing the engine.
+    // synchronously but we can fire-and-forget the prompt since resolve()/reject()
+    // is the mechanism for continuing the engine.
     void (async (): Promise<void> => {
       try {
-        const approved = await confirm({
-          message: `Approval requested for '${nodeName}': ${message}`,
-          default: false,
-        });
-
-        if (approved && enableFeedback) {
-          const feedback = await input({ message: 'Feedback (optional):' });
-          resolve({ approved: true, feedback: feedback.trim() || undefined });
-        } else {
-          resolve({ approved });
-        }
-      } catch {
-        resolve({ approved: false });
+        resolve(await promptApproval(nodeName, message, enableFeedback));
+      } catch (err) {
+        // Don't silently treat a prompt failure as a rejection; fail the workflow.
+        reject(err);
       }
     })();
   });
