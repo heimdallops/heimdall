@@ -360,6 +360,19 @@ describe('run command — run()', () => {
         expect.objectContaining({ inputs: { url: 'https://x.com?a=1&b=2' } })
       );
     });
+
+    it('forwards the cancellation signal to workflow.run()', async () => {
+      const workflowStub = makeWorkflowStub();
+      workflowFromMock.mockResolvedValue(workflowStub as never);
+
+      const controller = new AbortController();
+      const ctx = makeCtx();
+      await run(ctx, makeInput(), controller.signal);
+
+      expect(workflowStub.run).toHaveBeenCalledWith(
+        expect.objectContaining({ signal: controller.signal })
+      );
+    });
   });
 
   // -------------------------------------------------------------------------

@@ -35,6 +35,9 @@ export interface WorkflowRunOptions {
   readonly inputs: Record<string, string | number | bigint | boolean>;
   readonly emitter?: EngineEmitter | undefined;
   readonly adapter: PlatformAdapter;
+  // External cancellation signal (e.g. SIGINT/SIGTERM from the CLI). When it
+  // fires, the scheduler stops dispatching and aborts in-flight node runs.
+  readonly signal?: AbortSignal | undefined;
 }
 
 export interface WorkflowResult {
@@ -143,6 +146,7 @@ export class Workflow {
         adapter: options.adapter,
         emitter,
         sharedContextMap: this.sharedContextMap,
+        signal: options.signal,
       });
 
       // Preserve the run dir on failure so session artifacts remain available

@@ -95,7 +95,11 @@ const promptApproval = async (
   return { approved: true, feedback: feedback.trim() || undefined };
 };
 
-export const run = async (ctx: CliContext, runInput: RunInput): Promise<void> => {
+export const run = async (
+  ctx: CliContext,
+  runInput: RunInput,
+  signal?: AbortSignal
+): Promise<void> => {
   const { printer, cwd, config } = ctx;
   const filePath = resolvePath(cwd, runInput.file);
 
@@ -202,7 +206,7 @@ export const run = async (ctx: CliContext, runInput: RunInput): Promise<void> =>
 
   let result: WorkflowResult;
   try {
-    result = await workflow.run({ inputs: runInput.inputs, emitter, adapter: noopAdapter });
+    result = await workflow.run({ inputs: runInput.inputs, emitter, adapter: noopAdapter, signal });
   } catch (err) {
     if (err instanceof EngineConfigError) {
       throw new CliError(err.toString(), {
