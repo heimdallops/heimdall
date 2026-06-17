@@ -99,10 +99,31 @@ export class ApprovalNode extends BaseNode<NodeRunCompleted | NodeRunExited | No
         resolve(this.cancelledResult());
       };
 
-      const settle = (value: NodeRunCompleted | NodeRunExited): void => {
+      const settle = (value: NodeRunCompleted | NodeRunExited | NodeRunFailed): void => {
         resolved = true;
         signal.removeEventListener('abort', onAbort);
         resolve(value);
+      };
+
+      const guardedReject = (error: unknown): void => {
+        if (resolved) {
+          throw new NodeError(
+            'Approval node resolve called more than once',
+            'ENGINE_APPROVAL_DOUBLE_RESOLVE',
+            this.id,
+            { nodeName: this.name }
+          );
+        }
+
+        settle({
+          status: 'failed',
+          error: new NodeError(
+            'Approval could not be collected',
+            'ENGINE_APPROVAL_PROMPT_ERROR',
+            this.id,
+            { nodeName: this.name, cause: error }
+          ),
+        });
       };
 
       const guardedResolve = (approvalResult: ApprovalResult): void => {
@@ -144,6 +165,7 @@ export class ApprovalNode extends BaseNode<NodeRunCompleted | NodeRunExited | No
         message: interpolatedMessage,
         enableFeedback: this.enableFeedback,
         resolve: guardedResolve,
+        reject: guardedReject,
       });
     });
   }

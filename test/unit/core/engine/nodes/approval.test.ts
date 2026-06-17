@@ -9,6 +9,7 @@ import { createEngineEmitter } from '../../../../../src/core/engine/emitter.ts';
 import { ApprovalNode } from '../../../../../src/core/engine/nodes/approval.ts';
 import type {
   ExecutionContext,
+  NodeRunFailed,
   NodeRunResult,
   PlatformAdapter,
 } from '../../../../../src/core/engine/nodes/base.ts';
@@ -380,6 +381,76 @@ describe('ApprovalNode', () => {
 
       expect(() => {
         resolveOnce({ approved: false });
+      }).toThrow(
+        expect.objectContaining({ name: 'NodeError', code: 'ENGINE_APPROVAL_DOUBLE_RESOLVE' })
+      );
+
+      await expect(runPromise).resolves.toEqual({
+        status: 'completed',
+        result: { approved: true },
+      });
+    });
+  });
+
+  describe('reject path', () => {
+    it('resolves with failed/ENGINE_APPROVAL_PROMPT_ERROR when the listener rejects', async () => {
+      const emitter = createEngineEmitter();
+      let capturedReject: ((error: unknown) => void) | undefined;
+
+      emitter.on('approval_requested', (event: ApprovalRequestedEvent) => {
+        capturedReject = event.reject;
+      });
+
+      const node = makeNode({ id: 'a1', approval: { message: 'Approve?' } });
+      const runPromise = node.run({
+        ctx: makeCtx(),
+        adapter: fakeAdapter,
+        emitter,
+        signal: new AbortController().signal,
+      });
+
+      if (!capturedReject) {
+        throw new Error('approval_requested was not emitted synchronously — capturedReject not populated');
+      }
+
+      const cause = new Error('tty closed');
+      capturedReject(cause);
+
+      const result = (await runPromise) as NodeRunFailed;
+      expect(result.status).toBe('failed');
+      expect(result.error).toMatchObject({
+        name: 'NodeError',
+        code: 'ENGINE_APPROVAL_PROMPT_ERROR',
+        cause,
+      });
+    });
+
+    it('throws the double-resolve guard when reject is called after settling', async () => {
+      const emitter = createEngineEmitter();
+      let capturedResolve: ((result: ApprovalResult) => void) | undefined;
+      let capturedReject: ((error: unknown) => void) | undefined;
+
+      emitter.on('approval_requested', (event: ApprovalRequestedEvent) => {
+        capturedResolve = event.resolve;
+        capturedReject = event.reject;
+      });
+
+      const node = makeNode({ id: 'a1', approval: { message: 'Approve?' } });
+      const runPromise = node.run({
+        ctx: makeCtx(),
+        adapter: fakeAdapter,
+        emitter,
+        signal: new AbortController().signal,
+      });
+
+      if (!capturedResolve || !capturedReject) {
+        throw new Error('approval_requested was not emitted synchronously');
+      }
+
+      capturedResolve({ approved: true });
+
+      expect(() => {
+        capturedReject!(new Error('late'));
       }).toThrow(
         expect.objectContaining({ name: 'NodeError', code: 'ENGINE_APPROVAL_DOUBLE_RESOLVE' })
       );

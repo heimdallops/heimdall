@@ -53,6 +53,9 @@ export interface ApprovalRequestedEvent {
   message: string;
   enableFeedback: boolean;
   resolve: (result: ApprovalResult) => void;
+  // Signals that the approval could not be collected (e.g. the interactive
+  // prompt errored). The node fails the workflow rather than assuming a default.
+  reject: (error: unknown) => void;
 }
 
 export interface EngineEventMap {
