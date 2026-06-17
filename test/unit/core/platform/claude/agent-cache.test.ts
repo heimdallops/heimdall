@@ -15,6 +15,21 @@ const makeTempDir = async (): Promise<string> => {
   return dir;
 };
 
+// Returns a temp cwd whose agent search cannot escape into real host
+// directories. A `.git` marker bounds the upward walk at cwd (the git root is
+// inclusive and terminal), and os.homedir() is pinned to a separate empty temp
+// dir. Without this, the adapter walks up through shared ancestors of $TMPDIR
+// (and scans the real ~/.claude/agents) and picks up stray host agent files,
+// which breaks exact-count assertions. Use this for tests that exercise a
+// single cwd; the walk/boundary tests build their own bounded trees instead.
+const makeIsolatedCwd = async (): Promise<string> => {
+  const base = await makeTempDir();
+  await mkdir(join(base, '.git'), { recursive: true });
+  vi.spyOn(os, 'homedir').mockReturnValue(await makeTempDir());
+
+  return base;
+};
+
 afterEach(async () => {
   await Promise.all(tempDirs.splice(0).map((dir) => rm(dir, { recursive: true, force: true })));
   vi.restoreAllMocks();
@@ -37,7 +52,7 @@ const validAgent = (name: string, body = '# body', extra = ''): string =>
 
 describe('agent cache', () => {
   it('contains one entry per valid named agent file', async () => {
-    const cwd = await makeTempDir();
+    const cwd = await makeIsolatedCwd();
     await writeAgent(cwd, 'foo.md', validAgent('foo', 'foo body'));
     await writeAgent(cwd, 'bar.md', validAgent('bar', 'bar body'));
 
@@ -49,7 +64,7 @@ describe('agent cache', () => {
   });
 
   it('stores the raw file contents for each entry', async () => {
-    const cwd = await makeTempDir();
+    const cwd = await makeIsolatedCwd();
     const raw = validAgent('my-agent', 'hello world');
     await writeAgent(cwd, 'agent.md', raw);
 
@@ -185,7 +200,7 @@ describe('agent cache', () => {
   });
 
   it('lexicographically first file path wins within the same directory', async () => {
-    const cwd = await makeTempDir();
+    const cwd = await makeIsolatedCwd();
     await writeAgent(cwd, 'aaa.md', validAgent('bot', 'aaa body'), 'alpha');
     await writeAgent(cwd, 'zzz.md', validAgent('bot', 'zzz body'), 'zeta');
 
@@ -195,7 +210,7 @@ describe('agent cache', () => {
   });
 
   it('skips files with unparseable YAML frontmatter without throwing', async () => {
-    const cwd = await makeTempDir();
+    const cwd = await makeIsolatedCwd();
     await writeAgent(cwd, 'bad.md', '---\n: invalid: yaml: [\n---\nbody');
     await writeAgent(cwd, 'good.md', validAgent('good'));
 
@@ -206,7 +221,7 @@ describe('agent cache', () => {
   });
 
   it('skips files with no name field without throwing', async () => {
-    const cwd = await makeTempDir();
+    const cwd = await makeIsolatedCwd();
     await writeAgent(cwd, 'noname.md', '---\nmodel: sonnet\n---\nbody');
 
     const adapter = await ClaudeCodeAdapter.create(cwd);
@@ -215,7 +230,7 @@ describe('agent cache', () => {
   });
 
   it('skips files where name is not a string', async () => {
-    const cwd = await makeTempDir();
+    const cwd = await makeIsolatedCwd();
     await writeAgent(cwd, 'numname.md', '---\nname: 42\n---\nbody');
 
     const adapter = await ClaudeCodeAdapter.create(cwd);
@@ -224,7 +239,7 @@ describe('agent cache', () => {
   });
 
   it('skips an unreadable or missing .claude/agents/ directory without throwing', async () => {
-    const cwd = await makeTempDir();
+    const cwd = await makeIsolatedCwd();
     // No .claude/agents/ created — directory simply doesn't exist
 
     const adapter = await ClaudeCodeAdapter.create(cwd);
@@ -233,7 +248,7 @@ describe('agent cache', () => {
   });
 
   it('includes an agent via a symlink that targets a file outside .claude/agents/', async () => {
-    const cwd = await makeTempDir();
+    const cwd = await makeIsolatedCwd();
     const outsideDir = await makeTempDir();
     const agentsDir = join(cwd, '.claude', 'agents');
     await mkdir(agentsDir, { recursive: true });
@@ -249,7 +264,7 @@ describe('agent cache', () => {
   });
 
   it('stores raw content so all frontmatter is available to parseAgent', async () => {
-    const cwd = await makeTempDir();
+    const cwd = await makeIsolatedCwd();
     const raw = '---\nname: rich\nmodel: sonnet\ncustom_tag: hello\n---\nbody';
     await writeAgent(cwd, 'rich.md', raw);
 
@@ -259,7 +274,7 @@ describe('agent cache', () => {
   });
 
   it('follows symlinked directories inside .claude/agents/ and recurses through them fully', async () => {
-    const cwd = await makeTempDir();
+    const cwd = await makeIsolatedCwd();
     const outsideDir = await makeTempDir();
 
     await writeFile(join(outsideDir, 'external-agent.md'), validAgent('external-agent'), 'utf8');
@@ -282,9 +297,7 @@ describe('agent cache', () => {
   });
 
   it('completes without hanging when a symlinked directory creates a cycle back to an ancestor', async () => {
-    const cwd = await makeTempDir();
-    const fakeHome = await makeTempDir();
-    vi.spyOn(os, 'homedir').mockReturnValue(fakeHome);
+    const cwd = await makeIsolatedCwd();
 
     const agentsDir = join(cwd, '.claude', 'agents');
     await mkdir(agentsDir, { recursive: true });
