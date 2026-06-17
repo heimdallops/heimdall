@@ -188,9 +188,7 @@ export const run = async (ctx: CliContext, input: RunInput): Promise<void> => {
   }
 
   if (config.json) {
-    ctx.stdout.write(
-      `${JSON.stringify({ success: result.success, exitReason: result.exitReason })}\n`
-    );
+    printer.out(JSON.stringify({ success: result.success, exitReason: result.exitReason }));
   }
 
   if (!result.success) {

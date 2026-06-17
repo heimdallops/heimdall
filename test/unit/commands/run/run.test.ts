@@ -520,44 +520,32 @@ describe('run command — run()', () => {
   // -------------------------------------------------------------------------
 
   describe('--json flag', () => {
-    it('writes {"success":true,...} to stdout when the workflow succeeds in JSON mode', async () => {
+    it('prints {"success":true,...} via printer.out when the workflow succeeds in JSON mode', async () => {
       workflowFromMock.mockResolvedValue(makeWorkflowStub(new Map(), { success: true }) as never);
-
-      const stdoutChunks: Buffer[] = [];
-      const stdout = new PassThrough();
-      stdout.on('data', (chunk: Buffer) => stdoutChunks.push(chunk));
 
       const ctx = makeCtx({
         config: { json: true, verbose: false, debug: false, quiet: false },
-        stdout,
       });
       await run(ctx, makeInput());
-      stdout.end();
 
-      const output = Buffer.concat(stdoutChunks).toString('utf8').trim();
-      const parsed = JSON.parse(output) as Record<string, unknown>;
+      expect(ctx.printer.out).toHaveBeenCalledTimes(1);
+      const parsed = JSON.parse(ctx.printer.out.mock.calls[0]![0]) as Record<string, unknown>;
       expect(parsed['success']).toBe(true);
     });
 
-    it('writes {"success":false,...} to stdout when the workflow fails in JSON mode', async () => {
+    it('prints {"success":false,...} via printer.out when the workflow fails in JSON mode', async () => {
       workflowFromMock.mockResolvedValue(makeWorkflowStub(new Map(), { success: false }) as never);
-
-      const stdoutChunks: Buffer[] = [];
-      const stdout = new PassThrough();
-      stdout.on('data', (chunk: Buffer) => stdoutChunks.push(chunk));
 
       const ctx = makeCtx({
         config: { json: true, verbose: false, debug: false, quiet: false },
-        stdout,
       });
 
       await run(ctx, makeInput()).catch((): void => {
-        // failure path throws — that is expected; we still want to check stdout
+        // failure path throws — that is expected; we still want to check the output
       });
-      stdout.end();
 
-      const output = Buffer.concat(stdoutChunks).toString('utf8').trim();
-      const parsed = JSON.parse(output) as Record<string, unknown>;
+      expect(ctx.printer.out).toHaveBeenCalledTimes(1);
+      const parsed = JSON.parse(ctx.printer.out.mock.calls[0]![0]) as Record<string, unknown>;
       expect(parsed['success']).toBe(false);
     });
 
