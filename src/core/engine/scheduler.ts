@@ -17,7 +17,8 @@ interface NodeStateEntry {
 }
 
 export interface SchedulerOptions {
-  adapter: PlatformAdapter;
+  // Optional: forwarded to agentic nodes, which are not yet wired up.
+  adapter?: PlatformAdapter | undefined;
   emitter: EngineEmitter;
   sharedContextMap: Map<string, string>;
   // External cancellation signal (e.g. a LoopNode's attempt signal). When it fires, the scheduler

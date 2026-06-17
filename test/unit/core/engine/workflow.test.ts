@@ -508,6 +508,16 @@ nodes:
       expect(completed).toHaveLength(1);
       expect(completed[0]!.nodeId).toBe('step1');
     });
+
+    it('runs a non-agentic workflow without a platform adapter', async () => {
+      // The CLI no longer injects a no-op adapter; workflows with no agentic
+      // nodes must run when `adapter` is omitted entirely.
+      const workflow = await Workflow.from(minimalWorkflow);
+
+      const result = await workflow.run({ inputs: {} });
+
+      expect(result.success).toBe(true);
+    });
   });
 
   // -------------------------------------------------------------------------

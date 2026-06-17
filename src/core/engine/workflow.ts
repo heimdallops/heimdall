@@ -34,7 +34,9 @@ import { WorkflowDefinitionSchema } from './schema.ts';
 export interface WorkflowRunOptions {
   readonly inputs: Record<string, string | number | bigint | boolean>;
   readonly emitter?: EngineEmitter | undefined;
-  readonly adapter: PlatformAdapter;
+  // Optional: only agentic nodes need a platform adapter, and those are wired up
+  // on a separate branch. Workflows without agentic nodes run without one.
+  readonly adapter?: PlatformAdapter | undefined;
   // External cancellation signal (e.g. SIGINT/SIGTERM from the CLI). When it
   // fires, the scheduler stops dispatching and aborts in-flight node runs.
   readonly signal?: AbortSignal | undefined;

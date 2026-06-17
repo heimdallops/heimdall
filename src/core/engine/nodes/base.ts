@@ -57,7 +57,9 @@ export interface ExecutionContext {
 
 export interface NodeRunOptions {
   ctx: ExecutionContext;
-  adapter: PlatformAdapter;
+  // Optional: only agentic nodes need a platform adapter, and those are not yet
+  // wired up. Until they are, runs proceed without one.
+  adapter?: PlatformAdapter | undefined;
   emitter: EngineEmitter;
   signal: AbortSignal;
   predecessorSessionId?: string | undefined;
