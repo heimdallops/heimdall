@@ -1,5 +1,7 @@
 import type { Command } from 'commander';
 
+import { registerRunCommand } from '../commands/run/command.ts';
+
 /**
  * Registers all concrete command modules with the root Commander program.
  *
@@ -8,5 +10,5 @@ import type { Command } from 'commander';
  * own `command.ts` and `run.ts` files.
  */
 export const registerCommands = (program: Command): void => {
-  void program;
+  registerRunCommand(program);
 };

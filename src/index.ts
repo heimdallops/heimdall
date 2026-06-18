@@ -16,13 +16,15 @@ const run = (): Promise<number> => {
     quiet: false,
   });
 
+  // When no subcommand is given, validate global flags (e.g. --quiet + --verbose
+  // conflict) and exit 0. Each registered command calls createContext, which
+  // runs loadConfig, so the root action only needs to cover the no-command path.
+  program.action(async () => {
+    await loadConfig(program.opts(), process.cwd());
+  });
+
   return withErrorBoundary(bootstrapPrinter, async (): Promise<void> => {
     await program.parseAsync(process.argv);
-    // With no subcommands registered yet, parseAsync dispatches to no action
-    // handler, so createContext (and loadConfig) is never called via the command
-    // path. This standalone call ensures flag-conflict validation still fires.
-    // Remove once every command path calls createContext.
-    await loadConfig(program.opts(), process.cwd());
   });
 };
 
