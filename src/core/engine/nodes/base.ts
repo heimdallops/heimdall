@@ -1,3 +1,4 @@
+import type { Platform } from '../../platform/index.ts';
 import { evalCel } from '../cel.ts';
 import type { EngineEmitter, NodeResult } from '../emitter.ts';
 import { NodeError } from '../errors.ts';
@@ -34,10 +35,21 @@ export interface PlatformStream {
   sessionId(): Promise<string>;
 }
 
+// The engine holds an opaque adapter (Record-typed options) to stay decoupled from concrete
+// per-platform option types. Concrete adapters like ClaudeCodeAdapter satisfy this structural
+// interface via method-parameter bivariance.
 export interface PlatformAdapter {
   run(prompt: string, options: Record<string, unknown>, sessionId?: string): PlatformStream;
   findAgent(name: string): Promise<string>;
   parseAgent(content: string): { prompt: string; options: Record<string, unknown> };
+}
+
+export type AdapterFactory = (platform: Platform, cwd: string) => Promise<PlatformAdapter>;
+
+export interface PlatformRuntime {
+  factory: AdapterFactory;
+  defaultPlatform: Platform;
+  defaultPlatformOptions?: Record<string, unknown> | undefined;
 }
 
 export interface LoopContext {
@@ -52,12 +64,13 @@ export interface ExecutionContext {
   readonly vars: Record<string, string | number | bigint | boolean>;
   readonly needs: ReadonlyMap<string, NodeResult>;
   readonly sessionDir: string;
+  readonly cwd: string;
   readonly scope?: LoopContext | undefined;
 }
 
 export interface NodeRunOptions {
   ctx: ExecutionContext;
-  adapter: PlatformAdapter;
+  platform?: PlatformRuntime | undefined;
   emitter: EngineEmitter;
   signal: AbortSignal;
   predecessorSessionId?: string | undefined;

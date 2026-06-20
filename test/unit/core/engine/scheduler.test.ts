@@ -16,7 +16,6 @@ import type {
   ExecutionContext,
   NodeRunOptions,
   NodeRunResult,
-  PlatformAdapter,
 } from '../../../../src/core/engine/nodes/base.ts';
 import type { BaseNodeData } from '../../../../src/core/engine/nodes/base.ts';
 import { BaseNode } from '../../../../src/core/engine/nodes/base.ts';
@@ -102,22 +101,16 @@ class SequencedNode extends BaseNode {
   }
 }
 
-const fakeAdapter: PlatformAdapter = {
-  run: vi.fn(),
-  findAgent: vi.fn(),
-  parseAgent: vi.fn(),
-};
-
 const makeCtx = (overrides: Partial<ExecutionContext> = {}): ExecutionContext => ({
   inputs: {},
   vars: {},
   needs: new Map(),
   sessionDir: '/tmp/session',
+  cwd: '/tmp/work',
   ...overrides,
 });
 
 const makeOptions = (overrides: Partial<SchedulerOptions> = {}): SchedulerOptions => ({
-  adapter: fakeAdapter,
   emitter: createEngineEmitter(),
   sharedContextMap: new Map(),
   ...overrides,

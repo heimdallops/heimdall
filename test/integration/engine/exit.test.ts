@@ -9,14 +9,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { EngineEmitter, EngineEventMap } from '../../../src/core/engine/emitter.ts';
 import { createEngineEmitter } from '../../../src/core/engine/emitter.ts';
-import type { PlatformAdapter } from '../../../src/core/engine/nodes/base.ts';
 import { Workflow } from '../../../src/core/engine/workflow.ts';
-
-const fakeAdapter: PlatformAdapter = {
-  run: vi.fn(),
-  findAgent: vi.fn(),
-  parseAgent: vi.fn(),
-};
 
 const collectEvents = <K extends keyof EngineEventMap>(
   emitter: EngineEmitter,
@@ -60,7 +53,7 @@ nodes:
 `;
     const workflow = await Workflow.from(yaml);
 
-    const result = await workflow.run({ inputs: {}, adapter: fakeAdapter });
+    const result = await workflow.run({ inputs: {} });
 
     expect(result.success).toBe(true);
     expect(result.exitReason).toBe('goal achieved');
@@ -77,7 +70,7 @@ nodes:
 `;
     const workflow = await Workflow.from(yaml);
 
-    const result = await workflow.run({ inputs: {}, adapter: fakeAdapter });
+    const result = await workflow.run({ inputs: {} });
 
     expect(result.success).toBe(false);
     expect(result.exitReason).toBe('fatal error');
@@ -92,7 +85,7 @@ nodes:
 `;
     const workflow = await Workflow.from(yaml);
 
-    const result = await workflow.run({ inputs: {}, adapter: fakeAdapter });
+    const result = await workflow.run({ inputs: {} });
 
     expect(result.exitReason).toBeUndefined();
   });
@@ -114,7 +107,7 @@ nodes:
     emitter.on('workflow_exited', () => eventLog.push('workflow_exited'));
     emitter.on('workflow_completed', () => eventLog.push('workflow_completed'));
 
-    await workflow.run({ inputs: {}, emitter, adapter: fakeAdapter });
+    await workflow.run({ inputs: {}, emitter });
 
     // The event must have fired exactly once with the correct payload
     expect(exitEvents).toHaveLength(1);
@@ -141,7 +134,7 @@ nodes:
     const emitter = createEngineEmitter();
     const exitEvents = collectEvents(emitter, 'workflow_exited');
 
-    await workflow.run({ inputs: {}, emitter, adapter: fakeAdapter });
+    await workflow.run({ inputs: {}, emitter });
 
     expect(exitEvents).toHaveLength(1);
     expect(exitEvents[0]!.reason).toBe('stopping now');
@@ -164,7 +157,7 @@ nodes:
     const emitter = createEngineEmitter();
     const started = collectEvents(emitter, 'node_started');
 
-    await workflow.run({ inputs: {}, emitter, adapter: fakeAdapter });
+    await workflow.run({ inputs: {}, emitter });
 
     const startedIds = started.map((e) => e.nodeId);
     expect(startedIds).not.toContain('downstream');
@@ -189,7 +182,7 @@ nodes:
     const started = collectEvents(emitter, 'node_started');
     const cancelled = collectEvents(emitter, 'node_cancelled');
 
-    const result = await workflow.run({ inputs: {}, emitter, adapter: fakeAdapter });
+    const result = await workflow.run({ inputs: {}, emitter });
 
     expect(result.success).toBe(true);
     // The slow node must have been dispatched into the in-flight state before being
@@ -222,7 +215,7 @@ nodes:
     const started = collectEvents(emitter, 'node_started');
     const exitEvents = collectEvents(emitter, 'workflow_exited');
 
-    const result = await workflow.run({ inputs: {}, emitter, adapter: fakeAdapter });
+    const result = await workflow.run({ inputs: {}, emitter });
 
     // The dependent node must have run
     const startedIds = started.map((e) => e.nodeId);
@@ -247,7 +240,7 @@ nodes:
     const emitter = createEngineEmitter();
     const completed = collectEvents(emitter, 'workflow_completed');
 
-    await workflow.run({ inputs: {}, emitter, adapter: fakeAdapter });
+    await workflow.run({ inputs: {}, emitter });
 
     expect(completed).toHaveLength(1);
     expect(completed[0]!.success).toBe(true);

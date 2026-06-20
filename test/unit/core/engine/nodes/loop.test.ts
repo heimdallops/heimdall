@@ -11,26 +11,23 @@ import type {
   ExecutionContext,
   NodeRunOptions,
   NodeRunResult,
-  PlatformAdapter,
 } from '../../../../../src/core/engine/nodes/base.ts';
 import { BaseNode } from '../../../../../src/core/engine/nodes/base.ts';
 import { BreakNode } from '../../../../../src/core/engine/nodes/break.ts';
 import { LoopNode } from '../../../../../src/core/engine/nodes/loop.ts';
-
-const fakeAdapter = {} as PlatformAdapter;
 
 const makeCtx = (overrides: Partial<ExecutionContext> = {}): ExecutionContext => ({
   inputs: {},
   vars: {},
   needs: new Map(),
   sessionDir: '/tmp/session',
+  cwd: '/tmp/work',
   ...overrides,
 });
 
 const runLoop = (node: LoopNode, ctx: ExecutionContext = makeCtx()): Promise<NodeRunResult> =>
   node.run({
     ctx,
-    adapter: fakeAdapter,
     emitter: createEngineEmitter(),
     signal: new AbortController().signal,
   });
@@ -223,7 +220,6 @@ describe('LoopNode', () => {
       const ctx = makeCtx({ needs: externalNeeds });
       const result = await loop.run({
         ctx,
-        adapter: fakeAdapter,
         emitter: createEngineEmitter(),
         signal: new AbortController().signal,
       });
@@ -272,7 +268,6 @@ describe('LoopNode', () => {
 
       const result = await loop.run({
         ctx: makeCtx(),
-        adapter: fakeAdapter,
         emitter,
         signal: new AbortController().signal,
       });
@@ -303,7 +298,6 @@ describe('LoopNode', () => {
 
       const result = await loop.run({
         ctx: makeCtx(),
-        adapter: fakeAdapter,
         emitter: createEngineEmitter(),
         signal: new AbortController().signal,
       });
@@ -522,7 +516,6 @@ describe('LoopNode', () => {
       await expect(
         loop.run({
           ctx: makeCtx(),
-          adapter: fakeAdapter,
           emitter: createEngineEmitter(),
           signal: new AbortController().signal,
         })
@@ -543,7 +536,6 @@ describe('LoopNode', () => {
 
       const result = await loop.run({
         ctx: makeCtx(),
-        adapter: fakeAdapter,
         emitter: createEngineEmitter(),
         signal: new AbortController().signal,
       });
@@ -611,7 +603,6 @@ describe('LoopNode', () => {
       const ctx = makeCtx({ needs: externalNeeds });
       const result = await loop.run({
         ctx,
-        adapter: fakeAdapter,
         emitter: createEngineEmitter(),
         signal: new AbortController().signal,
       });
@@ -671,7 +662,6 @@ describe('LoopNode', () => {
       const ctx = makeCtx({ needs: externalNeeds });
       const result = await loop.run({
         ctx,
-        adapter: fakeAdapter,
         emitter: createEngineEmitter(),
         signal: new AbortController().signal,
       });
@@ -701,7 +691,6 @@ describe('LoopNode', () => {
       const ctx = makeCtx({ needs: externalNeeds });
       const result = await loop.run({
         ctx,
-        adapter: fakeAdapter,
         emitter: createEngineEmitter(),
         signal: new AbortController().signal,
       });
@@ -735,7 +724,6 @@ describe('LoopNode', () => {
       const ctx = makeCtx({ needs: externalNeeds });
       const result = await loop.run({
         ctx,
-        adapter: fakeAdapter,
         emitter: createEngineEmitter(),
         signal: new AbortController().signal,
       });
@@ -768,7 +756,6 @@ describe('LoopNode', () => {
       const ctx = makeCtx({ needs: externalNeeds });
       const result = await loop.run({
         ctx,
-        adapter: fakeAdapter,
         emitter: createEngineEmitter(),
         signal: new AbortController().signal,
       });
@@ -798,7 +785,6 @@ describe('LoopNode', () => {
       await expect(
         loop.run({
           ctx: makeCtx(),
-          adapter: fakeAdapter,
           emitter: createEngineEmitter(),
           signal: new AbortController().signal,
         })
@@ -916,7 +902,6 @@ describe('LoopNode', () => {
 
       const result = await loop.run({
         ctx: makeCtx(),
-        adapter: fakeAdapter,
         emitter: createEngineEmitter(),
         signal: AbortSignal.abort(),
       });
@@ -972,7 +957,6 @@ describe('LoopNode', () => {
       // Start the run WITHOUT awaiting so the body can get dispatched.
       const runPromise = loop.run({
         ctx: makeCtx(),
-        adapter: fakeAdapter,
         emitter: createEngineEmitter(),
         signal: controller.signal,
       });

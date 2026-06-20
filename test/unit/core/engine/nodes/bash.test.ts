@@ -11,7 +11,6 @@ import type {
   ExecutionContext,
   NodeRunCompleted,
   NodeRunResult,
-  PlatformAdapter,
 } from '../../../../../src/core/engine/nodes/base.ts';
 import { BashNode } from '../../../../../src/core/engine/nodes/bash.ts';
 
@@ -20,16 +19,16 @@ const makeCtx = (overrides: Partial<ExecutionContext> = {}): ExecutionContext =>
   vars: {},
   needs: new Map(),
   sessionDir: '/tmp',
+  cwd: '/tmp/work',
   ...overrides,
 });
 
-const fakeAdapter = {} as PlatformAdapter;
 const emitter = createEngineEmitter();
 
 const makeNode = (raw: Record<string, unknown>): BashNode => BashNode.parse(raw);
 
 const run = (node: BashNode, ctx: ExecutionContext = makeCtx()): Promise<NodeRunResult> =>
-  node.run({ ctx, adapter: fakeAdapter, emitter, signal: new AbortController().signal });
+  node.run({ ctx, emitter, signal: new AbortController().signal });
 
 const catchRejection = async (promise: Promise<unknown>): Promise<unknown> => {
   try {
@@ -396,7 +395,6 @@ describe('BashNode', () => {
 
       const result = await node.run({
         ctx: makeCtx(),
-        adapter: fakeAdapter,
         emitter,
         signal: abortedSignal,
       });
@@ -413,7 +411,6 @@ describe('BashNode', () => {
       // Abort immediately after calling run — execa cancels via cancelSignal before sleep finishes
       const runPromise = node.run({
         ctx: makeCtx(),
-        adapter: fakeAdapter,
         emitter,
         signal: controller.signal,
       });
