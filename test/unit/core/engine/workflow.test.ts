@@ -493,6 +493,38 @@ nodes:
   });
 
   // -------------------------------------------------------------------------
+  // workflow.run — cancellation via the signal option
+  // -------------------------------------------------------------------------
+
+  describe('workflow.run — signal cancellation', () => {
+    it('cancels an in-flight node when the provided signal aborts', async () => {
+      // sleep 30 would outlast the test timeout; the signal must cut the node short.
+      // Without the signal threaded through, the run would hang here.
+      const yaml = `
+name: cancellable
+nodes:
+  - id: step1
+    bash: "sleep 30"
+`;
+      const workflow = await Workflow.from(yaml);
+      const emitter = createEngineEmitter();
+      const cancelled = collectEvents(emitter, 'node_cancelled');
+      const controller = new AbortController();
+
+      // Abort the instant the node goes in-flight so we exercise mid-run cancellation,
+      // not a pre-aborted no-op that never dispatches.
+      emitter.on('node_started', () => {
+        controller.abort();
+      });
+
+      await workflow.run({ inputs: {}, emitter, signal: controller.signal });
+
+      expect(cancelled).toHaveLength(1);
+      expect(cancelled[0]!.nodeId).toBe('step1');
+    });
+  });
+
+  // -------------------------------------------------------------------------
   // workflow.run — run directory lifecycle
   // -------------------------------------------------------------------------
 
