@@ -38,6 +38,9 @@ export interface WorkflowRunOptions {
   readonly emitter?: EngineEmitter | undefined;
   readonly cwd?: string | undefined;
   readonly adapterFactory?: AdapterFactory | undefined;
+  // External cancellation signal. When it fires, the scheduler stops dispatching,
+  // drains in-flight nodes through the grace period, and aborts node runs.
+  readonly signal?: AbortSignal | undefined;
 }
 
 export interface WorkflowResult {
@@ -149,6 +152,7 @@ export class Workflow {
         },
         emitter,
         sharedContextMap: this.sharedContextMap,
+        signal: options.signal,
       });
 
       // Preserve the run dir on failure so session artifacts remain available
