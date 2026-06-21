@@ -1,5 +1,7 @@
 import { z } from 'zod';
 
+import { platformSchema } from '../platform/index.ts';
+
 export const RetryPolicySchema = z.object({
   max_attempts: z.number().min(0).optional(),
   initial_delay_ms: z.number().min(0).optional(),
@@ -73,7 +75,7 @@ export const BashNodeSchema = BaseNodeSchema.extend({
 });
 
 const AgenticBaseNodeSchema = BaseNodeSchema.extend({
-  platform: z.literal('claude').optional(),
+  platform: platformSchema.optional(),
   platform_options: z.record(z.string(), z.unknown()).optional(),
   context: z.enum(['clean', 'shared']).optional(),
 });
@@ -166,7 +168,7 @@ export const WorkflowDefinitionSchema = z.object({
   name: z.string().min(1),
   version: z.string().optional(),
   description: z.string().optional(),
-  platform: z.literal('claude').optional(),
+  platform: platformSchema.optional(),
   platform_options: z.record(z.string(), z.unknown()).optional(),
   inputs: z.record(z.string(), InputDeclarationSchema).optional(),
   vars: z.record(z.string(), z.union([z.string(), z.number(), z.boolean()])).optional(),
