@@ -1,8 +1,10 @@
 import { readFile } from 'node:fs/promises';
 import { resolve as resolvePath } from 'node:path';
-import { createInterface } from 'node:readline';
+
+import { confirm, input, select } from '@inquirer/prompts';
 
 import type { CliContext } from '../../cli/context.ts';
+import type { ApprovalResult } from '../../core/engine/emitter.ts';
 import { createEngineEmitter } from '../../core/engine/emitter.ts';
 import { EngineConfigError, EngineValidationError } from '../../core/engine/errors.ts';
 import type { WorkflowResult } from '../../core/engine/workflow.ts';
@@ -14,36 +16,19 @@ export interface RunInput {
   readonly inputs: Record<string, string>;
 }
 
-const promptLine = async (prompt: string): Promise<string> => {
-  const rl = createInterface({ input: process.stdin, output: process.stdout });
+/**
+ * Read a workflow file, translating filesystem failures into CliErrors.
+ * `filePath` is the resolved absolute path read from disk; `displayPath` is the
+ * user-supplied path surfaced in error messages.
+ */
+const readWorkflowFile = async (filePath: string, displayPath: string): Promise<string> => {
   try {
-    return await new Promise<string>((res) => {
-      rl.question(prompt, (answer) => {
-        res(answer);
-      });
-    });
-  } finally {
-    rl.close();
-  }
-};
-
-export const run = async (
-  ctx: CliContext,
-  input: RunInput,
-  signal?: AbortSignal
-): Promise<void> => {
-  const { printer, cwd, config } = ctx;
-  const filePath = resolvePath(cwd, input.file);
-
-  let yaml: string;
-
-  try {
-    yaml = await readFile(filePath, 'utf8');
+    return await readFile(filePath, 'utf8');
   } catch (err) {
     const isNotFound =
       typeof err === 'object' && err !== null && (err as NodeJS.ErrnoException).code === 'ENOENT';
     throw new CliError(
-      isNotFound ? `File not found: ${input.file}` : `Could not read file: ${input.file}`,
+      isNotFound ? `File not found: ${displayPath}` : `Could not read file: ${displayPath}`,
       {
         code: isNotFound ? ERROR_CODE.FILE_NOT_FOUND : ERROR_CODE.WORKFLOW_CONFIG_ERROR,
         exitCode: isNotFound ? EXIT_CODE.USAGE : EXIT_CODE.CONFIG,
@@ -51,6 +36,56 @@ export const run = async (
       }
     );
   }
+};
+
+/**
+ * Interactively collect an approval decision. When feedback is enabled it is
+ * offered as a third choice alongside approve/reject rather than as a separate
+ * follow-up question.
+ */
+const promptApproval = async (
+  nodeName: string,
+  message: string,
+  enableFeedback: boolean
+): Promise<ApprovalResult> => {
+  const heading = `Approval requested for '${nodeName}': ${message}`;
+
+  if (!enableFeedback) {
+    return { approved: await confirm({ message: heading, default: false }) };
+  }
+
+  const choice = await select<'approve' | 'feedback' | 'reject'>({
+    message: heading,
+    default: 'reject',
+    choices: [
+      { name: 'Approve', value: 'approve' },
+      { name: 'Approve with feedback', value: 'feedback' },
+      { name: 'Reject', value: 'reject' },
+    ],
+  });
+
+  if (choice === 'reject') {
+    return { approved: false };
+  }
+
+  if (choice === 'approve') {
+    return { approved: true };
+  }
+
+  const feedback = await input({ message: 'Feedback:' });
+
+  return { approved: true, feedback: feedback.trim() || undefined };
+};
+
+export const run = async (
+  ctx: CliContext,
+  runInput: RunInput,
+  signal?: AbortSignal
+): Promise<void> => {
+  const { printer, cwd, config } = ctx;
+  const filePath = resolvePath(cwd, runInput.file);
+
+  const yaml = await readWorkflowFile(filePath, runInput.file);
 
   let workflow: Workflow;
 
@@ -78,7 +113,7 @@ export const run = async (
 
   const declaredInputs = workflow.inputs;
 
-  for (const key of Object.keys(input.inputs)) {
+  for (const key of Object.keys(runInput.inputs)) {
     if (!declaredInputs.has(key)) {
       throw new CliError(`Unknown input: '${key}' is not declared in this workflow`, {
         code: ERROR_CODE.UNKNOWN_INPUT,
@@ -90,7 +125,7 @@ export const run = async (
   const missing: string[] = [];
 
   for (const [name, declaration] of declaredInputs) {
-    if (!(name in input.inputs) && declaration.default === undefined) {
+    if (!(name in runInput.inputs) && declaration.default === undefined) {
       missing.push(name);
     }
   }
@@ -128,9 +163,15 @@ export const run = async (
     printer.warn(`Node cancelled: ${nodeName}`);
   });
 
-  emitter.on('approval_requested', ({ nodeId, nodeName, message, enableFeedback, resolve }) => {
+  // Captures the first interactive-prompt failure so the run fails afterward
+  // rather than silently proceeding as if the approval were declined.
+  let approvalError: unknown;
+
+  emitter.on('approval_requested', ({ nodeName, message, enableFeedback, resolve }) => {
     if (config.json) {
-      ctx.stderr.write(`${JSON.stringify({ event: 'approval_requested', nodeId, message })}\n`);
+      // --json controls the final result format, not logging, and there is no
+      // TTY to prompt on, so log a normal message and auto-decline.
+      printer.warn(`Approval requested for '${nodeName}' auto-declined in --json mode: ${message}`);
       resolve({ approved: false });
 
       return;
@@ -141,18 +182,11 @@ export const run = async (
     // the mechanism for continuing the engine.
     void (async (): Promise<void> => {
       try {
-        printer.info(`Approval requested for '${nodeName}': ${message}`);
-        const answer = await promptLine('[y/N]: ');
-        const normalised = answer.trim().toLowerCase();
-        const approved = normalised === 'y' || normalised === 'yes';
-
-        if (approved && enableFeedback) {
-          const feedback = await promptLine('Feedback (optional): ');
-          resolve({ approved: true, feedback: feedback.trim() || undefined });
-        } else {
-          resolve({ approved });
-        }
-      } catch {
+        resolve(await promptApproval(nodeName, message, enableFeedback));
+      } catch (err) {
+        // A prompt error is not a deliberate rejection; record it so the run
+        // fails instead of treating it as a silent decline.
+        approvalError ??= err;
         resolve({ approved: false });
       }
     })();
@@ -162,7 +196,7 @@ export const run = async (
   try {
     // The engine resolves platform adapters itself via a run-owned factory, so
     // the CLI only forwards inputs, cwd, the cancellation signal, and the emitter.
-    result = await workflow.run({ inputs: input.inputs, emitter, cwd, signal });
+    result = await workflow.run({ inputs: runInput.inputs, emitter, cwd, signal });
   } catch (err) {
     if (err instanceof EngineConfigError) {
       throw new CliError(err.toString(), {
@@ -175,10 +209,18 @@ export const run = async (
     throw err;
   }
 
+  if (approvalError !== undefined) {
+    const detail =
+      approvalError instanceof Error ? approvalError.message : 'interactive prompt failed';
+    throw new CliError(`Approval prompt failed: ${detail}`, {
+      code: ERROR_CODE.WORKFLOW_FAILED,
+      exitCode: EXIT_CODE.UNKNOWN,
+      cause: approvalError,
+    });
+  }
+
   if (config.json) {
-    ctx.stdout.write(
-      `${JSON.stringify({ success: result.success, exitReason: result.exitReason })}\n`
-    );
+    printer.out(JSON.stringify({ success: result.success, exitReason: result.exitReason }));
   }
 
   if (!result.success) {

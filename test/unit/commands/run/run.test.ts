@@ -25,8 +25,10 @@ vi.mock('node:fs/promises', () => ({
   readFile: vi.fn(),
 }));
 
-vi.mock('node:readline', () => ({
-  createInterface: vi.fn(),
+vi.mock('@inquirer/prompts', () => ({
+  confirm: vi.fn(),
+  input: vi.fn(),
+  select: vi.fn(),
 }));
 
 vi.mock('../../../../src/core/engine/emitter.ts', () => ({
@@ -44,7 +46,7 @@ const { run } = await import('../../../../src/commands/run/run.ts');
 
 // Import the mocked modules so we can configure them.
 const { readFile } = await import('node:fs/promises');
-const { createInterface } = await import('node:readline');
+const { confirm, input, select } = await import('@inquirer/prompts');
 const { createEngineEmitter } = await import('../../../../src/core/engine/emitter.ts');
 
 // ---------------------------------------------------------------------------
@@ -520,44 +522,32 @@ describe('run command — run()', () => {
   // -------------------------------------------------------------------------
 
   describe('--json flag', () => {
-    it('writes {"success":true,...} to stdout when the workflow succeeds in JSON mode', async () => {
+    it('prints {"success":true,...} via printer.out when the workflow succeeds in JSON mode', async () => {
       workflowFromMock.mockResolvedValue(makeWorkflowStub(new Map(), { success: true }) as never);
-
-      const stdoutChunks: Buffer[] = [];
-      const stdout = new PassThrough();
-      stdout.on('data', (chunk: Buffer) => stdoutChunks.push(chunk));
 
       const ctx = makeCtx({
         config: { json: true, verbose: false, debug: false, quiet: false },
-        stdout,
       });
       await run(ctx, makeInput());
-      stdout.end();
 
-      const output = Buffer.concat(stdoutChunks).toString('utf8').trim();
-      const parsed = JSON.parse(output) as Record<string, unknown>;
+      expect(ctx.printer.out).toHaveBeenCalledTimes(1);
+      const parsed = JSON.parse(ctx.printer.out.mock.calls[0]![0]) as Record<string, unknown>;
       expect(parsed['success']).toBe(true);
     });
 
-    it('writes {"success":false,...} to stdout when the workflow fails in JSON mode', async () => {
+    it('prints {"success":false,...} via printer.out when the workflow fails in JSON mode', async () => {
       workflowFromMock.mockResolvedValue(makeWorkflowStub(new Map(), { success: false }) as never);
-
-      const stdoutChunks: Buffer[] = [];
-      const stdout = new PassThrough();
-      stdout.on('data', (chunk: Buffer) => stdoutChunks.push(chunk));
 
       const ctx = makeCtx({
         config: { json: true, verbose: false, debug: false, quiet: false },
-        stdout,
       });
 
       await run(ctx, makeInput()).catch((): void => {
-        // failure path throws — that is expected; we still want to check stdout
+        // failure path throws — that is expected; we still want to check the output
       });
-      stdout.end();
 
-      const output = Buffer.concat(stdoutChunks).toString('utf8').trim();
-      const parsed = JSON.parse(output) as Record<string, unknown>;
+      expect(ctx.printer.out).toHaveBeenCalledTimes(1);
+      const parsed = JSON.parse(ctx.printer.out.mock.calls[0]![0]) as Record<string, unknown>;
       expect(parsed['success']).toBe(false);
     });
 
@@ -582,19 +572,6 @@ describe('run command — run()', () => {
   // -------------------------------------------------------------------------
 
   describe('approval_requested — interactive mode', () => {
-    const makeReadlineStub = (
-      answers: string[]
-    ): { question: ReturnType<typeof vi.fn>; close: ReturnType<typeof vi.fn> } => {
-      let callIndex = 0;
-
-      return {
-        question: vi.fn((_prompt: string, cb: (answer: string) => void): void => {
-          cb(answers[callIndex++] ?? '');
-        }),
-        close: vi.fn(),
-      };
-    };
-
     const makeApprovalWorkflowStub = (
       enableFeedback: boolean,
       onResolve: (result: ApprovalResult) => void
@@ -611,9 +588,10 @@ describe('run command — run()', () => {
         });
 
         // Give the async prompt handler a chance to run before the workflow "completes".
-        // Two chained microtask ticks cover the worst case of two sequential prompt
-        // awaits (e.g. approval + feedback), each of which consumes one tick.
+        // Three chained microtask ticks cover the worst case of two sequential prompt
+        // awaits (e.g. select + feedback) plus the async wrapper.
         return Promise.resolve()
+          .then(() => Promise.resolve())
           .then(() => Promise.resolve())
           .then(() => ({ success: true }));
       });
@@ -621,23 +599,26 @@ describe('run command — run()', () => {
       return stub;
     };
 
-    it('prompts with [y/N]: when stdin returns "y"', async () => {
-      const rlStub = makeReadlineStub(['y']);
-      vi.mocked(createInterface).mockReturnValue(rlStub as never);
+    it('confirms approval when the user approves (no feedback)', async () => {
+      vi.mocked(confirm).mockResolvedValue(true);
 
-      const workflowStub = makeApprovalWorkflowStub(false, vi.fn());
+      let resolvedResult: ApprovalResult | undefined;
+      const workflowStub = makeApprovalWorkflowStub(false, (result): void => {
+        resolvedResult = result;
+      });
       workflowFromMock.mockResolvedValue(workflowStub as never);
 
       const ctx = makeCtx();
       await run(ctx, makeInput());
 
-      const { question } = rlStub;
-      expect(question).toHaveBeenCalledWith('[y/N]: ', expect.any(Function));
+      expect(confirm).toHaveBeenCalledWith(
+        expect.objectContaining({ message: expect.stringContaining('Gate') as string })
+      );
+      expect(resolvedResult).toEqual({ approved: true });
     });
 
-    it('calls resolve({approved:false}) when stdin returns "n"', async () => {
-      const rlStub = makeReadlineStub(['n']);
-      vi.mocked(createInterface).mockReturnValue(rlStub as never);
+    it('calls resolve({approved:false}) when the user denies', async () => {
+      vi.mocked(confirm).mockResolvedValue(false);
 
       let resolvedResult: ApprovalResult | undefined;
       const workflowStub = makeApprovalWorkflowStub(false, (result): void => {
@@ -652,9 +633,9 @@ describe('run command — run()', () => {
       expect(resolvedResult!.approved).toBe(false);
     });
 
-    it('prompts for feedback after approval when enableFeedback is true and user approves', async () => {
-      const rlStub = makeReadlineStub(['yes', 'looks good']);
-      vi.mocked(createInterface).mockReturnValue(rlStub as never);
+    it('offers feedback as a third choice (not a follow-up) when the user picks it', async () => {
+      vi.mocked(select).mockResolvedValue('feedback');
+      vi.mocked(input).mockResolvedValue('looks good');
 
       let resolvedResult: ApprovalResult | undefined;
       const workflowStub = makeApprovalWorkflowStub(true, (result): void => {
@@ -665,29 +646,46 @@ describe('run command — run()', () => {
       const ctx = makeCtx();
       await run(ctx, makeInput());
 
+      // A single select with three choices, not a yes/no plus a separate question.
+      expect(confirm).not.toHaveBeenCalled();
+      expect(select).toHaveBeenCalledWith(
+        expect.objectContaining({
+          choices: expect.arrayContaining([
+            expect.objectContaining({ value: 'feedback' }),
+          ]) as unknown,
+        })
+      );
       expect(resolvedResult?.approved).toBe(true);
       expect(resolvedResult?.feedback).toBe('looks good');
     });
 
-    it('does NOT prompt for feedback when enableFeedback is true but user denies', async () => {
-      let questionCallCount = 0;
-      const rlStub = {
-        question: vi.fn((_prompt: string, cb: (answer: string) => void): void => {
-          questionCallCount++;
-          cb('n');
-        }),
-        close: vi.fn(),
-      };
-      vi.mocked(createInterface).mockReturnValue(rlStub as never);
+    it('does NOT prompt for feedback when the user rejects', async () => {
+      vi.mocked(select).mockResolvedValue('reject');
 
-      const workflowStub = makeApprovalWorkflowStub(true, vi.fn());
+      let resolvedResult: ApprovalResult | undefined;
+      const workflowStub = makeApprovalWorkflowStub(true, (result): void => {
+        resolvedResult = result;
+      });
       workflowFromMock.mockResolvedValue(workflowStub as never);
 
       const ctx = makeCtx();
       await run(ctx, makeInput());
 
-      // Only the [y/N] question; no feedback question
-      expect(questionCallCount).toBe(1);
+      expect(input).not.toHaveBeenCalled();
+      expect(resolvedResult).toEqual({ approved: false });
+    });
+
+    it('fails the run when the approval prompt throws', async () => {
+      vi.mocked(confirm).mockRejectedValue(new Error('tty closed'));
+
+      const workflowStub = makeApprovalWorkflowStub(false, vi.fn());
+      workflowFromMock.mockResolvedValue(workflowStub as never);
+
+      const ctx = makeCtx();
+      const err = await run(ctx, makeInput()).catch((e: unknown) => e);
+
+      expect(err).toBeInstanceOf(CliError);
+      expect((err as CliError).message).toContain('Approval prompt failed');
     });
   });
 
@@ -696,7 +694,7 @@ describe('run command — run()', () => {
   // -------------------------------------------------------------------------
 
   describe('approval_requested — JSON mode', () => {
-    it('calls resolve({approved:false}) without prompting stdin in JSON mode', async () => {
+    it('calls resolve({approved:false}) without prompting in JSON mode', async () => {
       let resolvedResult: ApprovalResult | undefined;
 
       const workflowStub = makeWorkflowStub();
@@ -722,15 +720,12 @@ describe('run command — run()', () => {
 
       expect(resolvedResult).toBeDefined();
       expect(resolvedResult!.approved).toBe(false);
-      // createInterface should NOT have been called — no stdin prompt
-      expect(createInterface).not.toHaveBeenCalled();
+      // No interactive prompt should be shown in JSON mode.
+      expect(confirm).not.toHaveBeenCalled();
+      expect(select).not.toHaveBeenCalled();
     });
 
-    it('writes an approval_requested JSON event to stderr in JSON mode', async () => {
-      const stderrChunks: Buffer[] = [];
-      const stderr = new PassThrough();
-      stderr.on('data', (chunk: Buffer) => stderrChunks.push(chunk));
-
+    it('logs a plain warning via printer.warn (not a JSON event) in JSON mode', async () => {
       const workflowStub = makeWorkflowStub();
       workflowStub.run.mockImplementation((): Promise<WorkflowResult> => {
         emitter.emit('approval_requested', {
@@ -747,19 +742,13 @@ describe('run command — run()', () => {
 
       const ctx = makeCtx({
         config: { json: true, verbose: false, debug: false, quiet: false },
-        stderr,
       });
       await run(ctx, makeInput());
-      stderr.end();
 
-      const output = Buffer.concat(stderrChunks).toString('utf8');
-      const lines = output.trim().split('\n').filter(Boolean);
-
-      const approvalLine = lines.find((l) => l.includes('approval_requested'));
-      expect(approvalLine).toBeDefined();
-      const parsed = JSON.parse(approvalLine!) as Record<string, unknown>;
-      expect(parsed['event']).toBe('approval_requested');
-      expect(parsed['nodeId']).toBe('approval-node');
+      const warning = vi.mocked(ctx.printer.warn).mock.calls.find(([msg]) => msg.includes('Gate'));
+      expect(warning).toBeDefined();
+      // The message must be human-readable, not a serialized JSON event.
+      expect(warning![0]).not.toContain('"event"');
     });
   });
 });
