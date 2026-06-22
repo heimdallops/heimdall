@@ -7,11 +7,7 @@ import type {
 } from '../../../../../src/core/engine/emitter.ts';
 import { createEngineEmitter } from '../../../../../src/core/engine/emitter.ts';
 import { ApprovalNode } from '../../../../../src/core/engine/nodes/approval.ts';
-import type {
-  ExecutionContext,
-  NodeRunResult,
-  PlatformAdapter,
-} from '../../../../../src/core/engine/nodes/base.ts';
+import type { ExecutionContext, NodeRunResult } from '../../../../../src/core/engine/nodes/base.ts';
 import type { BaseNode } from '../../../../../src/core/engine/nodes/base.ts';
 
 const makeCtx = (
@@ -21,9 +17,8 @@ const makeCtx = (
   vars: {},
   needs: new Map(),
   sessionDir: '/tmp/session',
+  cwd: '/tmp/work',
 });
-
-const fakeAdapter = {} as PlatformAdapter;
 
 const makeNode = (raw: Record<string, unknown>): BaseNode<NodeRunResult> => ApprovalNode.parse(raw);
 
@@ -41,7 +36,6 @@ const runWithResolve = (
 
   const runPromise = node.run({
     ctx,
-    adapter: fakeAdapter,
     emitter,
     signal: new AbortController().signal,
   });
@@ -71,7 +65,6 @@ describe('ApprovalNode', () => {
       const node = makeNode({ id: 'approval1', approval: { message: 'Please approve' } });
       await node.run({
         ctx: makeCtx(),
-        adapter: fakeAdapter,
         emitter,
         signal: new AbortController().signal,
       });
@@ -94,7 +87,6 @@ describe('ApprovalNode', () => {
       });
       await node.run({
         ctx: makeCtx({ name: 'World' }),
-        adapter: fakeAdapter,
         emitter,
         signal: new AbortController().signal,
       });
@@ -117,7 +109,6 @@ describe('ApprovalNode', () => {
       });
       await node.run({
         ctx: makeCtx(),
-        adapter: fakeAdapter,
         emitter,
         signal: new AbortController().signal,
       });
@@ -137,7 +128,6 @@ describe('ApprovalNode', () => {
       const node = makeNode({ id: 'a1', approval: { message: 'Approve?' } });
       await node.run({
         ctx: makeCtx(),
-        adapter: fakeAdapter,
         emitter,
         signal: new AbortController().signal,
       });
@@ -308,7 +298,6 @@ describe('ApprovalNode', () => {
       const node = makeNode({ id: 'a1', approval: { message: 'Approve?' } });
       const result = await node.run({
         ctx: makeCtx(),
-        adapter: fakeAdapter,
         emitter,
         signal: AbortSignal.abort(),
       });
@@ -332,7 +321,6 @@ describe('ApprovalNode', () => {
       const node = makeNode({ id: 'a1', approval: { message: 'Approve?' } });
       const runPromise = node.run({
         ctx: makeCtx(),
-        adapter: fakeAdapter,
         emitter,
         signal: controller.signal,
       });
@@ -363,7 +351,6 @@ describe('ApprovalNode', () => {
       const node = makeNode({ id: 'a1', approval: { message: 'Approve?' } });
       const runPromise = node.run({
         ctx: makeCtx(),
-        adapter: fakeAdapter,
         emitter,
         signal: new AbortController().signal,
       });
@@ -399,7 +386,6 @@ describe('ApprovalNode', () => {
       await expect(
         node.run({
           ctx: makeCtx(),
-          adapter: fakeAdapter,
           emitter,
           signal: new AbortController().signal,
         })

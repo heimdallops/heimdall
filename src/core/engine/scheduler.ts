@@ -5,7 +5,7 @@ import type {
   ExecutionContext,
   NodeResult,
   NodeRunResult,
-  PlatformAdapter,
+  PlatformRuntime,
 } from './nodes/base.ts';
 
 export type NodeStatus = 'pending' | 'in_flight' | 'skipped' | 'completed' | 'failed' | 'cancelled';
@@ -17,7 +17,7 @@ interface NodeStateEntry {
 }
 
 export interface SchedulerOptions {
-  adapter: PlatformAdapter;
+  platform?: PlatformRuntime | undefined;
   emitter: EngineEmitter;
   sharedContextMap: Map<string, string>;
   // External cancellation signal (e.g. a LoopNode's attempt signal). When it fires, the scheduler
@@ -159,7 +159,7 @@ export const runScheduler = async (
   ctx: ExecutionContext,
   options: SchedulerOptions
 ): Promise<SchedulerResult> => {
-  const { adapter, emitter, sharedContextMap } = options;
+  const { platform, emitter, sharedContextMap } = options;
   const externalSignal = options.signal;
 
   // Mutable needs map — shared by reference across all concurrent dispatches so nodes always see the latest completed results
@@ -209,7 +209,7 @@ export const runScheduler = async (
 
     const buildOptions = (signal: AbortSignal): Parameters<BaseNode['run']>[0] => ({
       ctx: buildCtx(),
-      adapter,
+      platform,
       emitter,
       signal,
       predecessorSessionId,

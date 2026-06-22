@@ -2,10 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { ZodError } from 'zod';
 
 import { createEngineEmitter } from '../../../../../src/core/engine/emitter.ts';
-import type {
-  ExecutionContext,
-  PlatformAdapter,
-} from '../../../../../src/core/engine/nodes/base.ts';
+import type { ExecutionContext } from '../../../../../src/core/engine/nodes/base.ts';
 import { BreakNode } from '../../../../../src/core/engine/nodes/break.ts';
 
 const makeCtx = (): ExecutionContext => ({
@@ -13,9 +10,8 @@ const makeCtx = (): ExecutionContext => ({
   vars: {},
   needs: new Map(),
   sessionDir: '/tmp/session',
+  cwd: '/tmp/work',
 });
-
-const fakeAdapter = {} as PlatformAdapter;
 
 describe('BreakNode', () => {
   describe('BreakNode.matches', () => {
@@ -48,7 +44,6 @@ describe('BreakNode', () => {
 
       const result = await node.run({
         ctx: makeCtx(),
-        adapter: fakeAdapter,
         emitter,
         signal: new AbortController().signal,
       });

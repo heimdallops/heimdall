@@ -13,6 +13,8 @@ import { join } from 'node:path';
 
 import { load as loadYaml } from 'js-yaml';
 
+import { DEFAULT_PLATFORM } from '../platform/index.ts';
+import { createAdapterFactory } from './adapter-factory.ts';
 import {
   buildContextInheritanceMap,
   topologicalSort,
@@ -24,7 +26,7 @@ import {
 import type { EngineEmitter } from './emitter.ts';
 import { createEngineEmitter } from './emitter.ts';
 import { EngineConfigError, EngineError, EngineValidationError } from './errors.ts';
-import type { BaseNode, ExecutionContext, PlatformAdapter } from './nodes/base.ts';
+import type { AdapterFactory, BaseNode, ExecutionContext } from './nodes/base.ts';
 import { BreakNode } from './nodes/break.ts';
 import { nodeRegistry } from './nodes/registry.ts';
 import { runScheduler } from './scheduler.ts';
@@ -34,7 +36,11 @@ import { WorkflowDefinitionSchema } from './schema.ts';
 export interface WorkflowRunOptions {
   readonly inputs: Record<string, string | number | bigint | boolean>;
   readonly emitter?: EngineEmitter | undefined;
-  readonly adapter: PlatformAdapter;
+  readonly cwd?: string | undefined;
+  readonly adapterFactory?: AdapterFactory | undefined;
+  // External cancellation signal. When it fires, the scheduler stops dispatching,
+  // drains in-flight nodes through the grace period, and aborts node runs.
+  readonly signal?: AbortSignal | undefined;
 }
 
 export interface WorkflowResult {
@@ -112,6 +118,8 @@ export class Workflow {
     this.started = true;
 
     const emitter = options.emitter ?? createEngineEmitter();
+    const cwd = options.cwd ?? process.cwd();
+    const adapterFactory = options.adapterFactory ?? createAdapterFactory();
 
     // An unset or empty XDG_DATA_HOME falls back to the default; otherwise the run dir
     // would resolve relative to cwd.
@@ -133,12 +141,18 @@ export class Workflow {
         vars: this.definition.vars ?? {},
         needs: new Map(),
         sessionDir,
+        cwd,
       };
 
       result = await runScheduler(this.sortedNodes, ctx, {
-        adapter: options.adapter,
+        platform: {
+          factory: adapterFactory,
+          defaultPlatform: this.definition.platform ?? DEFAULT_PLATFORM,
+          defaultPlatformOptions: this.definition.platform_options,
+        },
         emitter,
         sharedContextMap: this.sharedContextMap,
+        signal: options.signal,
       });
 
       // Preserve the run dir on failure so session artifacts remain available

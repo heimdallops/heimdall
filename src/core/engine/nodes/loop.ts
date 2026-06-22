@@ -88,7 +88,7 @@ export class LoopNode extends BaseNode<NodeRunCompleted | NodeRunExited | NodeRu
   public override async run(
     options: NodeRunOptions
   ): Promise<NodeRunCompleted | NodeRunExited | NodeRunFailed> {
-    const { ctx, adapter, emitter, signal } = options;
+    const { ctx, platform, emitter, signal } = options;
     const parentScope = ctx.scope;
 
     // Body nodes reach external dependencies only via scope.needs.<id> (FR-030),
@@ -127,11 +127,12 @@ export class LoopNode extends BaseNode<NodeRunCompleted | NodeRunExited | NodeRu
         vars: ctx.vars,
         needs: new Map(),
         sessionDir: ctx.sessionDir,
+        cwd: ctx.cwd,
         scope,
       };
 
       const res = await runScheduler(this.bodyNodes, innerCtx, {
-        adapter,
+        platform,
         emitter,
         sharedContextMap: this.bodySharedContextMap,
         signal,
@@ -210,6 +211,7 @@ export class LoopNode extends BaseNode<NodeRunCompleted | NodeRunExited | NodeRu
       vars: ctx.vars,
       needs: loopNeeds,
       sessionDir: ctx.sessionDir,
+      cwd: ctx.cwd,
       scope: { iteration, nodes, needs: loopNeeds, outer: parentScope },
     };
 
@@ -254,6 +256,7 @@ export class LoopNode extends BaseNode<NodeRunCompleted | NodeRunExited | NodeRu
       vars: ctx.vars,
       needs: loopNeeds,
       sessionDir: ctx.sessionDir,
+      cwd: ctx.cwd,
       scope: { iteration, nodes, needs: loopNeeds, outer: parentScope },
     };
 
@@ -295,6 +298,7 @@ export class LoopNode extends BaseNode<NodeRunCompleted | NodeRunExited | NodeRu
       vars: ctx.vars,
       needs: loopNeeds,
       sessionDir: ctx.sessionDir,
+      cwd: ctx.cwd,
       scope: { iteration, nodes, needs: loopNeeds, outer: parentScope },
     };
     const celContext = evalCtx as unknown as Record<string, unknown>;
