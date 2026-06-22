@@ -5,7 +5,6 @@ import { createInterface } from 'node:readline';
 import type { CliContext } from '../../cli/context.ts';
 import { createEngineEmitter } from '../../core/engine/emitter.ts';
 import { EngineConfigError, EngineValidationError } from '../../core/engine/errors.ts';
-import type { PlatformAdapter } from '../../core/engine/nodes/base.ts';
 import type { WorkflowResult } from '../../core/engine/workflow.ts';
 import { Workflow } from '../../core/engine/workflow.ts';
 import { CliError, ERROR_CODE, EXIT_CODE } from '../../errors/cli-error.ts';
@@ -14,23 +13,6 @@ export interface RunInput {
   readonly file: string;
   readonly inputs: Record<string, string>;
 }
-
-/**
- * A no-op PlatformAdapter for workflows that don't use agentic nodes.
- * Agentic nodes are out of scope; if one is reached the engine will surface
- * its own error rather than a misleading CLI error.
- */
-const noopAdapter: PlatformAdapter = {
-  run: () => {
-    throw new Error('Agentic nodes are not supported in this context');
-  },
-  findAgent: async () => {
-    throw new Error('Agentic nodes are not supported in this context');
-  },
-  parseAgent: () => {
-    throw new Error('Agentic nodes are not supported in this context');
-  },
-};
 
 const promptLine = async (prompt: string): Promise<string> => {
   const rl = createInterface({ input: process.stdin, output: process.stdout });
@@ -45,7 +27,11 @@ const promptLine = async (prompt: string): Promise<string> => {
   }
 };
 
-export const run = async (ctx: CliContext, input: RunInput): Promise<void> => {
+export const run = async (
+  ctx: CliContext,
+  input: RunInput,
+  signal?: AbortSignal
+): Promise<void> => {
   const { printer, cwd, config } = ctx;
   const filePath = resolvePath(cwd, input.file);
 
@@ -174,7 +160,9 @@ export const run = async (ctx: CliContext, input: RunInput): Promise<void> => {
 
   let result: WorkflowResult;
   try {
-    result = await workflow.run({ inputs: input.inputs, emitter, adapter: noopAdapter });
+    // The engine resolves platform adapters itself via a run-owned factory, so
+    // the CLI only forwards inputs, cwd, the cancellation signal, and the emitter.
+    result = await workflow.run({ inputs: input.inputs, emitter, cwd, signal });
   } catch (err) {
     if (err instanceof EngineConfigError) {
       throw new CliError(err.toString(), {

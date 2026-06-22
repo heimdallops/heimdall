@@ -40,9 +40,8 @@ export const registerRunCommand = (program: Command): void => {
         flags: cmd.parent?.opts() ?? {},
       });
 
-      await withSignalHandling(ctx, async (_signal) => {
-        // TODO: forward _signal to workflow.run() once WorkflowRunOptions gains a signal field
-        await run(ctx, { file, inputs: options.input });
+      await withSignalHandling(ctx, async (signal) => {
+        await run(ctx, { file, inputs: options.input }, signal);
       });
     });
 };
