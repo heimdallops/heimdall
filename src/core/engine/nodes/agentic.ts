@@ -1,0 +1,286 @@
+import { readFile } from 'node:fs/promises';
+import { resolve } from 'node:path';
+
+import type { Platform } from '../../platform/index.ts';
+import { interpolate } from '../cel.ts';
+import { NodeError } from '../errors.ts';
+import type { AgenticBaseNode as ParsedAgenticBase } from '../schema.ts';
+import { AgentNodeSchema, PromptFileNodeSchema, PromptNodeSchema } from '../schema.ts';
+import type {
+  BaseNodeData,
+  ExecutionContext,
+  NodeRunCompleted,
+  NodeRunFailed,
+  NodeRunOptions,
+  PlatformStream,
+} from './base.ts';
+import { BaseNode } from './base.ts';
+import { nodeRegistry } from './registry.ts';
+
+interface AgenticNodeResult extends Record<string, unknown> {
+  output: string | Record<string, unknown>;
+}
+
+interface AgenticNodeData extends BaseNodeData {
+  platform?: Platform | undefined;
+  platformOptions?: Record<string, unknown> | undefined;
+  context?: 'clean' | 'shared' | undefined;
+  outputFormat?: Record<string, unknown> | undefined;
+}
+
+const toAgenticNodeData = (data: ParsedAgenticBase): AgenticNodeData => ({
+  id: data.id,
+  ...(data.name !== undefined ? { name: data.name } : {}),
+  ...(data.depends_on !== undefined ? { depends_on: data.depends_on } : {}),
+  ...(data.if !== undefined ? { if: data.if } : {}),
+  ...(data.timeout !== undefined ? { timeout: data.timeout } : {}),
+  ...(data.retries !== undefined ? { retries: data.retries } : {}),
+  platform: data.platform,
+  platformOptions: data.platform_options,
+  context: data.context ?? 'clean',
+  outputFormat: data.output_format,
+});
+
+export abstract class AgenticNode extends BaseNode<NodeRunCompleted | NodeRunFailed> {
+  public readonly platform: Platform | undefined;
+  public readonly platformOptions: Record<string, unknown> | undefined;
+  public readonly context: 'clean' | 'shared';
+  public readonly outputFormat: Record<string, unknown> | undefined;
+
+  public constructor(data: AgenticNodeData) {
+    super(data);
+    this.platform = data.platform;
+    this.platformOptions = data.platformOptions;
+    this.context = data.context ?? 'clean';
+    this.outputFormat = data.outputFormat;
+  }
+
+  public override isAgentic(): boolean {
+    return true;
+  }
+
+  public override useSharedContext(): boolean {
+    return this.context === 'shared';
+  }
+
+  /** Builds the interpolated (or file-derived) prompt dispatched to the adapter. */
+  protected abstract resolvePrompt(ctx: ExecutionContext): Promise<string>;
+
+  /** Subclass-specific adapter options merged on top of platform option defaults. */
+  protected buildExtraOptions(): Record<string, unknown> {
+    return {};
+  }
+
+  public override async run(options: NodeRunOptions): Promise<NodeRunCompleted | NodeRunFailed> {
+    const { ctx, platform: runtime, signal, predecessorSessionId } = options;
+
+    if (runtime === undefined) {
+      throw new NodeError(
+        'Platform runtime is unavailable',
+        'ENGINE_AGENTIC_NO_PLATFORM',
+        this.id,
+        { nodeName: this.name }
+      );
+    }
+
+    const prompt = await this.resolvePrompt(ctx);
+
+    const platform = this.platform ?? runtime.defaultPlatform;
+
+    const adapterOptions: Record<string, unknown> = {
+      ...(runtime.defaultPlatformOptions ?? {}),
+      ...(this.platformOptions ?? {}),
+      ...this.buildExtraOptions(),
+    };
+    if (this.outputFormat !== undefined) {
+      adapterOptions['output_format'] = this.outputFormat;
+    }
+
+    const sessionId = this.useSharedContext() ? predecessorSessionId : undefined;
+
+    const adapter = await runtime.factory(platform, ctx.cwd);
+    const stream = adapter.run(prompt, adapterOptions, sessionId);
+
+    return this.consumeStream(stream, signal);
+  }
+
+  private consumeStream(
+    stream: PlatformStream,
+    signal: AbortSignal
+  ): Promise<NodeRunCompleted | NodeRunFailed> {
+    // Prevent an unhandled rejection: sessionId() rejects on cancellation, and we only await it
+    // after a clean 'done'.
+    stream.sessionId().catch(() => undefined);
+
+    return new Promise<NodeRunCompleted | NodeRunFailed>((resolvePromise) => {
+      let buffer = '';
+      let settled = false;
+
+      const onAbort = (): void => {
+        stream.cancel();
+      };
+
+      const cleanup = (): void => {
+        signal.removeEventListener('abort', onAbort);
+      };
+
+      // Defends against an adapter that violates the single-terminal-event contract: only the
+      // first terminal event settles the promise, so a duplicate 'done'/'error' can't double-settle.
+      const settle = (result: NodeRunCompleted | NodeRunFailed): void => {
+        if (settled) {
+          return;
+        }
+
+        settled = true;
+        cleanup();
+        resolvePromise(result);
+      };
+
+      // PlatformStream.on() types all handler args as unknown[]; String() coerces the delta in
+      // case a misbehaving adapter passes a non-string value.
+      stream.on('chunk', (delta) => {
+        buffer += String(delta);
+      });
+
+      stream.on('done', () => {
+        // Snapshot the buffer before the async gap so late-arriving chunks can't mutate the output.
+        const output = buffer;
+        void (async (): Promise<void> => {
+          const sessionId = await stream.sessionId().catch(() => undefined);
+          const result: AgenticNodeResult = { output };
+          settle({
+            status: 'completed',
+            result,
+            ...(sessionId !== undefined ? { sessionId } : {}),
+          });
+        })();
+      });
+
+      stream.on('error', (err) => {
+        settle({ status: 'failed', error: err });
+      });
+
+      if (signal.aborted) {
+        stream.cancel();
+      } else {
+        signal.addEventListener('abort', onAbort, { once: true });
+      }
+    });
+  }
+}
+
+export class PromptNode extends AgenticNode {
+  private readonly prompt: string;
+
+  public static matches(raw: Record<string, unknown>): boolean {
+    return 'prompt' in raw;
+  }
+
+  public static parse(raw: Record<string, unknown>): PromptNode {
+    const data = PromptNodeSchema.parse(raw);
+
+    return new PromptNode({ ...toAgenticNodeData(data), prompt: data.prompt });
+  }
+
+  public constructor(data: AgenticNodeData & { prompt: string }) {
+    super(data);
+    this.prompt = data.prompt;
+  }
+
+  protected override resolvePrompt(ctx: ExecutionContext): Promise<string> {
+    return Promise.resolve(interpolatePrompt(this.prompt, ctx, this.id, this.name));
+  }
+}
+
+export class AgentNode extends AgenticNode {
+  private readonly agent: string;
+  private readonly instructions: string | undefined;
+
+  public static matches(raw: Record<string, unknown>): boolean {
+    return 'agent' in raw;
+  }
+
+  public static parse(raw: Record<string, unknown>): AgentNode {
+    const data = AgentNodeSchema.parse(raw);
+
+    return new AgentNode({
+      ...toAgenticNodeData(data),
+      agent: data.agent,
+      instructions: data.instructions,
+    });
+  }
+
+  public constructor(data: AgenticNodeData & { agent: string; instructions: string | undefined }) {
+    super(data);
+    this.agent = data.agent;
+    this.instructions = data.instructions;
+  }
+
+  protected override resolvePrompt(ctx: ExecutionContext): Promise<string> {
+    return Promise.resolve(interpolatePrompt(this.instructions ?? '', ctx, this.id, this.name));
+  }
+
+  // The agent name is forwarded unresolved; the adapter owns resolution.
+  protected override buildExtraOptions(): Record<string, unknown> {
+    return { agent: this.agent };
+  }
+}
+
+export class PromptFileNode extends AgenticNode {
+  private readonly promptFile: string;
+
+  public static matches(raw: Record<string, unknown>): boolean {
+    return 'prompt_file' in raw;
+  }
+
+  public static parse(raw: Record<string, unknown>): PromptFileNode {
+    const data = PromptFileNodeSchema.parse(raw);
+
+    return new PromptFileNode({ ...toAgenticNodeData(data), promptFile: data.prompt_file });
+  }
+
+  public constructor(data: AgenticNodeData & { promptFile: string }) {
+    super(data);
+    this.promptFile = data.promptFile;
+  }
+
+  protected override async resolvePrompt(ctx: ExecutionContext): Promise<string> {
+    const path = resolve(ctx.cwd, this.promptFile);
+
+    let contents: string;
+    try {
+      contents = await readFile(path, 'utf8');
+    } catch (err) {
+      throw new NodeError(
+        `Failed to read prompt file '${this.promptFile}'`,
+        'ENGINE_PROMPT_FILE_READ_ERROR',
+        this.id,
+        { nodeName: this.name, cause: err }
+      );
+    }
+
+    return interpolatePrompt(contents, ctx, this.id, this.name);
+  }
+}
+
+const interpolatePrompt = (
+  template: string,
+  ctx: ExecutionContext,
+  nodeId: string,
+  nodeName: string | undefined
+): string => {
+  try {
+    return interpolate(template, ctx as unknown as Record<string, unknown>);
+  } catch (err) {
+    throw new NodeError(
+      'Failed to interpolate prompt',
+      'ENGINE_AGENTIC_INTERPOLATION_ERROR',
+      nodeId,
+      { nodeName, cause: err }
+    );
+  }
+};
+
+nodeRegistry.register(PromptNode);
+nodeRegistry.register(AgentNode);
+nodeRegistry.register(PromptFileNode);
