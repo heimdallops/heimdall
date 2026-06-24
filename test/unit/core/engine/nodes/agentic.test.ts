@@ -8,6 +8,7 @@ import { ZodError } from 'zod';
 import { createEngineEmitter } from '../../../../../src/core/engine/emitter.ts';
 import { NodeError } from '../../../../../src/core/engine/errors.ts';
 import {
+  type AgenticNode,
   AgentNode,
   PromptFileNode,
   PromptNode,
@@ -152,8 +153,6 @@ class EagerAdapter extends FakeAdapter {
 // Helpers
 // ---------------------------------------------------------------------------
 
-const emitter = createEngineEmitter();
-
 const makeCtx = (overrides: Partial<ExecutionContext> = {}): ExecutionContext => ({
   inputs: {},
   vars: {},
@@ -178,7 +177,7 @@ const makeOptions = (
 ): NodeRunOptions => ({
   ctx: makeCtx(),
   platform: runtime,
-  emitter,
+  emitter: createEngineEmitter(),
   signal: new AbortController().signal,
   ...overrides,
 });
@@ -223,87 +222,64 @@ const makeTempDir = async (): Promise<string> => {
 };
 
 // ---------------------------------------------------------------------------
-// PromptNode
+// Shared AgenticNode behavior
+//
+// session wiring, option merging, output_format passthrough, platform override,
+// stream consumption, and cancellation all live in AgenticNode.run()/consumeStream
+// and are inherited unchanged by every subclass, so they're exercised once here
+// across all three. Each case provides a builder that produces a minimal valid node
+// (the prompt content is irrelevant to these assertions) plus the ctx it needs —
+// PromptFileNode additionally writes a file and points ctx.cwd at it.
 // ---------------------------------------------------------------------------
 
-describe('PromptNode', () => {
-  describe('PromptNode.matches', () => {
-    it('returns true when raw object has a prompt key', () => {
-      expect(PromptNode.matches({ id: 'n1', prompt: 'Hello' })).toBe(true);
-    });
+interface BuiltNode {
+  node: AgenticNode;
+  ctx: ExecutionContext;
+}
 
-    it('returns false when raw object has an agent key but no prompt key', () => {
-      expect(PromptNode.matches({ id: 'n1', agent: 'my-agent' })).toBe(false);
-    });
+interface SharedBehaviorCase {
+  name: string;
+  build: (extra?: Record<string, unknown>) => Promise<BuiltNode>;
+}
 
-    it('returns false when raw object has a prompt_file key but no prompt key', () => {
-      expect(PromptNode.matches({ id: 'n1', prompt_file: 'file.md' })).toBe(false);
-    });
+const sharedBehaviorCases: SharedBehaviorCase[] = [
+  {
+    name: 'PromptNode',
+    build: (extra = {}): Promise<BuiltNode> =>
+      Promise.resolve({
+        node: PromptNode.parse({ id: 'n1', prompt: 'hi', ...extra }),
+        ctx: makeCtx(),
+      }),
+  },
+  {
+    name: 'AgentNode',
+    build: (extra = {}): Promise<BuiltNode> =>
+      Promise.resolve({
+        node: AgentNode.parse({ id: 'n1', agent: 'reviewer', ...extra }),
+        ctx: makeCtx(),
+      }),
+  },
+  {
+    name: 'PromptFileNode',
+    build: async (extra = {}): Promise<BuiltNode> => {
+      const cwd = await makeTempDir();
+      await writeFile(join(cwd, 'prompt.md'), 'hi', 'utf8');
 
-    it('returns false when raw object has no discriminating key', () => {
-      expect(PromptNode.matches({ id: 'n1' })).toBe(false);
-    });
-  });
+      return {
+        node: PromptFileNode.parse({ id: 'n1', prompt_file: 'prompt.md', ...extra }),
+        ctx: makeCtx({ cwd }),
+      };
+    },
+  },
+];
 
-  describe('PromptNode.parse', () => {
-    it('throws ZodError when id contains invalid characters', () => {
-      expect(() => PromptNode.parse({ id: 'bad-id', prompt: 'Hello' })).toThrow(ZodError);
-    });
-
-    it('throws ZodError when prompt field is missing', () => {
-      expect(() => PromptNode.parse({ id: 'n1' })).toThrow(ZodError);
-    });
-
-    it('produces a node that passes the prompt to the adapter when run', async () => {
-      const adapter = new FakeAdapter();
-      const node = PromptNode.parse({ id: 'n1', prompt: 'Hello World' });
-      const runtime = makeRuntime(adapter);
-      const runPromise = node.run(makeOptions(runtime));
-      afterAdapterCalled(adapter, () => {
-        adapter.stream.emitDone('sess-1');
-      });
-      await runPromise;
-
-      expect(adapter.calls).toHaveLength(1);
-      expect(adapter.calls[0]!.prompt).toBe('Hello World');
-    });
-  });
-
-  describe('prompt interpolation', () => {
-    it('passes interpolated prompt to the adapter', async () => {
-      const adapter = new FakeAdapter();
-      const node = PromptNode.parse({ id: 'n1', prompt: 'Hello ${{ inputs.name }}' });
-      const runtime = makeRuntime(adapter);
-      const ctx = makeCtx({ inputs: { name: 'World' } });
-      const runPromise = node.run(makeOptions(runtime, { ctx }));
-      afterAdapterCalled(adapter, () => {
-        adapter.stream.emitDone('sess-1');
-      });
-      await runPromise;
-
-      expect(adapter.calls[0]!.prompt).toBe('Hello World');
-    });
-
-    it('keeps the literal text when there are no interpolation markers', async () => {
-      const adapter = new FakeAdapter();
-      const node = PromptNode.parse({ id: 'n1', prompt: 'No substitution here' });
-      const runtime = makeRuntime(adapter);
-      const runPromise = node.run(makeOptions(runtime));
-      afterAdapterCalled(adapter, () => {
-        adapter.stream.emitDone('sess-1');
-      });
-      await runPromise;
-
-      expect(adapter.calls[0]!.prompt).toBe('No substitution here');
-    });
-  });
-
+describe.each(sharedBehaviorCases)('AgenticNode shared behavior ($name)', ({ build }) => {
   describe('session wiring', () => {
     it('passes predecessorSessionId to adapter.run when context is shared', async () => {
+      const { node, ctx } = await build({ context: 'shared' });
       const adapter = new FakeAdapter();
-      const node = PromptNode.parse({ id: 'n1', prompt: 'hi', context: 'shared' });
       const runtime = makeRuntime(adapter);
-      const runPromise = node.run(makeOptions(runtime, { predecessorSessionId: 'sess-abc' }));
+      const runPromise = node.run(makeOptions(runtime, { ctx, predecessorSessionId: 'sess-abc' }));
       afterAdapterCalled(adapter, () => {
         adapter.stream.emitDone('sess-1');
       });
@@ -312,12 +288,12 @@ describe('PromptNode', () => {
       expect(adapter.calls[0]!.sessionId).toBe('sess-abc');
     });
 
-    it('passes undefined to adapter.run when context is clean', async () => {
+    it('passes undefined to adapter.run when context is clean even when predecessorSessionId is supplied', async () => {
+      const { node, ctx } = await build({ context: 'clean' });
       const adapter = new FakeAdapter();
-      const node = PromptNode.parse({ id: 'n1', prompt: 'hi', context: 'clean' });
       const runtime = makeRuntime(adapter);
       const runPromise = node.run(
-        makeOptions(runtime, { predecessorSessionId: 'sess-should-be-ignored' })
+        makeOptions(runtime, { ctx, predecessorSessionId: 'sess-should-be-ignored' })
       );
       afterAdapterCalled(adapter, () => {
         adapter.stream.emitDone('sess-1');
@@ -328,11 +304,11 @@ describe('PromptNode', () => {
     });
 
     it('passes undefined to adapter.run when context is absent', async () => {
+      const { node, ctx } = await build();
       const adapter = new FakeAdapter();
-      const node = PromptNode.parse({ id: 'n1', prompt: 'hi' });
       const runtime = makeRuntime(adapter);
       const runPromise = node.run(
-        makeOptions(runtime, { predecessorSessionId: 'sess-should-be-ignored' })
+        makeOptions(runtime, { ctx, predecessorSessionId: 'sess-should-be-ignored' })
       );
       afterAdapterCalled(adapter, () => {
         adapter.stream.emitDone('sess-1');
@@ -346,10 +322,10 @@ describe('PromptNode', () => {
   describe('output_format', () => {
     it('passes output_format object to adapter.run options unchanged', async () => {
       const format = { type: 'json_schema', schema: { type: 'object' } };
+      const { node, ctx } = await build({ output_format: format });
       const adapter = new FakeAdapter();
-      const node = PromptNode.parse({ id: 'n1', prompt: 'hi', output_format: format });
       const runtime = makeRuntime(adapter);
-      const runPromise = node.run(makeOptions(runtime));
+      const runPromise = node.run(makeOptions(runtime, { ctx }));
       afterAdapterCalled(adapter, () => {
         adapter.stream.emitDone('sess-1');
       });
@@ -359,10 +335,10 @@ describe('PromptNode', () => {
     });
 
     it('does not include output_format in adapter options when it is absent', async () => {
+      const { node, ctx } = await build();
       const adapter = new FakeAdapter();
-      const node = PromptNode.parse({ id: 'n1', prompt: 'hi' });
       const runtime = makeRuntime(adapter);
-      const runPromise = node.run(makeOptions(runtime));
+      const runPromise = node.run(makeOptions(runtime, { ctx }));
       afterAdapterCalled(adapter, () => {
         adapter.stream.emitDone('sess-1');
       });
@@ -372,18 +348,14 @@ describe('PromptNode', () => {
     });
   });
 
-  describe('platform_options override', () => {
+  describe('platform option merging', () => {
     it('node-level platform_options win over workflow defaultPlatformOptions per-key', async () => {
+      const { node, ctx } = await build({ platform_options: { model: 'node-model' } });
       const adapter = new FakeAdapter();
-      const node = PromptNode.parse({
-        id: 'n1',
-        prompt: 'hi',
-        platform_options: { model: 'node-model' },
-      });
       const runtime = makeRuntime(adapter, {
         defaultPlatformOptions: { model: 'default-model', temperature: 0.5 },
       });
-      const runPromise = node.run(makeOptions(runtime));
+      const runPromise = node.run(makeOptions(runtime, { ctx }));
       afterAdapterCalled(adapter, () => {
         adapter.stream.emitDone('sess-1');
       });
@@ -394,12 +366,10 @@ describe('PromptNode', () => {
     });
 
     it('workflow defaultPlatformOptions are used when no node-level options are set', async () => {
+      const { node, ctx } = await build();
       const adapter = new FakeAdapter();
-      const node = PromptNode.parse({ id: 'n1', prompt: 'hi' });
-      const runtime = makeRuntime(adapter, {
-        defaultPlatformOptions: { model: 'default-model' },
-      });
-      const runPromise = node.run(makeOptions(runtime));
+      const runtime = makeRuntime(adapter, { defaultPlatformOptions: { model: 'default-model' } });
+      const runPromise = node.run(makeOptions(runtime, { ctx }));
       afterAdapterCalled(adapter, () => {
         adapter.stream.emitDone('sess-1');
       });
@@ -412,39 +382,35 @@ describe('PromptNode', () => {
   describe('node-level platform override', () => {
     it('passes the node platform to the factory instead of the workflow defaultPlatform', async () => {
       const capturedPlatforms: string[] = [];
+      const { node, ctx } = await build({ platform: 'claude' });
       const adapter = new FakeAdapter();
-      const node = PromptNode.parse({ id: 'n1', prompt: 'hi', platform: 'claude' });
       const runtime: PlatformRuntime = {
         factory: (p) => {
           capturedPlatforms.push(p);
 
           return Promise.resolve(adapter);
         },
-        // Use a sentinel that differs from the node's own platform so the assertion only
-        // passes when the node's platform ('claude') is actually used instead of the default.
-        // Platform is a single-value enum ('claude'), so a double cast is required to produce
-        // a distinguishable sentinel value without a compile error.
+        // Sentinel differs from the node's own platform so the assertion only passes when the
+        // node's platform ('claude') is used. Platform is a single-literal union, so a double
+        // cast produces a distinguishable out-of-range value.
         defaultPlatform: 'other-platform' as unknown as Platform,
       };
-      const runPromise = node.run(makeOptions(runtime));
+      const runPromise = node.run(makeOptions(runtime, { ctx }));
       afterAdapterCalled(adapter, () => {
         adapter.stream.emitDone('sess-1');
       });
       await runPromise;
 
-      // If the node-override logic were removed, the factory would receive 'other-platform'
-      // and this assertion would fail — proving that node.platform is what drives the call.
-      expect(capturedPlatforms).toHaveLength(1);
-      expect(capturedPlatforms[0]).toBe('claude');
+      expect(capturedPlatforms).toEqual(['claude']);
     });
   });
 
   describe('stream consumption', () => {
     it('concatenates chunk deltas into result.output on done', async () => {
+      const { node, ctx } = await build();
       const adapter = new FakeAdapter();
-      const node = PromptNode.parse({ id: 'n1', prompt: 'hi' });
       const runtime = makeRuntime(adapter);
-      const runPromise = node.run(makeOptions(runtime));
+      const runPromise = node.run(makeOptions(runtime, { ctx }));
       afterAdapterCalled(adapter, () => {
         adapter.stream.emitChunk('Hello');
         adapter.stream.emitChunk(', ');
@@ -458,10 +424,10 @@ describe('PromptNode', () => {
     });
 
     it('result output is an empty string when no chunks are emitted before done', async () => {
+      const { node, ctx } = await build();
       const adapter = new FakeAdapter();
-      const node = PromptNode.parse({ id: 'n1', prompt: 'hi' });
       const runtime = makeRuntime(adapter);
-      const runPromise = node.run(makeOptions(runtime));
+      const runPromise = node.run(makeOptions(runtime, { ctx }));
       afterAdapterCalled(adapter, () => {
         adapter.stream.emitDone('sess-1');
       });
@@ -472,10 +438,10 @@ describe('PromptNode', () => {
     });
 
     it('includes sessionId from the stream on completion', async () => {
+      const { node, ctx } = await build();
       const adapter = new FakeAdapter();
-      const node = PromptNode.parse({ id: 'n1', prompt: 'hi' });
       const runtime = makeRuntime(adapter);
-      const runPromise = node.run(makeOptions(runtime));
+      const runPromise = node.run(makeOptions(runtime, { ctx }));
       afterAdapterCalled(adapter, () => {
         adapter.stream.emitDone('sess-xyz');
       });
@@ -486,12 +452,12 @@ describe('PromptNode', () => {
     });
 
     it('omits sessionId from the result when stream sessionId() rejects', async () => {
+      const { node, ctx } = await build();
       const adapter = new FakeAdapter();
-      const node = PromptNode.parse({ id: 'n1', prompt: 'hi' });
       const runtime = makeRuntime(adapter);
-      const runPromise = node.run(makeOptions(runtime));
-      // sessionId() rejects when emitDone() is called with no sid; the node swallows the rejection
-      // and omits sessionId from the result rather than propagating the error.
+      const runPromise = node.run(makeOptions(runtime, { ctx }));
+      // emitDone() with no sid rejects sessionId(); the node swallows the rejection and omits
+      // sessionId from the result rather than propagating the error.
       afterAdapterCalled(adapter, () => {
         adapter.stream.emitDone();
       });
@@ -501,11 +467,11 @@ describe('PromptNode', () => {
       expect('sessionId' in result).toBe(false);
     });
 
-    it('returns status failed with the error when stream emits an error event', async () => {
+    it('returns status failed with the error when the stream emits an error event', async () => {
+      const { node, ctx } = await build();
       const adapter = new FakeAdapter();
-      const node = PromptNode.parse({ id: 'n1', prompt: 'hi' });
       const runtime = makeRuntime(adapter);
-      const runPromise = node.run(makeOptions(runtime));
+      const runPromise = node.run(makeOptions(runtime, { ctx }));
       const boom = new Error('adapter blew up');
       afterAdapterCalled(adapter, () => {
         adapter.stream.emitError(boom);
@@ -519,16 +485,14 @@ describe('PromptNode', () => {
 
   describe('signal / cancellation', () => {
     it('calls stream.cancel() when the abort signal fires after run starts', async () => {
+      const { node, ctx } = await build();
       const adapter = new FakeAdapter();
-      const node = PromptNode.parse({ id: 'n1', prompt: 'hi' });
       const runtime = makeRuntime(adapter);
       const controller = new AbortController();
-
-      const runPromise = node.run(makeOptions(runtime, { signal: controller.signal }));
-
+      const runPromise = node.run(makeOptions(runtime, { ctx, signal: controller.signal }));
       afterAdapterCalled(adapter, () => {
         controller.abort();
-        // Settle the promise after aborting so run() doesn't hang
+        // Settle after aborting so run() doesn't hang.
         adapter.stream.emitDone('sess-1');
       });
       await runPromise;
@@ -536,15 +500,12 @@ describe('PromptNode', () => {
       expect(adapter.stream.cancelCalled).toBe(true);
     });
 
-    it('calls stream.cancel() immediately when signal is already aborted before run', async () => {
+    it('calls stream.cancel() immediately when the signal is already aborted before run', async () => {
+      const { node, ctx } = await build();
       const adapter = new FakeAdapter();
-      const node = PromptNode.parse({ id: 'n1', prompt: 'hi' });
       const runtime = makeRuntime(adapter);
-
-      const runPromise = node.run(makeOptions(runtime, { signal: AbortSignal.abort() }));
-
-      // cancel() does not emit a terminal event; the promise only settles when done/error fires.
-      // Without this explicit emitDone the test would hang.
+      const runPromise = node.run(makeOptions(runtime, { ctx, signal: AbortSignal.abort() }));
+      // cancel() does not emit a terminal event; settle explicitly or run() would hang.
       afterAdapterCalled(adapter, () => {
         adapter.stream.emitDone('sess-1');
       });
@@ -576,7 +537,70 @@ describe('synchronous listener attachment', () => {
 });
 
 // ---------------------------------------------------------------------------
-// AgentNode
+// PromptNode — discriminant + prompt construction
+// ---------------------------------------------------------------------------
+
+describe('PromptNode', () => {
+  describe('PromptNode.matches', () => {
+    it('returns true when raw object has a prompt key', () => {
+      expect(PromptNode.matches({ id: 'n1', prompt: 'Hello' })).toBe(true);
+    });
+
+    it('returns false when raw object has an agent key but no prompt key', () => {
+      expect(PromptNode.matches({ id: 'n1', agent: 'my-agent' })).toBe(false);
+    });
+
+    it('returns false when raw object has a prompt_file key but no prompt key', () => {
+      expect(PromptNode.matches({ id: 'n1', prompt_file: 'file.md' })).toBe(false);
+    });
+
+    it('returns false when raw object has no discriminating key', () => {
+      expect(PromptNode.matches({ id: 'n1' })).toBe(false);
+    });
+  });
+
+  describe('PromptNode.parse', () => {
+    it('throws ZodError when id contains invalid characters', () => {
+      expect(() => PromptNode.parse({ id: 'bad-id', prompt: 'Hello' })).toThrow(ZodError);
+    });
+
+    it('throws ZodError when prompt field is missing', () => {
+      expect(() => PromptNode.parse({ id: 'n1' })).toThrow(ZodError);
+    });
+  });
+
+  describe('prompt interpolation', () => {
+    it('passes interpolated prompt to the adapter', async () => {
+      const adapter = new FakeAdapter();
+      const node = PromptNode.parse({ id: 'n1', prompt: 'Hello ${{ inputs.name }}' });
+      const runtime = makeRuntime(adapter);
+      const ctx = makeCtx({ inputs: { name: 'World' } });
+      const runPromise = node.run(makeOptions(runtime, { ctx }));
+      afterAdapterCalled(adapter, () => {
+        adapter.stream.emitDone('sess-1');
+      });
+      await runPromise;
+
+      expect(adapter.calls[0]!.prompt).toBe('Hello World');
+    });
+
+    it('keeps the literal text when there are no interpolation markers', async () => {
+      const adapter = new FakeAdapter();
+      const node = PromptNode.parse({ id: 'n1', prompt: 'No substitution here' });
+      const runtime = makeRuntime(adapter);
+      const runPromise = node.run(makeOptions(runtime));
+      afterAdapterCalled(adapter, () => {
+        adapter.stream.emitDone('sess-1');
+      });
+      await runPromise;
+
+      expect(adapter.calls[0]!.prompt).toBe('No substitution here');
+    });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// AgentNode — discriminant + agent/instructions construction
 // ---------------------------------------------------------------------------
 
 describe('AgentNode', () => {
@@ -666,86 +690,10 @@ describe('AgentNode', () => {
       expect(adapter.calls[0]!.prompt).toBe('');
     });
   });
-
-  describe('session wiring', () => {
-    it('passes predecessorSessionId to adapter.run when context is shared', async () => {
-      const adapter = new FakeAdapter();
-      const node = AgentNode.parse({ id: 'n1', agent: 'reviewer', context: 'shared' });
-      const runtime = makeRuntime(adapter);
-      const runPromise = node.run(makeOptions(runtime, { predecessorSessionId: 'sess-def' }));
-      afterAdapterCalled(adapter, () => {
-        adapter.stream.emitDone('sess-1');
-      });
-      await runPromise;
-
-      expect(adapter.calls[0]!.sessionId).toBe('sess-def');
-    });
-
-    it('passes undefined to adapter.run when context is clean even when predecessorSessionId is supplied', async () => {
-      const adapter = new FakeAdapter();
-      const node = AgentNode.parse({ id: 'n1', agent: 'reviewer', context: 'clean' });
-      const runtime = makeRuntime(adapter);
-      const runPromise = node.run(
-        makeOptions(runtime, { predecessorSessionId: 'sess-should-be-ignored' })
-      );
-      afterAdapterCalled(adapter, () => {
-        adapter.stream.emitDone('sess-1');
-      });
-      await runPromise;
-
-      expect(adapter.calls[0]!.sessionId).toBeUndefined();
-    });
-
-    it('passes undefined to adapter.run when context is absent', async () => {
-      const adapter = new FakeAdapter();
-      const node = AgentNode.parse({ id: 'n1', agent: 'reviewer' });
-      const runtime = makeRuntime(adapter);
-      const runPromise = node.run(makeOptions(runtime, { predecessorSessionId: 'sess-ignored' }));
-      afterAdapterCalled(adapter, () => {
-        adapter.stream.emitDone('sess-1');
-      });
-      await runPromise;
-
-      expect(adapter.calls[0]!.sessionId).toBeUndefined();
-    });
-  });
-
-  describe('stream outcomes', () => {
-    it('result output is the concatenated chunk deltas on done', async () => {
-      const adapter = new FakeAdapter();
-      const node = AgentNode.parse({ id: 'n1', agent: 'reviewer' });
-      const runtime = makeRuntime(adapter);
-      const runPromise = node.run(makeOptions(runtime));
-      afterAdapterCalled(adapter, () => {
-        adapter.stream.emitChunk('chunk-a');
-        adapter.stream.emitChunk('chunk-b');
-        adapter.stream.emitDone('sess-1');
-      });
-      const result = await runPromise;
-
-      expect(result.status).toBe('completed');
-      expect((result as NodeRunCompleted).result['output']).toBe('chunk-achunk-b');
-    });
-
-    it('returns status failed with the error when stream emits an error event', async () => {
-      const adapter = new FakeAdapter();
-      const node = AgentNode.parse({ id: 'n1', agent: 'reviewer' });
-      const runtime = makeRuntime(adapter);
-      const runPromise = node.run(makeOptions(runtime));
-      const boom = new Error('stream failed');
-      afterAdapterCalled(adapter, () => {
-        adapter.stream.emitError(boom);
-      });
-      const result = await runPromise;
-
-      expect(result.status).toBe('failed');
-      expect((result as NodeRunFailed).error).toBe(boom);
-    });
-  });
 });
 
 // ---------------------------------------------------------------------------
-// PromptFileNode
+// PromptFileNode — discriminant + file reading
 // ---------------------------------------------------------------------------
 
 describe('PromptFileNode', () => {
@@ -847,7 +795,6 @@ describe('PromptFileNode', () => {
 
       expect(caught).toBeInstanceOf(NodeError);
       expect((caught as NodeError).code).toBe('ENGINE_PROMPT_FILE_READ_ERROR');
-      // The adapter must NOT have been called
       expect(adapter.calls).toHaveLength(0);
     });
 
@@ -866,92 +813,6 @@ describe('PromptFileNode', () => {
       }
 
       expect((caught as NodeError).message).toContain('missing-prompt.md');
-    });
-  });
-
-  describe('session wiring', () => {
-    it('passes predecessorSessionId to adapter.run when context is shared', async () => {
-      const cwd = await makeTempDir();
-      await writeFile(join(cwd, 'prompt.md'), 'hi', 'utf8');
-
-      const adapter = new FakeAdapter();
-      const node = PromptFileNode.parse({
-        id: 'n1',
-        prompt_file: 'prompt.md',
-        context: 'shared',
-      });
-      const runtime = makeRuntime(adapter);
-      const ctx = makeCtx({ cwd });
-      const runPromise = node.run(makeOptions(runtime, { ctx, predecessorSessionId: 'sess-ghi' }));
-      afterAdapterCalled(adapter, () => {
-        adapter.stream.emitDone('sess-1');
-      });
-      await runPromise;
-
-      expect(adapter.calls[0]!.sessionId).toBe('sess-ghi');
-    });
-
-    it('passes undefined to adapter.run when context is absent', async () => {
-      const cwd = await makeTempDir();
-      await writeFile(join(cwd, 'prompt.md'), 'hi', 'utf8');
-
-      const adapter = new FakeAdapter();
-      const node = PromptFileNode.parse({ id: 'n1', prompt_file: 'prompt.md' });
-      const runtime = makeRuntime(adapter);
-      const ctx = makeCtx({ cwd });
-      const runPromise = node.run(
-        makeOptions(runtime, { ctx, predecessorSessionId: 'sess-ignored' })
-      );
-      afterAdapterCalled(adapter, () => {
-        adapter.stream.emitDone('sess-1');
-      });
-      await runPromise;
-
-      expect(adapter.calls[0]!.sessionId).toBeUndefined();
-    });
-
-    it('passes undefined to adapter.run when context is clean even when predecessorSessionId is supplied', async () => {
-      const cwd = await makeTempDir();
-      await writeFile(join(cwd, 'prompt.md'), 'hi', 'utf8');
-
-      const adapter = new FakeAdapter();
-      const node = PromptFileNode.parse({
-        id: 'n1',
-        prompt_file: 'prompt.md',
-        context: 'clean',
-      });
-      const runtime = makeRuntime(adapter);
-      const ctx = makeCtx({ cwd });
-      const runPromise = node.run(
-        makeOptions(runtime, { ctx, predecessorSessionId: 'sess-should-be-ignored' })
-      );
-      afterAdapterCalled(adapter, () => {
-        adapter.stream.emitDone('sess-1');
-      });
-      await runPromise;
-
-      expect(adapter.calls[0]!.sessionId).toBeUndefined();
-    });
-  });
-
-  describe('stream outcomes', () => {
-    it('result output is the concatenated chunks emitted by the adapter', async () => {
-      const cwd = await makeTempDir();
-      await writeFile(join(cwd, 'prompt.md'), 'file prompt', 'utf8');
-
-      const adapter = new FakeAdapter();
-      const node = PromptFileNode.parse({ id: 'n1', prompt_file: 'prompt.md' });
-      const runtime = makeRuntime(adapter);
-      const ctx = makeCtx({ cwd });
-      const runPromise = node.run(makeOptions(runtime, { ctx }));
-      afterAdapterCalled(adapter, () => {
-        adapter.stream.emitChunk('response text');
-        adapter.stream.emitDone('sess-1');
-      });
-      const result = await runPromise;
-
-      expect(result.status).toBe('completed');
-      expect((result as NodeRunCompleted).result['output']).toBe('response text');
     });
   });
 });
