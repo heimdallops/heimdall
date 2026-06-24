@@ -66,8 +66,11 @@ export abstract class AgenticNode extends BaseNode<NodeRunCompleted | NodeRunFai
   /** Builds the interpolated (or file-derived) prompt dispatched to the adapter. */
   protected abstract resolvePrompt(ctx: ExecutionContext): Promise<string>;
 
-  /** Subclass-specific adapter options merged on top of platform option defaults. */
-  protected buildExtraOptions(): Record<string, unknown> {
+  /**
+   * Subclass-specific adapter options merged on top of platform option defaults. `ctx` is
+   * provided so subclasses can interpolate option fields (e.g. AgentNode's agent reference).
+   */
+  protected buildExtraOptions(_ctx: ExecutionContext): Record<string, unknown> {
     return {};
   }
 
@@ -90,7 +93,7 @@ export abstract class AgenticNode extends BaseNode<NodeRunCompleted | NodeRunFai
     const adapterOptions: Record<string, unknown> = {
       ...(runtime.defaultPlatformOptions ?? {}),
       ...(this.platformOptions ?? {}),
-      ...this.buildExtraOptions(),
+      ...this.buildExtraOptions(ctx),
     };
     if (this.outputFormat !== undefined) {
       adapterOptions['output_format'] = this.outputFormat;
@@ -188,7 +191,7 @@ export class PromptNode extends AgenticNode {
   }
 
   protected override resolvePrompt(ctx: ExecutionContext): Promise<string> {
-    return Promise.resolve(interpolatePrompt(this.prompt, ctx, this.id, this.name));
+    return Promise.resolve(interpolateField(this.prompt, 'prompt', ctx, this.id, this.name));
   }
 }
 
@@ -217,12 +220,15 @@ export class AgentNode extends AgenticNode {
   }
 
   protected override resolvePrompt(ctx: ExecutionContext): Promise<string> {
-    return Promise.resolve(interpolatePrompt(this.instructions ?? '', ctx, this.id, this.name));
+    return Promise.resolve(
+      interpolateField(this.instructions ?? '', 'instructions', ctx, this.id, this.name)
+    );
   }
 
-  // The agent name is forwarded unresolved; the adapter owns resolution.
-  protected override buildExtraOptions(): Record<string, unknown> {
-    return { agent: this.agent };
+  // The agent reference supports ${{ }} interpolation but is otherwise forwarded unresolved —
+  // the adapter owns agent lookup.
+  protected override buildExtraOptions(ctx: ExecutionContext): Record<string, unknown> {
+    return { agent: interpolateField(this.agent, 'agent', ctx, this.id, this.name) };
   }
 }
 
@@ -245,26 +251,28 @@ export class PromptFileNode extends AgenticNode {
   }
 
   protected override async resolvePrompt(ctx: ExecutionContext): Promise<string> {
-    const path = resolve(ctx.cwd, this.promptFile);
+    const promptFile = interpolateField(this.promptFile, 'prompt_file', ctx, this.id, this.name);
+    const path = resolve(ctx.cwd, promptFile);
 
     let contents: string;
     try {
       contents = await readFile(path, 'utf8');
     } catch (err) {
       throw new NodeError(
-        `Failed to read prompt file '${this.promptFile}'`,
+        `Failed to read prompt file '${promptFile}'`,
         'ENGINE_PROMPT_FILE_READ_ERROR',
         this.id,
         { nodeName: this.name, cause: err }
       );
     }
 
-    return interpolatePrompt(contents, ctx, this.id, this.name);
+    return interpolateField(contents, 'prompt file contents', ctx, this.id, this.name);
   }
 }
 
-const interpolatePrompt = (
+const interpolateField = (
   template: string,
+  field: string,
   ctx: ExecutionContext,
   nodeId: string,
   nodeName: string | undefined
@@ -273,7 +281,7 @@ const interpolatePrompt = (
     return interpolate(template, ctx as unknown as Record<string, unknown>);
   } catch (err) {
     throw new NodeError(
-      'Failed to interpolate prompt',
+      `Failed to interpolate ${field}`,
       'ENGINE_AGENTIC_INTERPOLATION_ERROR',
       nodeId,
       { nodeName, cause: err }

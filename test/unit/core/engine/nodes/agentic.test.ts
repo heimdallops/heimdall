@@ -1,4 +1,4 @@
-import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import { join } from 'node:path';
 
@@ -628,20 +628,20 @@ describe('AgentNode', () => {
     });
   });
 
-  describe('agent field forwarded unresolved', () => {
-    it('passes the raw agent string to adapter options without interpolation', async () => {
+  describe('agent reference', () => {
+    it('interpolates CEL expressions in the agent reference before forwarding it', async () => {
       const adapter = new FakeAdapter();
-      // The agent name contains an interpolation marker; it must NOT be evaluated
-      const node = AgentNode.parse({ id: 'n1', agent: 'my-${{ inputs.x }}' });
+      const node = AgentNode.parse({ id: 'n1', agent: 'reviewer-${{ inputs.lang }}' });
       const runtime = makeRuntime(adapter);
-      const ctx = makeCtx({ inputs: { x: 'agent' } });
+      const ctx = makeCtx({ inputs: { lang: 'go' } });
       const runPromise = node.run(makeOptions(runtime, { ctx }));
       afterAdapterCalled(adapter, () => {
         adapter.stream.emitDone('sess-1');
       });
       await runPromise;
 
-      expect(adapter.calls[0]!.options['agent']).toBe('my-${{ inputs.x }}');
+      // Interpolated, but still forwarded unresolved — the adapter owns agent lookup.
+      expect(adapter.calls[0]!.options['agent']).toBe('reviewer-go');
     });
 
     it('includes agent in adapter options even when instructions is absent', async () => {
@@ -759,7 +759,6 @@ describe('PromptFileNode', () => {
     });
 
     it('resolves the prompt_file path relative to ctx.cwd', async () => {
-      const { mkdir } = await import('node:fs/promises');
       const cwd = await makeTempDir();
       await mkdir(join(cwd, 'prompts'));
       await writeFile(join(cwd, 'prompts', 'step1.md'), 'step content', 'utf8');
@@ -775,6 +774,24 @@ describe('PromptFileNode', () => {
       await runPromise;
 
       expect(adapter.calls[0]!.prompt).toBe('step content');
+    });
+
+    it('interpolates CEL expressions in the prompt_file path before reading', async () => {
+      const cwd = await makeTempDir();
+      await mkdir(join(cwd, 'prompts'));
+      await writeFile(join(cwd, 'prompts', 'step1.md'), 'interpolated path content', 'utf8');
+
+      const adapter = new FakeAdapter();
+      const node = PromptFileNode.parse({ id: 'n1', prompt_file: 'prompts/${{ inputs.step }}.md' });
+      const runtime = makeRuntime(adapter);
+      const ctx = makeCtx({ cwd, inputs: { step: 'step1' } });
+      const runPromise = node.run(makeOptions(runtime, { ctx }));
+      afterAdapterCalled(adapter, () => {
+        adapter.stream.emitDone('sess-1');
+      });
+      await runPromise;
+
+      expect(adapter.calls[0]!.prompt).toBe('interpolated path content');
     });
   });
 
