@@ -1,5 +1,5 @@
 $schema: 'https://json-schema.org/draft/2020-12/schema'
-description: Runs an AI model with a prompt loaded from a file. The file supports ${{ <expression> }} interpolation using CEL expressions. Extends agentic_node.yaml.
+description: Runs an AI model with a prompt loaded from a file. The path and the file's contents both support ${{ <expression> }} interpolation using CEL expressions. Extends agentic_node.yaml.
 allOf:
   - $ref: agentic_node.yaml
   - type: object
@@ -7,7 +7,14 @@ allOf:
       prompt_file:
         type: string
         description: >-
-          Path to a file containing a prompt. Supports ${{ <expression> }}
-          interpolation using CEL expressions.
+          Path to a file containing a prompt. Both the path and the file's
+          contents support ${{ <expression> }} interpolation using CEL
+          expressions. Absolute paths are used as-is. A relative path that
+          navigates (starts with "./" or "../", or contains "..") is resolved
+          against the working directory only. Any other relative path is
+          searched for, first match wins: the working directory, then each
+          ancestor's .heimdall/prompts directory walking up to the git root
+          (or the filesystem root), then <config>/heimdall/prompts
+          (XDG_CONFIG_HOME, or ~/.config).
     required:
       - prompt_file

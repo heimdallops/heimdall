@@ -1,6 +1,7 @@
-import { readFile } from 'node:fs/promises';
-import { resolve } from 'node:path';
+import { readFile, stat } from 'node:fs/promises';
+import { isAbsolute, join, resolve } from 'node:path';
 
+import { configHome } from '../../../utils/config-home.ts';
 import type { Platform } from '../../platform/index.ts';
 import { interpolate } from '../cel.ts';
 import { NodeError } from '../errors.ts';
@@ -261,23 +262,75 @@ export class PromptFileNode extends AgenticNode {
 
   protected override async resolvePrompt(ctx: ExecutionContext): Promise<string> {
     const promptFile = interpolateField(this.promptFile, 'prompt_file', ctx, this.id, this.name);
-    const path = resolve(ctx.cwd, promptFile);
-
-    let contents: string;
-    try {
-      contents = await readFile(path, 'utf8');
-    } catch (err) {
-      throw new NodeError(
-        `Failed to read prompt file '${promptFile}'`,
-        'ENGINE_PROMPT_FILE_READ_ERROR',
-        this.id,
-        { nodeName: this.name, cause: err }
-      );
-    }
+    const contents = await this.readPromptFile(promptFile, ctx);
 
     return interpolateField(contents, 'prompt file contents', ctx, this.id, this.name);
   }
+
+  // Reads the first candidate path that exists; fails with the full search list if none do.
+  private async readPromptFile(promptFile: string, ctx: ExecutionContext): Promise<string> {
+    const candidates = await promptFileCandidates(promptFile, ctx.cwd);
+
+    let lastError: unknown;
+    for (const candidate of candidates) {
+      try {
+        return await readFile(candidate, 'utf8');
+      } catch (err) {
+        lastError = err;
+      }
+    }
+
+    const detail = candidates.length > 1 ? `; searched: ${candidates.join(', ')}` : '';
+    throw new NodeError(
+      `Failed to read prompt file '${promptFile}'${detail}`,
+      'ENGINE_PROMPT_FILE_READ_ERROR',
+      this.id,
+      { nodeName: this.name, cause: lastError }
+    );
+  }
 }
+
+// Candidate prompt_file paths in priority order. Absolute paths are used as-is. Relative paths that
+// navigate (a leading `.`/`..` segment, or any `..`) are anchored to cwd only — never the search
+// locations, so they can't be `..`-escaped. Plain relative paths try cwd, then each ancestor's
+// .heimdall/prompts directory walking up to the git root (inclusive) or the filesystem root, then
+// the global prompts dir under the config home. First existing wins.
+const promptFileCandidates = async (promptFile: string, cwd: string): Promise<string[]> => {
+  if (isAbsolute(promptFile)) {
+    return [promptFile];
+  }
+
+  const segments = promptFile.split(/[/\\]/);
+  if (segments[0] === '.' || segments.includes('..')) {
+    return [resolve(cwd, promptFile)];
+  }
+
+  const candidates = [join(cwd, promptFile)];
+  let dir = resolve(cwd);
+  for (;;) {
+    candidates.push(join(dir, '.heimdall', 'prompts', promptFile));
+
+    // `.git` is a file for worktrees and submodules, so existence — not type — marks the git root.
+    const isGitRoot = await stat(resolve(dir, '.git')).then(
+      () => true,
+      () => false
+    );
+    if (isGitRoot) {
+      break;
+    }
+
+    const parent = resolve(dir, '..');
+    if (parent === dir) {
+      break;
+    }
+
+    dir = parent;
+  }
+
+  candidates.push(join(configHome(), 'heimdall', 'prompts', promptFile));
+
+  return candidates;
+};
 
 const interpolateField = (
   template: string,

@@ -205,12 +205,23 @@ const afterAdapterCalled = (adapter: FakeAdapter, fn: () => void): void => {
 // ---------------------------------------------------------------------------
 
 let tempDirs: string[] = [];
+let originalXdgConfigHome: string | undefined;
 
 beforeEach(() => {
   tempDirs = [];
+  originalXdgConfigHome = process.env['XDG_CONFIG_HOME'];
+  // Point the config home at a path that does not exist so prompt_file resolution can't pick up a
+  // real ~/.config file; the config-fallback test overrides this.
+  process.env['XDG_CONFIG_HOME'] = join(os.tmpdir(), 'heimdall-agentic-no-config');
 });
 
 afterEach(async () => {
+  if (originalXdgConfigHome === undefined) {
+    delete process.env['XDG_CONFIG_HOME'];
+  } else {
+    process.env['XDG_CONFIG_HOME'] = originalXdgConfigHome;
+  }
+
   await Promise.all(tempDirs.splice(0).map((dir) => rm(dir, { recursive: true, force: true })));
 });
 
@@ -808,6 +819,161 @@ describe('PromptFileNode', () => {
       await runPromise;
 
       expect(adapter.calls[0]!.prompt).toBe('interpolated path content');
+    });
+  });
+
+  describe('relative path search locations', () => {
+    it('finds a plain relative file in an ancestor .heimdall/prompts directory', async () => {
+      const root = await makeTempDir();
+      await mkdir(join(root, '.git'));
+      await mkdir(join(root, '.heimdall', 'prompts'), { recursive: true });
+      await writeFile(join(root, '.heimdall', 'prompts', 'shared.md'), 'from project', 'utf8');
+      const cwd = join(root, 'a', 'b');
+      await mkdir(cwd, { recursive: true });
+
+      const adapter = new FakeAdapter();
+      const node = PromptFileNode.parse({ id: 'n1', prompt_file: 'shared.md' });
+      const runtime = makeRuntime(adapter);
+      const runPromise = node.run(makeOptions(runtime, { ctx: makeCtx({ cwd }) }));
+      afterAdapterCalled(adapter, () => {
+        adapter.stream.emitDone('sess-1');
+      });
+      await runPromise;
+
+      expect(adapter.calls[0]!.prompt).toBe('from project');
+    });
+
+    it('prefers cwd over an ancestor .heimdall/prompts directory', async () => {
+      const root = await makeTempDir();
+      await mkdir(join(root, '.git'));
+      await mkdir(join(root, '.heimdall', 'prompts'), { recursive: true });
+      await writeFile(join(root, '.heimdall', 'prompts', 'shared.md'), 'from project', 'utf8');
+      await writeFile(join(root, 'shared.md'), 'from cwd', 'utf8');
+
+      const adapter = new FakeAdapter();
+      const node = PromptFileNode.parse({ id: 'n1', prompt_file: 'shared.md' });
+      const runtime = makeRuntime(adapter);
+      const runPromise = node.run(makeOptions(runtime, { ctx: makeCtx({ cwd: root }) }));
+      afterAdapterCalled(adapter, () => {
+        adapter.stream.emitDone('sess-1');
+      });
+      await runPromise;
+
+      expect(adapter.calls[0]!.prompt).toBe('from cwd');
+    });
+
+    it('uses the nearest .heimdall/prompts when several ancestors have the file', async () => {
+      const root = await makeTempDir();
+      await mkdir(join(root, '.git'));
+      await mkdir(join(root, '.heimdall', 'prompts'), { recursive: true });
+      await writeFile(join(root, '.heimdall', 'prompts', 'shared.md'), 'from root', 'utf8');
+      const mid = join(root, 'a');
+      await mkdir(join(mid, '.heimdall', 'prompts'), { recursive: true });
+      await writeFile(join(mid, '.heimdall', 'prompts', 'shared.md'), 'from mid', 'utf8');
+      const cwd = join(mid, 'b');
+      await mkdir(cwd, { recursive: true });
+
+      const adapter = new FakeAdapter();
+      const node = PromptFileNode.parse({ id: 'n1', prompt_file: 'shared.md' });
+      const runtime = makeRuntime(adapter);
+      const runPromise = node.run(makeOptions(runtime, { ctx: makeCtx({ cwd }) }));
+      afterAdapterCalled(adapter, () => {
+        adapter.stream.emitDone('sess-1');
+      });
+      await runPromise;
+
+      expect(adapter.calls[0]!.prompt).toBe('from mid');
+    });
+
+    it('stops crawling at the git root and does not search above it', async () => {
+      const above = await makeTempDir();
+      await mkdir(join(above, '.heimdall', 'prompts'), { recursive: true });
+      await writeFile(join(above, '.heimdall', 'prompts', 'shared.md'), 'above the root', 'utf8');
+      const root = join(above, 'repo');
+      await mkdir(join(root, '.git'), { recursive: true });
+      const cwd = join(root, 'sub');
+      await mkdir(cwd, { recursive: true });
+
+      const adapter = new FakeAdapter();
+      const node = PromptFileNode.parse({ id: 'n1', prompt_file: 'shared.md' });
+      const runtime = makeRuntime(adapter);
+
+      let caught: unknown;
+      try {
+        await node.run(makeOptions(runtime, { ctx: makeCtx({ cwd }) }));
+      } catch (err) {
+        caught = err;
+      }
+
+      expect(caught).toBeInstanceOf(NodeError);
+      expect(adapter.calls).toHaveLength(0);
+    });
+
+    it('falls back to the config home prompts directory (XDG_CONFIG_HOME)', async () => {
+      const configDir = await makeTempDir();
+      await mkdir(join(configDir, 'heimdall', 'prompts'), { recursive: true });
+      await writeFile(join(configDir, 'heimdall', 'prompts', 'shared.md'), 'from config', 'utf8');
+      process.env['XDG_CONFIG_HOME'] = configDir;
+
+      const root = await makeTempDir();
+      await mkdir(join(root, '.git'));
+      const cwd = join(root, 'sub');
+      await mkdir(cwd, { recursive: true });
+
+      const adapter = new FakeAdapter();
+      const node = PromptFileNode.parse({ id: 'n1', prompt_file: 'shared.md' });
+      const runtime = makeRuntime(adapter);
+      const runPromise = node.run(makeOptions(runtime, { ctx: makeCtx({ cwd }) }));
+      afterAdapterCalled(adapter, () => {
+        adapter.stream.emitDone('sess-1');
+      });
+      await runPromise;
+
+      expect(adapter.calls[0]!.prompt).toBe('from config');
+    });
+
+    it('does not consult the search locations for a ./-prefixed (cwd-anchored) path', async () => {
+      const root = await makeTempDir();
+      await mkdir(join(root, '.git'));
+      await mkdir(join(root, '.heimdall', 'prompts'), { recursive: true });
+      await writeFile(join(root, '.heimdall', 'prompts', 'shared.md'), 'from project', 'utf8');
+
+      const adapter = new FakeAdapter();
+      const node = PromptFileNode.parse({ id: 'n1', prompt_file: './shared.md' });
+      const runtime = makeRuntime(adapter);
+
+      let caught: unknown;
+      try {
+        await node.run(makeOptions(runtime, { ctx: makeCtx({ cwd: root }) }));
+      } catch (err) {
+        caught = err;
+      }
+
+      expect(caught).toBeInstanceOf(NodeError);
+      expect((caught as NodeError).code).toBe('ENGINE_PROMPT_FILE_READ_ERROR');
+      expect(adapter.calls).toHaveLength(0);
+    });
+
+    it('resolves a .. path against cwd only, ignoring the search locations', async () => {
+      const parent = await makeTempDir();
+      await writeFile(join(parent, 'shared.md'), 'from parent', 'utf8');
+      // A decoy in the project search location must be ignored for a .. path.
+      await mkdir(join(parent, '.git'));
+      await mkdir(join(parent, '.heimdall', 'prompts'), { recursive: true });
+      await writeFile(join(parent, '.heimdall', 'prompts', 'shared.md'), 'decoy', 'utf8');
+      const cwd = join(parent, 'work');
+      await mkdir(cwd);
+
+      const adapter = new FakeAdapter();
+      const node = PromptFileNode.parse({ id: 'n1', prompt_file: '../shared.md' });
+      const runtime = makeRuntime(adapter);
+      const runPromise = node.run(makeOptions(runtime, { ctx: makeCtx({ cwd }) }));
+      afterAdapterCalled(adapter, () => {
+        adapter.stream.emitDone('sess-1');
+      });
+      await runPromise;
+
+      expect(adapter.calls[0]!.prompt).toBe('from parent');
     });
   });
 

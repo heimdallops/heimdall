@@ -7,7 +7,8 @@ allOf:
       agent:
         type: string
         description: >-
-          Name or path of the agent to run. Bare names are resolved using the
+          Name or path of the agent to run. Supports ${{ <expression> }}
+          interpolation using CEL expressions. Bare names are resolved using the
           same search path as the configured platform. Frontmatter is stripped
           and used as config for this node; config provided on the node directly
           takes precedence.
