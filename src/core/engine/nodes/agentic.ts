@@ -127,16 +127,18 @@ export abstract class AgenticNode extends BaseNode<NodeRunCompleted | NodeRunFai
         signal.removeEventListener('abort', onAbort);
       };
 
-      // Defends against an adapter that violates the single-terminal-event contract: only the
-      // first terminal event settles the promise, so a duplicate 'done'/'error' can't double-settle.
-      const settle = (result: NodeRunCompleted | NodeRunFailed): void => {
+      // Enforces "first terminal event wins": the first of done/error to claim owns the
+      // settlement, so a later terminal event (or an abort firing during the done handler's
+      // async gap) can't override it, and a misbehaving adapter can't double-settle.
+      const claim = (): boolean => {
         if (settled) {
-          return;
+          return false;
         }
 
         settled = true;
         cleanup();
-        resolvePromise(result);
+
+        return true;
       };
 
       // PlatformStream.on() types all handler args as unknown[]; String() coerces the delta in
@@ -146,12 +148,17 @@ export abstract class AgenticNode extends BaseNode<NodeRunCompleted | NodeRunFai
       });
 
       stream.on('done', () => {
-        // Snapshot the buffer before the async gap so late-arriving chunks can't mutate the output.
+        // Claim synchronously so a later error or abort can't override this completed run during
+        // the sessionId() await below; snapshot the buffer so late chunks can't mutate the output.
+        if (!claim()) {
+          return;
+        }
+
         const output = buffer;
         void (async (): Promise<void> => {
           const sessionId = await stream.sessionId().catch(() => undefined);
           const result: AgenticNodeResult = { output };
-          settle({
+          resolvePromise({
             status: 'completed',
             result,
             ...(sessionId !== undefined ? { sessionId } : {}),
@@ -160,7 +167,9 @@ export abstract class AgenticNode extends BaseNode<NodeRunCompleted | NodeRunFai
       });
 
       stream.on('error', (err) => {
-        settle({ status: 'failed', error: err });
+        if (claim()) {
+          resolvePromise({ status: 'failed', error: err });
+        }
       });
 
       if (signal.aborted) {

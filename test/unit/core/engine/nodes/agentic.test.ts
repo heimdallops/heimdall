@@ -481,6 +481,22 @@ describe.each(sharedBehaviorCases)('AgenticNode shared behavior ($name)', ({ bui
       expect(result.status).toBe('failed');
       expect((result as NodeRunFailed).error).toBe(boom);
     });
+
+    it('keeps the completed result when an error arrives after done (first terminal event wins)', async () => {
+      const { node, ctx } = await build();
+      const adapter = new FakeAdapter();
+      const runtime = makeRuntime(adapter);
+      const runPromise = node.run(makeOptions(runtime, { ctx }));
+      afterAdapterCalled(adapter, () => {
+        adapter.stream.emitChunk('done-wins');
+        adapter.stream.emitDone('sess-1');
+        adapter.stream.emitError(new Error('late error'));
+      });
+      const result = await runPromise;
+
+      expect(result.status).toBe('completed');
+      expect((result as NodeRunCompleted).result['output']).toBe('done-wins');
+    });
   });
 
   describe('signal / cancellation', () => {
