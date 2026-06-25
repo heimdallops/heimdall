@@ -623,6 +623,24 @@ describe('PromptNode', () => {
 
       expect(adapter.calls[0]!.prompt).toBe('No substitution here');
     });
+
+    it('throws NodeError and does not call the adapter when interpolation fails', async () => {
+      const adapter = new FakeAdapter();
+      const node = PromptNode.parse({ id: 'n1', prompt: 'Hello ${{ inputs.missing }}' });
+      const runtime = makeRuntime(adapter);
+      const ctx = makeCtx({ inputs: {} });
+
+      let caught: unknown;
+      try {
+        await node.run(makeOptions(runtime, { ctx }));
+      } catch (err) {
+        caught = err;
+      }
+
+      expect(caught).toBeInstanceOf(NodeError);
+      expect((caught as NodeError).code).toBe('ENGINE_AGENTIC_INTERPOLATION_ERROR');
+      expect(adapter.calls).toHaveLength(0);
+    });
   });
 });
 
