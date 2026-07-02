@@ -143,8 +143,13 @@ export abstract class AgenticNode extends BaseNode<NodeRunCompleted | NodeRunFai
       };
 
       // PlatformStream.on() types all handler args as unknown[]; String() coerces the delta in
-      // case a misbehaving adapter passes a non-string value.
+      // case a misbehaving adapter passes a non-string value. Chunks arriving after a terminal
+      // event are dropped so a misbehaving adapter can't grow the buffer indefinitely.
       stream.on('chunk', (delta) => {
+        if (settled) {
+          return;
+        }
+
         buffer += String(delta);
       });
 
@@ -291,10 +296,10 @@ export class PromptFileNode extends AgenticNode {
 }
 
 // Candidate prompt_file paths in priority order. Absolute paths are used as-is. Relative paths that
-// navigate (a leading `.`/`..` segment, or any `..`) are anchored to cwd only — never the search
-// locations, so they can't be `..`-escaped. Plain relative paths try cwd, then each ancestor's
-// .heimdall/prompts directory walking up to the git root (inclusive) or the filesystem root, then
-// the global prompts dir under the config home. First existing wins.
+// navigate (a leading `.`/`..` segment, or any `..`) resolve against cwd only and skip the search
+// locations entirely, so `..` can't retarget a lookup inside them. Plain relative paths try cwd,
+// then each ancestor's .heimdall/prompts directory walking up to the git root (inclusive) or the
+// filesystem root, then the global prompts dir under the config home. First existing wins.
 const promptFileCandidates = async (promptFile: string, cwd: string): Promise<string[]> => {
   if (isAbsolute(promptFile)) {
     return [promptFile];

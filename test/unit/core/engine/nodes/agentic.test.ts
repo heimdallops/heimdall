@@ -211,8 +211,13 @@ beforeEach(() => {
   tempDirs = [];
   originalXdgConfigHome = process.env['XDG_CONFIG_HOME'];
   // Point the config home at a path that does not exist so prompt_file resolution can't pick up a
-  // real ~/.config file; the config-fallback test overrides this.
-  process.env['XDG_CONFIG_HOME'] = join(os.tmpdir(), 'heimdall-agentic-no-config');
+  // real ~/.config file; the config-fallback test overrides this. Unique per run so a leftover
+  // directory created by another process at the same path can't make resolution
+  // environment-dependent.
+  process.env['XDG_CONFIG_HOME'] = join(
+    os.tmpdir(),
+    `heimdall-agentic-no-config-${process.pid}-${Date.now()}`
+  );
 });
 
 afterEach(async () => {
