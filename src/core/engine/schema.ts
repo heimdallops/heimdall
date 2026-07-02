@@ -74,10 +74,11 @@ export const BashNodeSchema = BaseNodeSchema.extend({
   output_format: z.enum(['text', 'json']).optional(),
 });
 
-const AgenticBaseNodeSchema = BaseNodeSchema.extend({
+export const AgenticBaseNodeSchema = BaseNodeSchema.extend({
   platform: platformSchema.optional(),
   platform_options: z.record(z.string(), z.unknown()).optional(),
   context: z.enum(['clean', 'shared']).optional(),
+  output_format: z.record(z.string(), z.unknown()).optional(),
 });
 
 export const AgentNodeSchema = AgenticBaseNodeSchema.extend({
@@ -157,6 +158,7 @@ export const LoopNodeSchema = BaseNodeSchema.extend({
 });
 
 export type BashNode = z.infer<typeof BashNodeSchema>;
+export type AgenticBaseNode = z.infer<typeof AgenticBaseNodeSchema>;
 export type AgentNode = z.infer<typeof AgentNodeSchema>;
 export type PromptNode = z.infer<typeof PromptNodeSchema>;
 export type PromptFileNode = z.infer<typeof PromptFileNodeSchema>;
