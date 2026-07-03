@@ -38,6 +38,9 @@ import { PlatformCancellationError, PlatformError } from '../errors.ts';
 import type { PlatformStream, StreamEventMap } from '../types.ts';
 import type { ClaudeOptions } from './options.ts';
 
+const nonEmpty = (value: string | undefined): string | undefined =>
+  value === '' ? undefined : value;
+
 export class ClaudeStream extends EventEmitter implements PlatformStream {
   private static readonly CLAUDE_CODE_SYSTEM_PROMPT = {
     type: 'preset',
@@ -154,19 +157,25 @@ export class ClaudeStream extends EventEmitter implements PlatformStream {
   private buildSdkOptions(): Options {
     const { options } = this;
 
+    // Empty strings are normalized to unset: '' is never a meaningful model, agent reference,
+    // or system prompt, and the CLI itself silently ignores an empty --agent. Number and array
+    // options keep strict presence checks — 0 and [] are meaningful values there.
+    const model = nonEmpty(options.model);
+    const agent = nonEmpty(options.agent);
+
     // The SDK's default system prompt is empty (isolation mode), which overrides the named
     // agent's own prompt and would make `agent` a no-op. The claude_code preset restores CLI
     // behavior for agent runs; an explicit system_prompt still takes precedence below.
-    const systemPrompt = options.agent
-      ? (options.system_prompt ?? ClaudeStream.CLAUDE_CODE_SYSTEM_PROMPT)
-      : options.system_prompt;
+    const systemPrompt = agent
+      ? (nonEmpty(options.system_prompt) ?? ClaudeStream.CLAUDE_CODE_SYSTEM_PROMPT)
+      : nonEmpty(options.system_prompt);
 
     return {
       abortController: this.abortController,
       includePartialMessages: true,
       ...(this.cwd !== undefined && { cwd: this.cwd }),
-      ...(options.model !== undefined && { model: options.model }),
-      ...(options.agent !== undefined && { agent: options.agent }),
+      ...(model !== undefined && { model }),
+      ...(agent !== undefined && { agent }),
       ...(options.reasoning_effort !== undefined && { effort: options.reasoning_effort }),
       ...(options.allowed_tools !== undefined && { allowedTools: options.allowed_tools }),
       ...(options.disallowed_tools !== undefined && { disallowedTools: options.disallowed_tools }),

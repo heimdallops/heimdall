@@ -99,6 +99,32 @@ describe('ClaudeCodeAdapter', () => {
       expect(opts['systemPrompt']).toBeUndefined();
     });
 
+    it('treats empty-string options as unset for agent, model, and system_prompt', async () => {
+      const { query: mockedQuery } = await import('@anthropic-ai/claude-agent-sdk');
+      const queryMock = vi.mocked(mockedQuery);
+      queryMock.mockClear();
+
+      const adapter = new ClaudeCodeAdapter();
+      await adapter.run('prompt', { agent: '', model: '', system_prompt: '' }).sessionId();
+
+      const opts = queryMock.mock.calls[0]![0].options as Record<string, unknown>;
+      expect(opts['agent']).toBeUndefined();
+      expect(opts['model']).toBeUndefined();
+      expect(opts['systemPrompt']).toBeUndefined();
+    });
+
+    it('falls back to the claude_code preset when system_prompt is empty on an agent run', async () => {
+      const { query: mockedQuery } = await import('@anthropic-ai/claude-agent-sdk');
+      const queryMock = vi.mocked(mockedQuery);
+      queryMock.mockClear();
+
+      const adapter = new ClaudeCodeAdapter();
+      await adapter.run('prompt', { agent: 'echo', system_prompt: '' }).sessionId();
+
+      const opts = queryMock.mock.calls[0]![0].options as Record<string, unknown>;
+      expect(opts['systemPrompt']).toEqual({ type: 'preset', preset: 'claude_code' });
+    });
+
     it('passes sessionId through to the SDK as the resume option when provided', async () => {
       const { query: mockedQuery } = await import('@anthropic-ai/claude-agent-sdk');
       const queryMock = vi.mocked(mockedQuery);
