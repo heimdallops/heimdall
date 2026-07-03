@@ -82,7 +82,7 @@ export const AgenticBaseNodeSchema = BaseNodeSchema.extend({
 });
 
 export const AgentNodeSchema = AgenticBaseNodeSchema.extend({
-  agent: z.string(),
+  agent: z.string().min(1, 'agent must not be empty'),
   instructions: z.string().optional(),
 });
 

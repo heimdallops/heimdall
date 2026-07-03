@@ -241,9 +241,22 @@ export class AgentNode extends AgenticNode {
   }
 
   // The agent reference supports ${{ }} interpolation but is otherwise forwarded unresolved —
-  // the adapter owns agent lookup.
+  // the platform owns agent lookup.
   protected override buildExtraOptions(ctx: ExecutionContext): Record<string, unknown> {
-    return { agent: interpolateField(this.agent, 'agent', ctx, this.id, this.name) };
+    const agent = interpolateField(this.agent, 'agent', ctx, this.id, this.name);
+
+    // Platforms silently ignore an empty agent reference, so a reference that interpolates to
+    // nothing would run without the agent and mask the workflow bug. Fail loudly instead.
+    if (agent.trim() === '') {
+      throw new NodeError(
+        'Agent reference resolved to an empty string',
+        'ENGINE_AGENTIC_EMPTY_AGENT',
+        this.id,
+        { nodeName: this.name }
+      );
+    }
+
+    return { agent };
   }
 }
 
