@@ -83,7 +83,7 @@ verify_checksum() {
   fi
 
   local expected
-  expected="$(printf '%s' "$checksums" | grep "$asset_name" | awk '{print $1}')"
+  expected="$(printf '%s' "$checksums" | awk -v asset="$asset_name" '$2 == asset {print $1}')"
   [ -n "$expected" ] || die "No checksum entry found for $asset_name in checksums file."
 
   local actual
