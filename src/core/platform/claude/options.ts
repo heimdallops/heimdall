@@ -3,6 +3,7 @@ import { z } from 'zod';
 export const claudeOptionsSchema = z
   .object({
     model: z.string().optional(),
+    agent: z.string().optional(),
     reasoning_effort: z.enum(['low', 'medium', 'high', 'xhigh', 'max']).optional(),
     allowed_tools: z.array(z.string()).optional(),
     disallowed_tools: z.array(z.string()).optional(),

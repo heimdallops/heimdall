@@ -12,6 +12,7 @@ import type {
 } from '../../../../src/core/engine/emitter.ts';
 import { createEngineEmitter } from '../../../../src/core/engine/emitter.ts';
 import { EngineError, NodeError } from '../../../../src/core/engine/errors.ts';
+import { ApprovalNode } from '../../../../src/core/engine/nodes/approval.ts';
 import type {
   ExecutionContext,
   NodeRunOptions,
@@ -216,6 +217,18 @@ describe('runScheduler', () => {
   });
 
   describe('skip propagation', () => {
+    it('runs a node whose if expression evaluates to true', async () => {
+      const node = new StubNode({ id: 'gated', if: 'true' });
+      const skipped: NodeSkippedEvent[] = collectEvents(emitter, 'node_skipped');
+
+      const result = await runScheduler([node], makeCtx(), options);
+
+      expect(node.runCount).toBe(1);
+      expect(skipped).toHaveLength(0);
+      expect(result.outcome).toBe('completed');
+      expect(result.success).toBe(true);
+    });
+
     it('skips a node whose if expression evaluates to false', async () => {
       const node = new StubNode({ id: 'gated', if: 'false' });
       const skipped: NodeSkippedEvent[] = collectEvents(emitter, 'node_skipped');
@@ -249,6 +262,23 @@ describe('runScheduler', () => {
 
       const skippedIds = skipped.map((e) => e.nodeId);
       expect(skippedIds).toContain('nodeA');
+      expect(skippedIds).toContain('nodeB');
+      expect(skippedIds).toContain('nodeC');
+    });
+
+    it('skips an if:false node whose dependency completed, and transitively skips its dependent', async () => {
+      // B's if is evaluated on the re-scan after A settles, not on the initial dispatch scan.
+      const nodeA = new StubNode({ id: 'nodeA' });
+      const nodeB = new StubNode({ id: 'nodeB', depends_on: ['nodeA'], if: 'false' });
+      const nodeC = new StubNode({ id: 'nodeC', depends_on: ['nodeB'] });
+      const skipped: NodeSkippedEvent[] = collectEvents(emitter, 'node_skipped');
+
+      await runScheduler([nodeA, nodeB, nodeC], makeCtx(), options);
+
+      expect(nodeA.runCount).toBe(1);
+      expect(nodeB.runCount).toBe(0);
+      expect(nodeC.runCount).toBe(0);
+      const skippedIds = skipped.map((e) => e.nodeId);
       expect(skippedIds).toContain('nodeB');
       expect(skippedIds).toContain('nodeC');
     });
@@ -871,6 +901,7 @@ describe('runScheduler', () => {
       const result = await schedulerDone;
 
       expect(result.success).toBe(false);
+      expect(node.runCount).toBe(3); // initial attempt + max_attempts retries
       expect(failed).toHaveLength(1);
       expect(failed[0]!.nodeId).toBe('always_fail');
     });
@@ -1067,6 +1098,35 @@ describe('runScheduler', () => {
 
       expect(completed[0]!.nodeId).toBe('first');
       expect(completed[1]!.nodeId).toBe('second');
+    });
+  });
+
+  describe('approval flow', () => {
+    it('blocks an approval node until the hook resolves, then emits node_completed for it', async () => {
+      const gate = new ApprovalNode({
+        id: 'gate',
+        message: 'Deploy?',
+        exitOnNo: false,
+        enableFeedback: false,
+      });
+      const completed: NodeCompletedEvent[] = collectEvents(emitter, 'node_completed');
+      // Register before starting the scheduler — approval_requested fires during dispatch.
+      const requestArrived = waitForEvent(emitter, 'approval_requested');
+
+      const schedulerDone = runScheduler([gate], makeCtx(), options);
+      const request = await requestArrived;
+
+      expect(request.nodeId).toBe('gate');
+      // The node stays blocked until the hook resolves the request.
+      expect(completed).toHaveLength(0);
+
+      request.resolve({ approved: true });
+      const result = await schedulerDone;
+
+      expect(result.success).toBe(true);
+      expect(completed).toHaveLength(1);
+      expect(completed[0]!.nodeId).toBe('gate');
+      expect(completed[0]!.result).toEqual({ approved: true });
     });
   });
 
