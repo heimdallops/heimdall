@@ -44,7 +44,7 @@ detect_platform() {
   case "$os" in
     linux)  os="linux" ;;
     darwin) os="macos" ;;
-    mingw*|msys*|cygwin*) die "This installer does not support Windows. Options: install WSL2 and re-run this script, or download heimdall-windows-x64.exe directly from https://github.com/${REPO}/releases." ;;
+    mingw*|msys*|cygwin*) die "This installer does not support Windows. Options: install WSL2 and re-run this script, or download heimdall-windows-x64.zip directly from https://github.com/${REPO}/releases." ;;
     *) die "Unsupported OS: $os" ;;
   esac
 
@@ -83,7 +83,7 @@ verify_checksum() {
   fi
 
   local expected
-  expected="$(printf '%s' "$checksums" | grep "$asset_name" | awk '{print $1}')"
+  expected="$(printf '%s' "$checksums" | awk -v asset="$asset_name" '$2 == asset {print $1}')"
   [ -n "$expected" ] || die "No checksum entry found for $asset_name in checksums file."
 
   local actual
@@ -107,7 +107,7 @@ main() {
   platform="$(detect_platform)"
   success "Platform: $platform"
 
-  local asset_name="heimdall-${platform}"
+  local asset_name="heimdall-${platform}.tar.gz"
   local base_url
   if [ "$VERSION" = "latest" ]; then
     base_url="https://github.com/${REPO}/releases/latest/download"
@@ -121,15 +121,18 @@ main() {
   tmp_dir="$(mktemp -d)"
   trap 'rm -rf "$tmp_dir"' EXIT
 
-  local binary_path="$tmp_dir/$asset_name"
+  local archive_path="$tmp_dir/$asset_name"
 
   info "Downloading $asset_name..."
-  download "${base_url}/${asset_name}" "$binary_path"
+  download "${base_url}/${asset_name}" "$archive_path"
   success "Downloaded"
 
-  verify_checksum "$binary_path" "$asset_name" "${base_url}/checksums.txt"
+  verify_checksum "$archive_path" "$asset_name" "${base_url}/checksums.txt"
 
-  chmod +x "$binary_path"
+  info "Extracting $asset_name..."
+  tar -xzf "$archive_path" -C "$tmp_dir"
+
+  local binary_path="$tmp_dir/$BINARY_NAME"
 
   info "Verifying binary..."
   if ! "$binary_path" --help >/dev/null 2>&1; then
