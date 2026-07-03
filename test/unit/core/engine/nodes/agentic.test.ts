@@ -118,14 +118,6 @@ class FakeAdapter implements PlatformAdapter {
 
     return this.stream;
   }
-
-  public findAgent(_name: string): Promise<string> {
-    return Promise.resolve('');
-  }
-
-  public parseAgent(_content: string): { prompt: string; options: Record<string, unknown> } {
-    return { prompt: '', options: {} };
-  }
 }
 
 /**

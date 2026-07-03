@@ -241,7 +241,7 @@ export class AgentNode extends AgenticNode {
   }
 
   // The agent reference supports ${{ }} interpolation but is otherwise forwarded unresolved —
-  // the adapter owns agent lookup.
+  // the platform owns agent lookup.
   protected override buildExtraOptions(ctx: ExecutionContext): Record<string, unknown> {
     return { agent: interpolateField(this.agent, 'agent', ctx, this.id, this.name) };
   }
