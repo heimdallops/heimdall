@@ -9,10 +9,15 @@ import { ClaudeCodeAdapter } from '../../../../src/core/platform/claude/adapter.
 import type { PlatformError } from '../../../../src/core/platform/errors.ts';
 import type { PlatformStream } from '../../../../src/core/platform/types.ts';
 
+// A Claude Code agent definition: the SDK discovers it from .claude/agents under the
+// adapter's cwd and applies the body as the agent's system prompt.
 const ECHO_AGENT_CONTENT = `---
 name: echo
-system_prompt: "You are an echo machine. When the user sends a message, reply with ONLY that exact message and nothing else. No greetings, no explanations, no punctuation changes."
----`;
+description: Echoes the user message back verbatim
+---
+
+You are an echo machine. When the user sends a message, reply with ONLY that exact message and nothing else. No greetings, no explanations, no punctuation changes.
+`;
 
 // The SDK spawns a bundled Claude Code CLI binary that accepts ANTHROPIC_API_KEY from the
 // environment or the developer's existing Claude Code CLI OAuth credentials (~/.claude/).
@@ -66,13 +71,11 @@ describe('ClaudeCodeAdapter integration', () => {
   });
 
   it.skipIf(!claudeAvailable)(
-    'echo agent returns hello world',
+    'echo agent resolved by the SDK from .claude/agents returns hello world',
     async () => {
-      const adapter = await ClaudeCodeAdapter.create(tempDir);
-      const content = await adapter.findAgent('echo');
-      const { options } = adapter.parseAgent(content);
+      const adapter = new ClaudeCodeAdapter(tempDir);
 
-      const stream = adapter.run('hello world', options);
+      const stream = adapter.run('hello world', { agent: 'echo' });
       const { output } = await collectStream(stream);
 
       expect(output.toLowerCase()).toContain('hello world');
@@ -84,7 +87,7 @@ describe('ClaudeCodeAdapter integration', () => {
   it.skipIf(!claudeAvailable)(
     'resumed session retains context from the previous turn',
     async () => {
-      const adapter = await ClaudeCodeAdapter.create(tempDir);
+      const adapter = new ClaudeCodeAdapter(tempDir);
 
       const stream1 = adapter.run('My secret word is: zygote. Reply with only: OK', {});
       await collectStream(stream1);
@@ -103,28 +106,12 @@ describe('ClaudeCodeAdapter integration', () => {
   );
 
   it.skipIf(!claudeAvailable)(
-    'agent with disallowed_tools frontmatter completes without error',
-    async () => {
-      const adapter = await ClaudeCodeAdapter.create(tempDir);
-      const { options } = adapter.parseAgent('---\nname: no-bash\ndisallowed_tools: [Bash]\n---\n');
-
-      expect(options.disallowed_tools).toEqual(['Bash']);
-
-      const stream = adapter.run('Reply with only: OK', options);
-      await collectStream(stream);
-    },
-    30_000
-  );
-
-  it.skipIf(!claudeAvailable)(
     'concurrent streams on the same adapter resolve independent session IDs',
     async () => {
-      const adapter = await ClaudeCodeAdapter.create(tempDir);
-      const content = await adapter.findAgent('echo');
-      const { options } = adapter.parseAgent(content);
+      const adapter = new ClaudeCodeAdapter(tempDir);
 
-      const stream1 = adapter.run('hello', options);
-      const stream2 = adapter.run('world', options);
+      const stream1 = adapter.run('hello', { agent: 'echo' });
+      const stream2 = adapter.run('world', { agent: 'echo' });
 
       await Promise.all([collectStream(stream1), collectStream(stream2)]);
 
@@ -140,7 +127,7 @@ describe('ClaudeCodeAdapter integration', () => {
   it.skipIf(!claudeAvailable)(
     'assembles multi-chunk response correctly',
     async () => {
-      const adapter = await ClaudeCodeAdapter.create(tempDir);
+      const adapter = new ClaudeCodeAdapter(tempDir);
 
       const chunks: string[] = [];
       const stream = adapter.run(
@@ -165,7 +152,7 @@ describe('ClaudeCodeAdapter integration', () => {
   it.skipIf(!claudeAvailable)(
     'chunks from a long response assemble into output exceeding 500 words',
     async () => {
-      const adapter = await ClaudeCodeAdapter.create(tempDir);
+      const adapter = new ClaudeCodeAdapter(tempDir);
 
       const chunks: string[] = [];
       const stream = adapter.run(
