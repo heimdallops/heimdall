@@ -7,7 +7,6 @@ import type { CliContext } from '../../cli/context.ts';
 import type { ApprovalResult } from '../../core/engine/emitter.ts';
 import { createEngineEmitter } from '../../core/engine/emitter.ts';
 import { EngineConfigError, EngineValidationError } from '../../core/engine/errors.ts';
-import type { WorkflowResult } from '../../core/engine/workflow.ts';
 import { Workflow } from '../../core/engine/workflow.ts';
 import { CliError, ERROR_CODE, EXIT_CODE } from '../../errors/cli-error.ts';
 
@@ -93,13 +92,161 @@ export const run = async (
   // isTTY; a piped or redirected stdout leaves it undefined.
   const stdoutIsTty = (stdout as { isTTY?: boolean }).isTTY === true;
 
-  const yaml = await readWorkflowFile(filePath, runInput.file);
+  // Captures the first interactive-prompt failure so the run fails afterward
+  // rather than silently proceeding as if the approval were declined.
+  let approvalError: unknown;
 
-  let workflow: Workflow;
+  // A prompt failure aborts this controller, which cancels the run through the
+  // engine's cancellation signal. The external signal (e.g. SIGINT) is forwarded
+  // into it so either source cancels the run the same way. Declared outside the
+  // try so the finally can always detach the forwarding listener.
+  const abortController = new AbortController();
+  const forwardExternalAbort = (): void => {
+    abortController.abort();
+  };
+  if (signal?.aborted) {
+    abortController.abort();
+  } else {
+    signal?.addEventListener('abort', forwardExternalAbort, { once: true });
+  }
 
+  // A single try/catch spans the run: the CLI-owned CliErrors thrown below pass
+  // through unchanged, and the engine's typed errors are mapped to CliErrors in
+  // one place rather than wrapping each statement in its own try/catch.
   try {
-    workflow = await Workflow.from(yaml);
+    const yaml = await readWorkflowFile(filePath, runInput.file);
+    const workflow = await Workflow.from(yaml);
+
+    const declaredInputs = workflow.inputs;
+
+    for (const key of Object.keys(runInput.inputs)) {
+      if (!declaredInputs.has(key)) {
+        throw new CliError(`Unknown input: '${key}' is not declared in this workflow`, {
+          code: ERROR_CODE.UNKNOWN_INPUT,
+          exitCode: EXIT_CODE.USAGE,
+        });
+      }
+    }
+
+    const missing: string[] = [];
+
+    for (const [name, declaration] of declaredInputs) {
+      if (!(name in runInput.inputs) && declaration.default === undefined) {
+        missing.push(name);
+      }
+    }
+
+    if (missing.length > 0) {
+      throw new CliError(
+        `Missing required input(s): ${missing.map((name) => `'${name}'`).join(', ')}`,
+        {
+          code: ERROR_CODE.MISSING_INPUTS,
+          exitCode: EXIT_CODE.USAGE,
+        }
+      );
+    }
+
+    const emitter = createEngineEmitter();
+
+    emitter.on('node_started', ({ nodeName }) => {
+      printer.info(`Node started: ${nodeName}`);
+    });
+
+    emitter.on('node_completed', ({ nodeName }) => {
+      printer.success(`Node completed: ${nodeName}`);
+    });
+
+    emitter.on('node_skipped', ({ nodeName }) => {
+      printer.warn(`Node skipped: ${nodeName}`);
+    });
+
+    emitter.on('node_failed', ({ nodeName, error }) => {
+      const message = error instanceof Error ? error.message : String(error);
+      printer.error(`Node failed: ${nodeName} — ${message}`);
+    });
+
+    emitter.on('node_cancelled', ({ nodeName }) => {
+      printer.warn(`Node cancelled: ${nodeName}`);
+    });
+
+    emitter.on('approval_requested', ({ nodeName, message, enableFeedback, resolve }) => {
+      if (runInput.approve) {
+        // --approve short-circuits every gate; the run is explicitly unattended.
+        printer.info(`Approval auto-approved for '${nodeName}': ${message}`);
+        resolve({ approved: true });
+
+        return;
+      }
+
+      if (config.json || !stdoutIsTty) {
+        // Without an interactive TTY there is nowhere to prompt, and in --json mode
+        // the result stream is machine-readable, so auto-decline in both cases and
+        // log a normal message rather than attempting a prompt that would fail.
+        printer.warn(
+          `Approval requested for '${nodeName}' auto-declined (non-interactive): ${message}`
+        );
+        resolve({ approved: false });
+
+        return;
+      }
+
+      // The emitter listener contract is synchronous (`=> void`), so the async
+      // prompt is fire-and-forget: resolve() is the mechanism that continues the
+      // engine. An async listener trips @typescript-eslint/no-misused-promises,
+      // so the void IIFE is the deliberate way to run async work from here.
+      void (async (): Promise<void> => {
+        try {
+          resolve(await promptApproval(nodeName, message, enableFeedback));
+        } catch (err) {
+          // A prompt failure is not a deliberate rejection. Abort the run so the
+          // engine cancels rather than proceeding as if the gate were declined;
+          // the CLI raises the error after run() returns.
+          approvalError ??= err;
+          abortController.abort();
+        }
+      })();
+    });
+
+    // The engine resolves platform adapters itself via a run-owned factory, so
+    // the CLI only forwards inputs, cwd, the cancellation signal, and the emitter.
+    const result = await workflow.run({
+      inputs: runInput.inputs,
+      emitter,
+      cwd,
+      signal: abortController.signal,
+    });
+
+    if (approvalError !== undefined) {
+      const detail =
+        approvalError instanceof Error ? approvalError.message : 'interactive prompt failed';
+      throw new CliError(`Approval prompt failed: ${detail}`, {
+        code: ERROR_CODE.WORKFLOW_FAILED,
+        exitCode: EXIT_CODE.UNKNOWN,
+        cause: approvalError,
+      });
+    }
+
+    if (config.json) {
+      printer.out(JSON.stringify({ success: result.success, exitReason: result.exitReason }));
+    }
+
+    if (!result.success) {
+      const reason = result.exitReason ? ` (${result.exitReason})` : '';
+      throw new CliError(`Workflow failed${reason}`, {
+        code: ERROR_CODE.WORKFLOW_FAILED,
+        exitCode: EXIT_CODE.UNKNOWN,
+      });
+    }
+
+    if (!config.json) {
+      printer.success('Workflow completed successfully');
+    }
   } catch (err) {
+    // CLI-owned failures already carry the right code/exit; pass them through.
+    if (err instanceof CliError) {
+      throw err;
+    }
+
     if (err instanceof EngineValidationError) {
       throw new CliError(err.toString(), {
         code: ERROR_CODE.WORKFLOW_INVALID,
@@ -117,162 +264,7 @@ export const run = async (
     }
 
     throw err;
-  }
-
-  const declaredInputs = workflow.inputs;
-
-  for (const key of Object.keys(runInput.inputs)) {
-    if (!declaredInputs.has(key)) {
-      throw new CliError(`Unknown input: '${key}' is not declared in this workflow`, {
-        code: ERROR_CODE.UNKNOWN_INPUT,
-        exitCode: EXIT_CODE.USAGE,
-      });
-    }
-  }
-
-  const missing: string[] = [];
-
-  for (const [name, declaration] of declaredInputs) {
-    if (!(name in runInput.inputs) && declaration.default === undefined) {
-      missing.push(name);
-    }
-  }
-
-  if (missing.length > 0) {
-    throw new CliError(
-      `Missing required input(s): ${missing.map((name) => `'${name}'`).join(', ')}`,
-      {
-        code: ERROR_CODE.MISSING_INPUTS,
-        exitCode: EXIT_CODE.USAGE,
-      }
-    );
-  }
-
-  const emitter = createEngineEmitter();
-
-  emitter.on('node_started', ({ nodeName }) => {
-    printer.info(`Node started: ${nodeName}`);
-  });
-
-  emitter.on('node_completed', ({ nodeName }) => {
-    printer.success(`Node completed: ${nodeName}`);
-  });
-
-  emitter.on('node_skipped', ({ nodeName }) => {
-    printer.warn(`Node skipped: ${nodeName}`);
-  });
-
-  emitter.on('node_failed', ({ nodeName, error }) => {
-    const message = error instanceof Error ? error.message : String(error);
-    printer.error(`Node failed: ${nodeName} — ${message}`);
-  });
-
-  emitter.on('node_cancelled', ({ nodeName }) => {
-    printer.warn(`Node cancelled: ${nodeName}`);
-  });
-
-  // Captures the first interactive-prompt failure so the run fails afterward
-  // rather than silently proceeding as if the approval were declined.
-  let approvalError: unknown;
-
-  // A prompt failure aborts this controller, which cancels the run through the
-  // engine's cancellation signal. The external signal (e.g. SIGINT) is forwarded
-  // into it so either source cancels the run the same way.
-  const abortController = new AbortController();
-  const forwardExternalAbort = (): void => {
-    abortController.abort();
-  };
-  if (signal?.aborted) {
-    abortController.abort();
-  } else {
-    signal?.addEventListener('abort', forwardExternalAbort, { once: true });
-  }
-
-  emitter.on('approval_requested', ({ nodeName, message, enableFeedback, resolve }) => {
-    if (runInput.approve) {
-      // --approve short-circuits every gate; the run is explicitly unattended.
-      printer.info(`Approval auto-approved for '${nodeName}': ${message}`);
-      resolve({ approved: true });
-
-      return;
-    }
-
-    if (config.json || !stdoutIsTty) {
-      // Without an interactive TTY there is nowhere to prompt, and in --json mode
-      // the result stream is machine-readable, so auto-decline in both cases and
-      // log a normal message rather than attempting a prompt that would fail.
-      printer.warn(
-        `Approval requested for '${nodeName}' auto-declined (non-interactive): ${message}`
-      );
-      resolve({ approved: false });
-
-      return;
-    }
-
-    // The emitter listener contract is synchronous (`=> void`), so the async
-    // prompt is fire-and-forget: resolve() is the mechanism that continues the
-    // engine. An async listener trips @typescript-eslint/no-misused-promises,
-    // so the void IIFE is the deliberate way to run async work from here.
-    void (async (): Promise<void> => {
-      try {
-        resolve(await promptApproval(nodeName, message, enableFeedback));
-      } catch (err) {
-        // A prompt failure is not a deliberate rejection. Abort the run so the
-        // engine cancels rather than proceeding as if the gate were declined;
-        // the CLI raises the error after run() returns.
-        approvalError ??= err;
-        abortController.abort();
-      }
-    })();
-  });
-
-  let result: WorkflowResult;
-  try {
-    // The engine resolves platform adapters itself via a run-owned factory, so
-    // the CLI only forwards inputs, cwd, the cancellation signal, and the emitter.
-    result = await workflow.run({
-      inputs: runInput.inputs,
-      emitter,
-      cwd,
-      signal: abortController.signal,
-    });
-  } catch (err) {
-    if (err instanceof EngineConfigError) {
-      throw new CliError(err.toString(), {
-        code: ERROR_CODE.WORKFLOW_CONFIG_ERROR,
-        exitCode: EXIT_CODE.CONFIG,
-        cause: err,
-      });
-    }
-
-    throw err;
   } finally {
     signal?.removeEventListener('abort', forwardExternalAbort);
-  }
-
-  if (approvalError !== undefined) {
-    const detail =
-      approvalError instanceof Error ? approvalError.message : 'interactive prompt failed';
-    throw new CliError(`Approval prompt failed: ${detail}`, {
-      code: ERROR_CODE.WORKFLOW_FAILED,
-      exitCode: EXIT_CODE.UNKNOWN,
-      cause: approvalError,
-    });
-  }
-
-  if (config.json) {
-    printer.out(JSON.stringify({ success: result.success, exitReason: result.exitReason }));
-  }
-
-  if (!result.success) {
-    const reason = result.exitReason ? ` (${result.exitReason})` : '';
-    throw new CliError(`Workflow failed${reason}`, {
-      code: ERROR_CODE.WORKFLOW_FAILED,
-      exitCode: EXIT_CODE.UNKNOWN,
-    });
-  }
-
-  if (!config.json) {
-    printer.success('Workflow completed successfully');
   }
 };
