@@ -37,6 +37,7 @@ heimdall run <file> [--input key=value]...
 | Option                    | Description                                                    |
 | ------------------------- | -------------------------------------------------------------- |
 | `-i, --input <key=value>` | Pass a runtime input to the workflow. Repeatable.              |
+| `--approve`               | Automatically approve every approval gate without prompting    |
 | `--json`                  | Suppress progress output; write a single JSON result to stdout |
 | `--quiet`                 | Suppress progress output; still prints final success/failure   |
 | `--verbose`               | Show additional detail for each node                           |

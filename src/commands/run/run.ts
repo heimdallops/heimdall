@@ -14,6 +14,8 @@ import { CliError, ERROR_CODE, EXIT_CODE } from '../../errors/cli-error.ts';
 export interface RunInput {
   readonly file: string;
   readonly inputs: Record<string, string>;
+  // Auto-approve every approval gate without prompting (the `--approve` flag).
+  readonly approve: boolean;
 }
 
 /**
@@ -170,6 +172,14 @@ export const run = async (
   let approvalError: unknown;
 
   emitter.on('approval_requested', ({ nodeName, message, enableFeedback, resolve }) => {
+    if (runInput.approve) {
+      // --approve short-circuits every gate; the run is explicitly unattended.
+      printer.info(`Approval auto-approved for '${nodeName}': ${message}`);
+      resolve({ approved: true });
+
+      return;
+    }
+
     if (config.json) {
       // --json controls the final result format, not logging, and there is no
       // TTY to prompt on, so log a normal message and auto-decline.

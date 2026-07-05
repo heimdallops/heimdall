@@ -112,6 +112,7 @@ const makeCtx = (overrides: Partial<CliContext> = {}): CliContext & { printer: S
 const makeInput = (overrides: Partial<RunInput> = {}): RunInput => ({
   file: 'workflow.yaml',
   inputs: {},
+  approve: false,
   ...overrides,
 });
 
@@ -674,6 +675,21 @@ describe('run command — run()', () => {
 
       expect(input).not.toHaveBeenCalled();
       expect(resolvedResult).toEqual({ approved: false });
+    });
+
+    it('auto-approves without prompting when --approve is set', async () => {
+      let resolvedResult: ApprovalResult | undefined;
+      const workflowStub = makeApprovalWorkflowStub(true, (result): void => {
+        resolvedResult = result;
+      });
+      workflowFromMock.mockResolvedValue(workflowStub as never);
+
+      const ctx = makeCtx();
+      await run(ctx, makeInput({ approve: true }));
+
+      expect(confirm).not.toHaveBeenCalled();
+      expect(select).not.toHaveBeenCalled();
+      expect(resolvedResult).toEqual({ approved: true });
     });
 
     it('fails the run when the approval prompt throws', async () => {

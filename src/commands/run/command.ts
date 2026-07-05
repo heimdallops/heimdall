@@ -32,16 +32,23 @@ export const registerRunCommand = (program: Command): void => {
       parseInputFlag,
       {}
     )
-    .action(async (file: string, options: { input: Record<string, string> }, cmd: Command) => {
-      const ctx = await createContext({
-        cwd: process.cwd(),
-        stdout: process.stdout,
-        stderr: process.stderr,
-        flags: cmd.parent?.opts() ?? {},
-      });
+    .option('--approve', 'Automatically approve every approval gate without prompting')
+    .action(
+      async (
+        file: string,
+        options: { input: Record<string, string>; approve?: boolean },
+        cmd: Command
+      ) => {
+        const ctx = await createContext({
+          cwd: process.cwd(),
+          stdout: process.stdout,
+          stderr: process.stderr,
+          flags: cmd.parent?.opts() ?? {},
+        });
 
-      await withSignalHandling(ctx, async (signal) => {
-        await run(ctx, { file, inputs: options.input }, signal);
-      });
-    });
+        await withSignalHandling(ctx, async (signal) => {
+          await run(ctx, { file, inputs: options.input, approve: options.approve ?? false }, signal);
+        });
+      }
+    );
 };
