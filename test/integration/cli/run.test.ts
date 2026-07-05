@@ -34,6 +34,19 @@ nodes:
 `.trimStart();
 
 /**
+ * A workflow that declares an integer input with no default.
+ */
+const WORKFLOW_WITH_INTEGER_INPUT_YAML = `
+name: needs-count
+inputs:
+  count:
+    type: integer
+nodes:
+  - id: step1
+    bash: "true"
+`.trimStart();
+
+/**
  * A workflow whose single node exits with code 1 (failure).
  */
 const FAILING_WORKFLOW_YAML = `
@@ -334,6 +347,38 @@ nodes:
 
       // The value after the first = must be preserved intact; the command should succeed
       expect(result.exitCode).toBe(0);
+    });
+  });
+
+  describe('typed --input coercion', () => {
+    it('accepts a valid integer value for an integer input', async () => {
+      const filePath = await writeWorkflow('workflow.yaml', WORKFLOW_WITH_INTEGER_INPUT_YAML);
+
+      const result = await execa('node', [cliPath, 'run', '--input', 'count=3', filePath], {
+        reject: false,
+      });
+
+      expect(result.exitCode).toBe(0);
+    });
+
+    it('exits 2 when an integer input receives a non-integer value', async () => {
+      const filePath = await writeWorkflow('workflow.yaml', WORKFLOW_WITH_INTEGER_INPUT_YAML);
+
+      const result = await execa('node', [cliPath, 'run', '--input', 'count=abc', filePath], {
+        reject: false,
+      });
+
+      expect(result.exitCode).toBe(2);
+    });
+
+    it('names the offending input in the error output', async () => {
+      const filePath = await writeWorkflow('workflow.yaml', WORKFLOW_WITH_INTEGER_INPUT_YAML);
+
+      const result = await execa('node', [cliPath, 'run', '--input', 'count=abc', filePath], {
+        reject: false,
+      });
+
+      expect(result.stderr).toContain('count');
     });
   });
 

@@ -47,7 +47,11 @@ export const registerRunCommand = (program: Command): void => {
         });
 
         await withSignalHandling(ctx, async (signal) => {
-          await run(ctx, { file, inputs: options.input, approve: options.approve ?? false }, signal);
+          await run(
+            ctx,
+            { file, inputs: options.input, approve: options.approve ?? false },
+            signal
+          );
         });
       }
     );

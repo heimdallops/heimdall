@@ -65,12 +65,12 @@ heimdall run deploy.yaml --json
 
 **Exit codes**
 
-| Code | Meaning                                                                                   |
-| ---- | ----------------------------------------------------------------------------------------- |
-| `0`  | Workflow completed successfully                                                           |
-| `1`  | Workflow ran but failed, or an unexpected error occurred                                  |
-| `2`  | Bad invocation — missing file, unknown input key, missing required input, or invalid YAML |
-| `3`  | Configuration error — unreadable file or invalid workflow graph                           |
+| Code | Meaning                                                                       |
+| ---- | ----------------------------------------------------------------------------- |
+| `0`  | Workflow completed successfully                                               |
+| `1`  | Workflow ran but failed, or an unexpected error occurred                      |
+| `2`  | Bad invocation — missing file, unknown/invalid/missing input, or invalid YAML |
+| `3`  | Configuration error — unreadable file or invalid workflow graph               |
 
 **Workflow YAML**
 

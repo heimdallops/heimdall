@@ -7,6 +7,7 @@ import type { CliContext } from '../../cli/context.ts';
 import type { ApprovalResult } from '../../core/engine/emitter.ts';
 import { createEngineEmitter } from '../../core/engine/emitter.ts';
 import { EngineConfigError, EngineValidationError } from '../../core/engine/errors.ts';
+import type { InputDeclaration } from '../../core/engine/schema.ts';
 import { Workflow } from '../../core/engine/workflow.ts';
 import { CliError, ERROR_CODE, EXIT_CODE } from '../../errors/cli-error.ts';
 
@@ -37,6 +38,75 @@ const readWorkflowFile = async (filePath: string, displayPath: string): Promise<
       }
     );
   }
+};
+
+const invalidInput = (key: string, value: string, expected: string): CliError =>
+  new CliError(`Invalid value for input '${key}': '${value}' is not ${expected}`, {
+    code: ERROR_CODE.INVALID_INPUT,
+    exitCode: EXIT_CODE.USAGE,
+  });
+
+/**
+ * Coerce a raw `--input` string to the type its declaration expects. CLI inputs
+ * always arrive as strings, but the engine (and CEL expressions) act on the
+ * declared type, so `type: number` must become a real number rather than the
+ * string "5". Declared defaults are already typed and never pass through here.
+ */
+const coerceInputValue = (
+  key: string,
+  value: string,
+  type: InputDeclaration['type']
+): string | number | boolean => {
+  switch (type) {
+    case 'string':
+      return value;
+    case 'boolean':
+      if (value === 'true') {
+        return true;
+      }
+
+      if (value === 'false') {
+        return false;
+      }
+
+      throw invalidInput(key, value, "'true' or 'false'");
+    case 'number': {
+      const parsed = Number(value);
+
+      if (value.trim() === '' || !Number.isFinite(parsed)) {
+        throw invalidInput(key, value, 'a number');
+      }
+
+      return parsed;
+    }
+    case 'integer': {
+      const parsed = Number(value);
+
+      if (value.trim() === '' || !Number.isInteger(parsed)) {
+        throw invalidInput(key, value, 'an integer');
+      }
+
+      return parsed;
+    }
+  }
+};
+
+/**
+ * Coerce every supplied `--input` value against its declaration. Unknown keys
+ * are rejected before this runs; a declaration missing a `type` (only untyped
+ * test stubs) passes through as a string.
+ */
+const coerceInputs = (
+  rawInputs: Record<string, string>,
+  declaredInputs: ReadonlyMap<string, InputDeclaration>
+): Record<string, string | number | boolean> => {
+  const coerced: Record<string, string | number | boolean> = {};
+
+  for (const [key, value] of Object.entries(rawInputs)) {
+    coerced[key] = coerceInputValue(key, value, declaredInputs.get(key)?.type ?? 'string');
+  }
+
+  return coerced;
 };
 
 /**
@@ -146,6 +216,8 @@ export const run = async (
       );
     }
 
+    const inputs = coerceInputs(runInput.inputs, declaredInputs);
+
     const emitter = createEngineEmitter();
 
     emitter.on('node_started', ({ nodeName }) => {
@@ -210,7 +282,7 @@ export const run = async (
     // The engine resolves platform adapters itself via a run-owned factory, so
     // the CLI only forwards inputs, cwd, the cancellation signal, and the emitter.
     const result = await workflow.run({
-      inputs: runInput.inputs,
+      inputs,
       emitter,
       cwd,
       signal: abortController.signal,

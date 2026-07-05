@@ -70,9 +70,13 @@ interface SpiedPrinter extends Printer {
  * Using Mock<...> for run() gives mockImplementation() its proper type so
  * Promise-returning implementations don't trigger @typescript-eslint/no-misused-promises.
  */
+type InputType = 'string' | 'number' | 'integer' | 'boolean';
+
 interface WorkflowStub {
-  inputs: Map<string, { default?: string }>;
-  run: Mock<(options: { inputs: Record<string, string> }) => Promise<WorkflowResult>>;
+  inputs: Map<string, { default?: string; type?: InputType }>;
+  run: Mock<
+    (options: { inputs: Record<string, string | number | boolean> }) => Promise<WorkflowResult>
+  >;
 }
 
 // ---------------------------------------------------------------------------
@@ -127,12 +131,14 @@ const makeEmitter = (): EngineEmitter => new EventEmitter() as EngineEmitter;
  * Build a minimal WorkflowStub with controllable inputs and run() behavior.
  */
 const makeWorkflowStub = (
-  inputDeclarations: Map<string, { default?: string }> = new Map(),
+  inputDeclarations: Map<string, { default?: string; type?: InputType }> = new Map(),
   runResult: WorkflowResult = { success: true }
 ): WorkflowStub => ({
   inputs: inputDeclarations,
   run: vi
-    .fn<(options: { inputs: Record<string, string> }) => Promise<WorkflowResult>>()
+    .fn<
+      (options: { inputs: Record<string, string | number | boolean> }) => Promise<WorkflowResult>
+    >()
     .mockResolvedValue(runResult),
 });
 
@@ -362,6 +368,91 @@ describe('run command — run()', () => {
       expect(workflowStub.run).toHaveBeenCalledWith(
         expect.objectContaining({ inputs: { url: 'https://x.com?a=1&b=2' } })
       );
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // Input coercion — typed inputs
+  // -------------------------------------------------------------------------
+
+  describe('input coercion', () => {
+    const runWith = async (
+      declarations: Map<string, { default?: string; type?: InputType }>,
+      inputs: Record<string, string>
+    ): Promise<WorkflowStub> => {
+      const stub = makeWorkflowStub(declarations);
+      workflowFromMock.mockResolvedValue(stub as never);
+      await run(makeCtx(), makeInput({ inputs }));
+
+      return stub;
+    };
+
+    it('coerces a number input to a real number before running', async () => {
+      const stub = await runWith(new Map([['count', { type: 'number' }]]), { count: '5' });
+
+      expect(stub.run).toHaveBeenCalledWith(expect.objectContaining({ inputs: { count: 5 } }));
+    });
+
+    it('coerces an integer input to a real number before running', async () => {
+      const stub = await runWith(new Map([['n', { type: 'integer' }]]), { n: '42' });
+
+      expect(stub.run).toHaveBeenCalledWith(expect.objectContaining({ inputs: { n: 42 } }));
+    });
+
+    it('coerces boolean inputs from "true"/"false"', async () => {
+      const stub = await runWith(
+        new Map([
+          ['on', { type: 'boolean' }],
+          ['off', { type: 'boolean' }],
+        ]),
+        { on: 'true', off: 'false' }
+      );
+
+      expect(stub.run).toHaveBeenCalledWith(
+        expect.objectContaining({ inputs: { on: true, off: false } })
+      );
+    });
+
+    it('leaves string inputs untouched', async () => {
+      const stub = await runWith(new Map([['name', { type: 'string' }]]), { name: '5' });
+
+      expect(stub.run).toHaveBeenCalledWith(expect.objectContaining({ inputs: { name: '5' } }));
+    });
+
+    it('throws INVALID_INPUT when a number input is not numeric', async () => {
+      const stub = makeWorkflowStub(new Map([['count', { type: 'number' }]]));
+      workflowFromMock.mockResolvedValue(stub as never);
+
+      const err = await run(makeCtx(), makeInput({ inputs: { count: 'abc' } })).catch(
+        (e: unknown) => e
+      );
+
+      expect(err).toBeInstanceOf(CliError);
+      expect((err as CliError).code).toBe(ERROR_CODE.INVALID_INPUT);
+      expect((err as CliError).exitCode).toBe(EXIT_CODE.USAGE);
+      expect(stub.run).not.toHaveBeenCalled();
+    });
+
+    it('throws INVALID_INPUT when an integer input is a non-integer number', async () => {
+      const stub = makeWorkflowStub(new Map([['n', { type: 'integer' }]]));
+      workflowFromMock.mockResolvedValue(stub as never);
+
+      const err = await run(makeCtx(), makeInput({ inputs: { n: '4.5' } })).catch(
+        (e: unknown) => e
+      );
+
+      expect((err as CliError).code).toBe(ERROR_CODE.INVALID_INPUT);
+    });
+
+    it('throws INVALID_INPUT when a boolean input is neither true nor false', async () => {
+      const stub = makeWorkflowStub(new Map([['flag', { type: 'boolean' }]]));
+      workflowFromMock.mockResolvedValue(stub as never);
+
+      const err = await run(makeCtx(), makeInput({ inputs: { flag: 'yes' } })).catch(
+        (e: unknown) => e
+      );
+
+      expect((err as CliError).code).toBe(ERROR_CODE.INVALID_INPUT);
     });
   });
 
