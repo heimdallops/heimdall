@@ -119,7 +119,7 @@ main() {
 
   info "Version: $VERSION"
 
-  local tmp_dir
+  # not local: the EXIT trap fires after main() returns, where a local is already unbound
   tmp_dir="$(mktemp -d)"
   trap 'rm -rf "$tmp_dir"' EXIT
 
