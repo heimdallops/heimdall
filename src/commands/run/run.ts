@@ -196,9 +196,10 @@ export const run = async (
       return;
     }
 
-    // Run interactive prompt asynchronously; the emitter listener must return
-    // synchronously but we can fire-and-forget the prompt since resolve() is
-    // the mechanism for continuing the engine.
+    // The emitter listener contract is synchronous (`=> void`), so the async
+    // prompt is fire-and-forget: resolve() is the mechanism that continues the
+    // engine. An async listener trips @typescript-eslint/no-misused-promises,
+    // so the void IIFE is the deliberate way to run async work from here.
     void (async (): Promise<void> => {
       try {
         resolve(await promptApproval(nodeName, message, enableFeedback));
