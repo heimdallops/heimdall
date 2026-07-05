@@ -44,6 +44,7 @@ jobs:
         env:
           RELEASE_TAG: ${{ inputs.release_tag }}
           CHECKSUMS_ARTIFACT_NAME: ${{ inputs.checksums_artifact_name }}
+          HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
         run: |
           set -euo pipefail
           VERSION="${RELEASE_TAG#v}"
@@ -53,6 +54,10 @@ jobs:
           fi
           if [ -z "$CHECKSUMS_ARTIFACT_NAME" ]; then
             echo "::error::checksums_artifact_name is empty"
+            exit 1
+          fi
+          if [ -z "$HOMEBREW_TAP_TOKEN" ]; then
+            echo "::error::HOMEBREW_TAP_TOKEN secret is not set"
             exit 1
           fi
           echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
@@ -84,16 +89,14 @@ jobs:
           echo "macos_x64=${SHA_MACOS_X64}" >> "$GITHUB_OUTPUT"
           echo "macos_arm64=${SHA_MACOS_ARM64}" >> "$GITHUB_OUTPUT"
 
-      - name: Clone tap repository
-        env:
-          HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
-        run: |
-          set -euo pipefail
-          if [ -z "$HOMEBREW_TAP_TOKEN" ]; then
-            echo "::error::HOMEBREW_TAP_TOKEN secret is not set"
-            exit 1
-          fi
-          git clone "https://x-access-token:${HOMEBREW_TAP_TOKEN}@github.com/heimdallops/homebrew-heimdall.git" tap
+      - name: Checkout tap repository
+        uses: actions/checkout@v6.0.2
+        with:
+          repository: heimdallops/homebrew-heimdall
+          token: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+          path: tap
+          # the push step relies on the persisted credential; checkout's post-job step removes it
+          persist-credentials: true
 
       # GitHub's ubuntu-latest runner ships envsubst (gettext); act's container image does not.
       - name: Install envsubst (act only)
@@ -103,14 +106,15 @@ jobs:
       - name: Render formula from template
         env:
           VERSION: ${{ steps.version.outputs.version }}
+          RELEASE_TAG: ${{ inputs.release_tag }}
           SHA_MACOS_X64: ${{ steps.checksums.outputs.macos_x64 }}
           SHA_MACOS_ARM64: ${{ steps.checksums.outputs.macos_arm64 }}
         run: |
           set -euo pipefail
           # envsubst renders unset/empty variables as empty strings, so a broken steps.*.outputs
           # reference would silently produce sha256 "" — refuse to render without all values.
-          if [ -z "$VERSION" ] || [ -z "$SHA_MACOS_X64" ] || [ -z "$SHA_MACOS_ARM64" ]; then
-            echo "::error::render inputs missing (VERSION/SHA_MACOS_X64/SHA_MACOS_ARM64)"
+          if [ -z "$VERSION" ] || [ -z "$RELEASE_TAG" ] || [ -z "$SHA_MACOS_X64" ] || [ -z "$SHA_MACOS_ARM64" ]; then
+            echo "::error::render inputs missing (VERSION/RELEASE_TAG/SHA_MACOS_X64/SHA_MACOS_ARM64)"
             exit 1
           fi
           TEMPLATE=.github/homebrew/heimdall.rb.template
@@ -119,7 +123,7 @@ jobs:
             exit 1
           fi
           mkdir -p tap/Formula
-          envsubst '${VERSION} ${SHA_MACOS_X64} ${SHA_MACOS_ARM64}' < "$TEMPLATE" > tap/Formula/heimdall.rb
+          envsubst '${VERSION} ${RELEASE_TAG} ${SHA_MACOS_X64} ${SHA_MACOS_ARM64}' < "$TEMPLATE" > tap/Formula/heimdall.rb
           if grep -n '\${' tap/Formula/heimdall.rb; then
             echo "::error::rendered formula contains unexpanded placeholders"
             exit 1
