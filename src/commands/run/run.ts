@@ -39,9 +39,11 @@ const readWorkflowFile = async (filePath: string, displayPath: string): Promise<
 };
 
 /**
- * Interactively collect an approval decision. When feedback is enabled it is
- * offered as a third choice alongside approve/reject rather than as a separate
- * follow-up question.
+ * Interactively collect an approval decision. When feedback is enabled the
+ * decision is a single choice between approve, reject-with-feedback, and reject
+ * — modeled on the approve/reject/other prompt agents present. Feedback is not a
+ * separate follow-up question and it is not an approval: it is a rejection that
+ * carries guidance so the workflow can keep trying rather than exit.
  */
 const promptApproval = async (
   nodeName: string,
@@ -59,22 +61,22 @@ const promptApproval = async (
     default: 'reject',
     choices: [
       { name: 'Approve', value: 'approve' },
-      { name: 'Approve with feedback', value: 'feedback' },
+      { name: 'Reject with feedback', value: 'feedback' },
       { name: 'Reject', value: 'reject' },
     ],
   });
-
-  if (choice === 'reject') {
-    return { approved: false };
-  }
 
   if (choice === 'approve') {
     return { approved: true };
   }
 
+  if (choice === 'reject') {
+    return { approved: false };
+  }
+
   const feedback = await input({ message: 'Feedback:' });
 
-  return { approved: true, feedback: feedback.trim() || undefined };
+  return { approved: false, feedback: feedback.trim() || undefined };
 };
 
 export const run = async (

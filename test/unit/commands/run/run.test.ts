@@ -633,9 +633,9 @@ describe('run command — run()', () => {
       expect(resolvedResult!.approved).toBe(false);
     });
 
-    it('offers feedback as a third choice (not a follow-up) when the user picks it', async () => {
+    it('treats feedback as a reject-with-guidance third choice (not a follow-up) when the user picks it', async () => {
       vi.mocked(select).mockResolvedValue('feedback');
-      vi.mocked(input).mockResolvedValue('looks good');
+      vi.mocked(input).mockResolvedValue('needs work');
 
       let resolvedResult: ApprovalResult | undefined;
       const workflowStub = makeApprovalWorkflowStub(true, (result): void => {
@@ -655,8 +655,9 @@ describe('run command — run()', () => {
           ]) as unknown,
         })
       );
-      expect(resolvedResult?.approved).toBe(true);
-      expect(resolvedResult?.feedback).toBe('looks good');
+      // Feedback is a rejection that carries guidance, not an approval.
+      expect(resolvedResult?.approved).toBe(false);
+      expect(resolvedResult?.feedback).toBe('needs work');
     });
 
     it('does NOT prompt for feedback when the user rejects', async () => {
