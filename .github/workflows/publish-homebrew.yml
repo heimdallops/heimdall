@@ -95,6 +95,11 @@ jobs:
           fi
           git clone "https://x-access-token:${HOMEBREW_TAP_TOKEN}@github.com/heimdallops/homebrew-heimdall.git" tap
 
+      # GitHub's ubuntu-latest runner ships envsubst (gettext); act's container image does not.
+      - name: Install envsubst (act only)
+        if: env.ACT
+        run: apt-get update -qq && apt-get install -y -qq gettext-base
+
       - name: Render formula from template
         env:
           VERSION: ${{ steps.version.outputs.version }}
