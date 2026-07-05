@@ -5,7 +5,7 @@
 #   curl -fsSL https://github.com/heimdallops/heimdall/releases/latest/download/install.sh | bash
 #
 # Environment variables:
-#   VERSION     - Specific version to install (default: latest)
+#   VERSION     - Release version to install, with or without a leading v (default: latest)
 #   INSTALL_DIR - Installation directory (default: /usr/local/bin)
 #
 # Examples:
@@ -13,7 +13,7 @@
 #   curl -fsSL .../install.sh | bash
 #
 #   # Install specific version
-#   curl -fsSL .../install.sh | VERSION=v0.2.0 bash
+#   curl -fsSL .../install.sh | VERSION=0.2.0 bash
 #
 #   # Install to a custom directory
 #   curl -fsSL .../install.sh | INSTALL_DIR=~/.local/bin bash
@@ -23,6 +23,8 @@ set -euo pipefail
 REPO="heimdallops/heimdall"
 BINARY_NAME="heimdall"
 VERSION="${VERSION:-latest}"
+# Release tags have no v prefix; tolerate callers passing one (VERSION=v0.2.0).
+VERSION="${VERSION#v}"
 INSTALL_DIR="${INSTALL_DIR:-/usr/local/bin}"
 
 # ── helpers ───────────────────────────────────────────────────────────────────
