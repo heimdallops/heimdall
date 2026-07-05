@@ -84,7 +84,9 @@ interface WorkflowStub {
  * stdout is a PassThrough so tests can inspect JSON output when needed.
  */
 const makeCtx = (overrides: Partial<CliContext> = {}): CliContext & { printer: SpiedPrinter } => {
-  const stdout = new PassThrough();
+  // Default to an interactive stdout so approval prompts run; individual tests
+  // override with a non-TTY stream to exercise the auto-decline path.
+  const stdout = Object.assign(new PassThrough(), { isTTY: true });
   const printer: SpiedPrinter = {
     out: vi.fn<(message: string) => void>(),
     info: vi.fn<(message: string) => void>(),
@@ -674,6 +676,22 @@ describe('run command — run()', () => {
       await run(ctx, makeInput());
 
       expect(input).not.toHaveBeenCalled();
+      expect(resolvedResult).toEqual({ approved: false });
+    });
+
+    it('auto-declines without prompting when stdout is not a TTY', async () => {
+      let resolvedResult: ApprovalResult | undefined;
+      const workflowStub = makeApprovalWorkflowStub(false, (result): void => {
+        resolvedResult = result;
+      });
+      workflowFromMock.mockResolvedValue(workflowStub as never);
+
+      // A piped/redirected stdout leaves isTTY undefined.
+      const ctx = makeCtx({ stdout: new PassThrough() });
+      await run(ctx, makeInput());
+
+      expect(confirm).not.toHaveBeenCalled();
+      expect(select).not.toHaveBeenCalled();
       expect(resolvedResult).toEqual({ approved: false });
     });
 

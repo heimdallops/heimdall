@@ -86,8 +86,12 @@ export const run = async (
   runInput: RunInput,
   signal?: AbortSignal
 ): Promise<void> => {
-  const { printer, cwd, config } = ctx;
+  const { printer, cwd, config, stdout } = ctx;
   const filePath = resolvePath(cwd, runInput.file);
+
+  // Approval prompts require an interactive terminal. Only tty.WriteStream sets
+  // isTTY; a piped or redirected stdout leaves it undefined.
+  const stdoutIsTty = (stdout as { isTTY?: boolean }).isTTY === true;
 
   const yaml = await readWorkflowFile(filePath, runInput.file);
 
@@ -180,10 +184,13 @@ export const run = async (
       return;
     }
 
-    if (config.json) {
-      // --json controls the final result format, not logging, and there is no
-      // TTY to prompt on, so log a normal message and auto-decline.
-      printer.warn(`Approval requested for '${nodeName}' auto-declined in --json mode: ${message}`);
+    if (config.json || !stdoutIsTty) {
+      // Without an interactive TTY there is nowhere to prompt, and in --json mode
+      // the result stream is machine-readable, so auto-decline in both cases and
+      // log a normal message rather than attempting a prompt that would fail.
+      printer.warn(
+        `Approval requested for '${nodeName}' auto-declined (non-interactive): ${message}`
+      );
       resolve({ approved: false });
 
       return;
