@@ -175,6 +175,19 @@ export const run = async (
   // rather than silently proceeding as if the approval were declined.
   let approvalError: unknown;
 
+  // A prompt failure aborts this controller, which cancels the run through the
+  // engine's cancellation signal. The external signal (e.g. SIGINT) is forwarded
+  // into it so either source cancels the run the same way.
+  const abortController = new AbortController();
+  const forwardExternalAbort = (): void => {
+    abortController.abort();
+  };
+  if (signal?.aborted) {
+    abortController.abort();
+  } else {
+    signal?.addEventListener('abort', forwardExternalAbort, { once: true });
+  }
+
   emitter.on('approval_requested', ({ nodeName, message, enableFeedback, resolve }) => {
     if (runInput.approve) {
       // --approve short-circuits every gate; the run is explicitly unattended.
@@ -204,10 +217,11 @@ export const run = async (
       try {
         resolve(await promptApproval(nodeName, message, enableFeedback));
       } catch (err) {
-        // A prompt error is not a deliberate rejection; record it so the run
-        // fails instead of treating it as a silent decline.
+        // A prompt failure is not a deliberate rejection. Abort the run so the
+        // engine cancels rather than proceeding as if the gate were declined;
+        // the CLI raises the error after run() returns.
         approvalError ??= err;
-        resolve({ approved: false });
+        abortController.abort();
       }
     })();
   });
@@ -216,7 +230,12 @@ export const run = async (
   try {
     // The engine resolves platform adapters itself via a run-owned factory, so
     // the CLI only forwards inputs, cwd, the cancellation signal, and the emitter.
-    result = await workflow.run({ inputs: runInput.inputs, emitter, cwd, signal });
+    result = await workflow.run({
+      inputs: runInput.inputs,
+      emitter,
+      cwd,
+      signal: abortController.signal,
+    });
   } catch (err) {
     if (err instanceof EngineConfigError) {
       throw new CliError(err.toString(), {
@@ -227,6 +246,8 @@ export const run = async (
     }
 
     throw err;
+  } finally {
+    signal?.removeEventListener('abort', forwardExternalAbort);
   }
 
   if (approvalError !== undefined) {

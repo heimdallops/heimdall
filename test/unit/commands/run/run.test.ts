@@ -721,6 +721,11 @@ describe('run command — run()', () => {
 
       expect(err).toBeInstanceOf(CliError);
       expect((err as CliError).message).toContain('Approval prompt failed');
+
+      // The prompt failure must cancel the run via the abort signal rather than
+      // resolving the gate as declined and letting the engine continue.
+      const runOptions = workflowStub.run.mock.calls[0]![0] as { signal?: AbortSignal };
+      expect(runOptions.signal?.aborted).toBe(true);
     });
   });
 
