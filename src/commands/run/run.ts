@@ -227,7 +227,7 @@ export const run = async (
     }
 
     if (config.json) {
-      printer.out(JSON.stringify({ success: result.success, exitReason: result.exitReason }));
+      printer.out(JSON.stringify(result));
     }
 
     if (!result.success) {
