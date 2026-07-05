@@ -1,0 +1,28 @@
+class Heimdall < Formula
+  desc "CLI for building deterministic agentic workflows"
+  homepage "https://github.com/heimdallops/heimdall"
+  version "${VERSION}"
+  license "MIT"
+
+  depends_on :macos
+
+  on_macos do
+    on_intel do
+      url "https://github.com/heimdallops/heimdall/releases/download/v${VERSION}/heimdall-macos-x64.tar.gz"
+      sha256 "${SHA_MACOS_X64}"
+    end
+
+    on_arm do
+      url "https://github.com/heimdallops/heimdall/releases/download/v${VERSION}/heimdall-macos-arm64.tar.gz"
+      sha256 "${SHA_MACOS_ARM64}"
+    end
+  end
+
+  def install
+    bin.install "heimdall"
+  end
+
+  test do
+    system "#{bin}/heimdall", "--version"
+  end
+end

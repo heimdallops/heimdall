@@ -1,0 +1,146 @@
+name: Publish Homebrew formula
+
+on:
+  workflow_call:
+    inputs:
+      ref:
+        description: Git ref to checkout (branch, tag, or commit SHA)
+        type: string
+        required: true
+      release_tag:
+        description: GitHub release tag whose archives the formula should reference
+        type: string
+        required: true
+      checksums_artifact_name:
+        description: Name of the workflow artifact containing checksums.txt
+        type: string
+        required: true
+      dry_run:
+        description: When true, prints the rendered formula diff but does not push
+        type: boolean
+        required: false
+        default: false
+    secrets:
+      HOMEBREW_TAP_TOKEN:
+        description: PAT with contents write access on heimdallops/homebrew-heimdall
+        required: true
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  update_formula:
+    name: Update Homebrew formula
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6.0.2
+        with:
+          ref: ${{ inputs.ref }}
+
+      - name: Validate inputs and derive version
+        id: version
+        env:
+          RELEASE_TAG: ${{ inputs.release_tag }}
+          CHECKSUMS_ARTIFACT_NAME: ${{ inputs.checksums_artifact_name }}
+        run: |
+          set -euo pipefail
+          VERSION="${RELEASE_TAG#v}"
+          if [ -z "$VERSION" ]; then
+            echo "::error::release_tag is empty"
+            exit 1
+          fi
+          if [ -z "$CHECKSUMS_ARTIFACT_NAME" ]; then
+            echo "::error::checksums_artifact_name is empty"
+            exit 1
+          fi
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+
+      - name: Download checksums artifact
+        uses: actions/download-artifact@v5
+        with:
+          name: ${{ inputs.checksums_artifact_name }}
+          path: ./checksums
+
+      - name: Extract macOS SHA256s
+        id: checksums
+        run: |
+          set -euo pipefail
+          if [ ! -f checksums/checksums.txt ]; then
+            echo "::error::checksums.txt not found in downloaded artifact"
+            exit 1
+          fi
+          SHA_MACOS_X64="$(awk '$2 == "heimdall-macos-x64.tar.gz" { print $1 }' checksums/checksums.txt)"
+          SHA_MACOS_ARM64="$(awk '$2 == "heimdall-macos-arm64.tar.gz" { print $1 }' checksums/checksums.txt)"
+          if [ -z "$SHA_MACOS_X64" ]; then
+            echo "::error::checksums.txt has no SHA256 entry for heimdall-macos-x64.tar.gz"
+            exit 1
+          fi
+          if [ -z "$SHA_MACOS_ARM64" ]; then
+            echo "::error::checksums.txt has no SHA256 entry for heimdall-macos-arm64.tar.gz"
+            exit 1
+          fi
+          echo "macos_x64=${SHA_MACOS_X64}" >> "$GITHUB_OUTPUT"
+          echo "macos_arm64=${SHA_MACOS_ARM64}" >> "$GITHUB_OUTPUT"
+
+      - name: Clone tap repository
+        env:
+          HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+        run: |
+          set -euo pipefail
+          if [ -z "$HOMEBREW_TAP_TOKEN" ]; then
+            echo "::error::HOMEBREW_TAP_TOKEN secret is not set"
+            exit 1
+          fi
+          git clone "https://x-access-token:${HOMEBREW_TAP_TOKEN}@github.com/heimdallops/homebrew-heimdall.git" tap
+
+      - name: Render formula from template
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+          SHA_MACOS_X64: ${{ steps.checksums.outputs.macos_x64 }}
+          SHA_MACOS_ARM64: ${{ steps.checksums.outputs.macos_arm64 }}
+        run: |
+          set -euo pipefail
+          # envsubst renders unset/empty variables as empty strings, so a broken steps.*.outputs
+          # reference would silently produce sha256 "" — refuse to render without all values.
+          if [ -z "$VERSION" ] || [ -z "$SHA_MACOS_X64" ] || [ -z "$SHA_MACOS_ARM64" ]; then
+            echo "::error::render inputs missing (VERSION/SHA_MACOS_X64/SHA_MACOS_ARM64)"
+            exit 1
+          fi
+          TEMPLATE=.github/homebrew/heimdall.rb.template
+          if [ ! -f "$TEMPLATE" ]; then
+            echo "::error::${TEMPLATE} not found in checkout"
+            exit 1
+          fi
+          mkdir -p tap/Formula
+          envsubst '${VERSION} ${SHA_MACOS_X64} ${SHA_MACOS_ARM64}' < "$TEMPLATE" > tap/Formula/heimdall.rb
+          if grep -n '\${' tap/Formula/heimdall.rb; then
+            echo "::error::rendered formula contains unexpanded placeholders"
+            exit 1
+          fi
+
+      - name: Commit and push formula update (dry run)
+        if: inputs.dry_run
+        working-directory: tap
+        run: |
+          git add Formula/heimdall.rb
+          echo "DRY RUN: would commit and push this change to heimdallops/homebrew-heimdall:"
+          git --no-pager diff --cached -- Formula/heimdall.rb
+
+      - name: Commit and push formula update
+        if: ${{ !inputs.dry_run }}
+        working-directory: tap
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          set -euo pipefail
+          git add Formula/heimdall.rb
+          if git diff --cached --quiet -- Formula/heimdall.rb; then
+            echo "::notice::Formula already matches ${VERSION}; nothing to push."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git commit -m "chore: update heimdall formula to ${VERSION}"
+          git push origin HEAD:main
