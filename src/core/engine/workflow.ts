@@ -1,6 +1,7 @@
 // Side-effect imports: each node module self-registers into the global node
 // registry on load. Removing them would leave the registry unable to build
 // those node types.
+import './nodes/agentic.ts';
 import './nodes/approval.ts';
 import './nodes/bash.ts';
 import './nodes/exit.ts';

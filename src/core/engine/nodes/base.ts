@@ -29,6 +29,10 @@ export interface NodeRunFailed {
 
 export type NodeRunResult = NodeRunCompleted | NodeRunExited | NodeRunBreak | NodeRunFailed;
 
+// An implementation MUST emit exactly one terminal event — either 'done' or 'error' — over the
+// stream's lifetime, including after cancel(). Consumers like AgenticNode await a single terminal
+// event to settle their result; emitting none would hang the node, and emitting more than one would
+// risk double-settling.
 export interface PlatformStream {
   on(event: string, handler: (...args: unknown[]) => void): PlatformStream;
   cancel(): void;
@@ -40,8 +44,6 @@ export interface PlatformStream {
 // interface via method-parameter bivariance.
 export interface PlatformAdapter {
   run(prompt: string, options: Record<string, unknown>, sessionId?: string): PlatformStream;
-  findAgent(name: string): Promise<string>;
-  parseAgent(content: string): { prompt: string; options: Record<string, unknown> };
 }
 
 export type AdapterFactory = (platform: Platform, cwd: string) => Promise<PlatformAdapter>;

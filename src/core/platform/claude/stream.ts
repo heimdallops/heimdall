@@ -38,7 +38,15 @@ import { PlatformCancellationError, PlatformError } from '../errors.ts';
 import type { PlatformStream, StreamEventMap } from '../types.ts';
 import type { ClaudeOptions } from './options.ts';
 
+const nonEmpty = (value: string | undefined): string | undefined =>
+  value === '' ? undefined : value;
+
 export class ClaudeStream extends EventEmitter implements PlatformStream {
+  private static readonly CLAUDE_CODE_SYSTEM_PROMPT = {
+    type: 'preset',
+    preset: 'claude_code',
+  } as const;
+
   private readonly abortController: AbortController;
   private readonly sessionIdPromise: Promise<string>;
   private resolveSessionId!: (id: string) => void;
@@ -46,8 +54,9 @@ export class ClaudeStream extends EventEmitter implements PlatformStream {
   private readonly prompt: string;
   private readonly options: ClaudeOptions;
   private readonly initialSessionId: string | undefined;
+  private readonly cwd: string | undefined;
 
-  constructor(prompt: string, options: ClaudeOptions, sessionId?: string) {
+  constructor(prompt: string, options: ClaudeOptions, sessionId?: string, cwd?: string) {
     super();
     // Prevent Node from throwing on unhandled 'error' events for callers
     // that only await sessionId() without registering an error listener.
@@ -61,7 +70,8 @@ export class ClaudeStream extends EventEmitter implements PlatformStream {
     this.prompt = prompt;
     this.options = options;
     this.initialSessionId = sessionId;
-    void this.execute(this.prompt, this.options, this.initialSessionId);
+    this.cwd = cwd;
+    void this.execute();
   }
 
   override on<K extends keyof StreamEventMap>(
@@ -79,11 +89,10 @@ export class ClaudeStream extends EventEmitter implements PlatformStream {
     return this.sessionIdPromise;
   }
 
-  private async execute(prompt: string, options: ClaudeOptions, sessionId?: string): Promise<void> {
+  private async execute(): Promise<void> {
     let terminated = false;
     try {
-      const sdkOptions = buildSdkOptions(options, this.abortController, sessionId);
-      const stream = query({ prompt, options: sdkOptions });
+      const stream = query({ prompt: this.prompt, options: this.buildSdkOptions() });
       let sessionResolved = false;
       let streamCompleted = false;
 
@@ -144,22 +153,37 @@ export class ClaudeStream extends EventEmitter implements PlatformStream {
       this.emit('done');
     }
   }
-}
 
-const buildSdkOptions = (
-  options: ClaudeOptions,
-  abortController: AbortController,
-  sessionId?: string
-): Options => ({
-  abortController,
-  includePartialMessages: true,
-  ...(options.model !== undefined && { model: options.model }),
-  ...(options.reasoning_effort !== undefined && { effort: options.reasoning_effort }),
-  ...(options.allowed_tools !== undefined && { allowedTools: options.allowed_tools }),
-  ...(options.disallowed_tools !== undefined && { disallowedTools: options.disallowed_tools }),
-  ...(options.skills !== undefined && { skills: options.skills }),
-  ...(options.max_budget_usd !== undefined && { maxBudgetUsd: options.max_budget_usd }),
-  ...(options.system_prompt !== undefined && { systemPrompt: options.system_prompt }),
-  ...(options.sandbox !== undefined && { sandbox: options.sandbox }),
-  ...(sessionId !== undefined && { resume: sessionId }),
-});
+  private buildSdkOptions(): Options {
+    const { options } = this;
+
+    // Empty strings are normalized to unset: '' is never a meaningful model, agent reference,
+    // or system prompt, and the CLI itself silently ignores an empty --agent. Number and array
+    // options keep strict presence checks — 0 and [] are meaningful values there.
+    const model = nonEmpty(options.model);
+    const agent = nonEmpty(options.agent);
+
+    // The SDK's default system prompt is empty (isolation mode), which overrides the named
+    // agent's own prompt and would make `agent` a no-op. The claude_code preset restores CLI
+    // behavior for agent runs; an explicit system_prompt still takes precedence below.
+    const systemPrompt = agent
+      ? (nonEmpty(options.system_prompt) ?? ClaudeStream.CLAUDE_CODE_SYSTEM_PROMPT)
+      : nonEmpty(options.system_prompt);
+
+    return {
+      abortController: this.abortController,
+      includePartialMessages: true,
+      ...(this.cwd !== undefined && { cwd: this.cwd }),
+      ...(model !== undefined && { model }),
+      ...(agent !== undefined && { agent }),
+      ...(options.reasoning_effort !== undefined && { effort: options.reasoning_effort }),
+      ...(options.allowed_tools !== undefined && { allowedTools: options.allowed_tools }),
+      ...(options.disallowed_tools !== undefined && { disallowedTools: options.disallowed_tools }),
+      ...(options.skills !== undefined && { skills: options.skills }),
+      ...(options.max_budget_usd !== undefined && { maxBudgetUsd: options.max_budget_usd }),
+      ...(systemPrompt !== undefined && { systemPrompt }),
+      ...(options.sandbox !== undefined && { sandbox: options.sandbox }),
+      ...(this.initialSessionId !== undefined && { resume: this.initialSessionId }),
+    };
+  }
+}
