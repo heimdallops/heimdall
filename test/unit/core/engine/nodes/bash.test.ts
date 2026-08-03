@@ -417,6 +417,39 @@ describe('BashNode', () => {
         await rm(workDir, { recursive: true, force: true });
       }
     });
+
+    it('throws ENGINE_BASH_SPAWN_ERROR with diagnostic detail when ctx.cwd does not exist', async () => {
+      const workDir = await mkdtemp(join(tmpdir(), 'heimdall-bash-cwd-'));
+      const missingCwd = join(workDir, 'nonexistent-subdir');
+
+      try {
+        const node = makeNode({ id: 'n1', bash: 'echo hi' });
+
+        const err = await catchRejection(run(node, makeCtx({ cwd: missingCwd })));
+
+        expect(err).toMatchObject({ name: 'NodeError', code: 'ENGINE_BASH_SPAWN_ERROR' });
+        expect((err as Error).message).toContain('Bash script failed to start');
+        // The cause chain (surfaced via EngineError#toString) must carry execa's
+        // underlying diagnostic — otherwise a user only sees "failed to start"
+        // with no clue why.
+        expect(String(err)).toContain(missingCwd);
+      } finally {
+        await rm(workDir, { recursive: true, force: true });
+      }
+    });
+  });
+
+  describe('signal termination', () => {
+    it('throws ENGINE_BASH_NONZERO_EXIT (not ENGINE_BASH_SPAWN_ERROR) when the script is killed by a signal', async () => {
+      // execa reports exitCode undefined both when the process never spawned and when a
+      // signal terminated it; isTerminated is what tells the two apart (see the guard in
+      // BashNode#run). This test pins the signal-kill case to ENGINE_BASH_NONZERO_EXIT.
+      const node = makeNode({ id: 'n1', bash: 'kill -TERM $$' });
+
+      const err = await catchRejection(run(node));
+
+      expect(err).toMatchObject({ name: 'NodeError', code: 'ENGINE_BASH_NONZERO_EXIT' });
+    });
   });
 
   describe('cancellation', () => {

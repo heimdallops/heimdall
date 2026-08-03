@@ -131,6 +131,14 @@ export class BashNode extends BaseNode<NodeRunCompleted | NodeRunFailed> {
       return { status: 'failed', error: execResult };
     }
 
+    // execa leaves exitCode undefined in exactly two cases: the process never spawned, or a signal terminated it.
+    if (execResult.exitCode === undefined && !execResult.isTerminated) {
+      throw new NodeError('Bash script failed to start', 'ENGINE_BASH_SPAWN_ERROR', this.id, {
+        nodeName: this.name,
+        cause: execResult,
+      });
+    }
+
     if (execResult.exitCode !== 0) {
       throw new NodeError(
         `Bash script exited with code ${execResult.exitCode}`,
