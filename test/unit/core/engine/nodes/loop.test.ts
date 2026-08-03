@@ -1,5 +1,7 @@
 import '../../../../../src/core/engine/nodes/bash.ts';
 
+import { tmpdir } from 'node:os';
+
 import { describe, expect, it } from 'vitest';
 import { ZodError } from 'zod';
 
@@ -21,7 +23,9 @@ const makeCtx = (overrides: Partial<ExecutionContext> = {}): ExecutionContext =>
   vars: {},
   needs: new Map(),
   sessionDir: '/tmp/session',
-  cwd: '/tmp/work',
+  // Must be a real, existing directory: BashNode forwards ctx.cwd to execa, and this
+  // suite runs real bash body nodes, so a placeholder path like '/tmp/work' fails them.
+  cwd: tmpdir(),
   ...overrides,
 });
 

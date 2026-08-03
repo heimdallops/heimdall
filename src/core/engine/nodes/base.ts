@@ -44,8 +44,6 @@ export interface PlatformStream {
 // interface via method-parameter bivariance.
 export interface PlatformAdapter {
   run(prompt: string, options: Record<string, unknown>, sessionId?: string): PlatformStream;
-  findAgent(name: string): Promise<string>;
-  parseAgent(content: string): { prompt: string; options: Record<string, unknown> };
 }
 
 export type AdapterFactory = (platform: Platform, cwd: string) => Promise<PlatformAdapter>;

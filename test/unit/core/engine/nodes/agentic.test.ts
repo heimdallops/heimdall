@@ -118,14 +118,6 @@ class FakeAdapter implements PlatformAdapter {
 
     return this.stream;
   }
-
-  public findAgent(_name: string): Promise<string> {
-    return Promise.resolve('');
-  }
-
-  public parseAgent(_content: string): { prompt: string; options: Record<string, unknown> } {
-    return { prompt: '', options: {} };
-  }
 }
 
 /**
@@ -676,6 +668,10 @@ describe('AgentNode', () => {
     it('throws ZodError when agent field is missing', () => {
       expect(() => AgentNode.parse({ id: 'n1' })).toThrow(ZodError);
     });
+
+    it('throws ZodError when agent is an empty string', () => {
+      expect(() => AgentNode.parse({ id: 'n1', agent: '' })).toThrow(ZodError);
+    });
   });
 
   describe('agent reference', () => {
@@ -705,6 +701,24 @@ describe('AgentNode', () => {
       await runPromise;
 
       expect(adapter.calls[0]!.options['agent']).toBe('code-reviewer');
+    });
+
+    it('throws NodeError and does not call the adapter when the agent reference interpolates to an empty string', async () => {
+      const adapter = new FakeAdapter();
+      const node = AgentNode.parse({ id: 'n1', agent: '${{ inputs.reviewer }}' });
+      const runtime = makeRuntime(adapter);
+      const ctx = makeCtx({ inputs: { reviewer: '' } });
+
+      let caught: unknown;
+      try {
+        await node.run(makeOptions(runtime, { ctx }));
+      } catch (err) {
+        caught = err;
+      }
+
+      expect(caught).toBeInstanceOf(NodeError);
+      expect((caught as NodeError).code).toBe('ENGINE_AGENTIC_EMPTY_AGENT');
+      expect(adapter.calls).toHaveLength(0);
     });
   });
 

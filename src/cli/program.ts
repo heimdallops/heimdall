@@ -1,5 +1,6 @@
 import { Command } from 'commander';
 
+import packageJson from '../../package.json' with { type: 'json' };
 import { EXIT_CODE } from '../errors/cli-error.ts';
 
 export const createProgram = (): Command => {
@@ -8,6 +9,7 @@ export const createProgram = (): Command => {
   program
     .name('heimdall')
     .description('Build deterministic agentic workflows.')
+    .version(packageJson.version, '--version', 'Display version')
     .option('-c, --config <path>', 'Path to a config file')
     .option('--json', 'Print the final command result as JSON')
     .option('-v, --verbose', 'Enable verbose diagnostics')
@@ -24,7 +26,10 @@ export const createProgram = (): Command => {
 
   program.exitOverride((error) => {
     throw Object.assign(error, {
-      exitCode: error.code === 'commander.helpDisplayed' ? 0 : EXIT_CODE.USAGE,
+      exitCode:
+        error.code === 'commander.helpDisplayed' || error.code === 'commander.version'
+          ? 0
+          : EXIT_CODE.USAGE,
     });
   });
 
