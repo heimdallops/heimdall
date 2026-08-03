@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { access, readFile, rm } from 'node:fs/promises';
+import { access, mkdtemp, readFile, realpath, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -19,7 +19,9 @@ const makeCtx = (overrides: Partial<ExecutionContext> = {}): ExecutionContext =>
   vars: {},
   needs: new Map(),
   sessionDir: '/tmp',
-  cwd: '/tmp/work',
+  // Must be a real, existing directory: BashNode now forwards ctx.cwd to execa,
+  // so a placeholder path like '/tmp/work' fails every script invocation with ENOENT.
+  cwd: tmpdir(),
   ...overrides,
 });
 
@@ -385,6 +387,68 @@ describe('BashNode', () => {
 
       expect(capturedPath).toBeTruthy();
       await expect(access(capturedPath)).rejects.toThrow();
+    });
+  });
+
+  describe('working directory', () => {
+    it('executes the script with ctx.cwd as its working directory', async () => {
+      const workDir = await mkdtemp(join(tmpdir(), 'heimdall-bash-cwd-'));
+
+      try {
+        const node = makeNode({
+          id: 'n1',
+          bash: 'pwd > "$HEIMDALL_OUTPUT"',
+        });
+
+        const result = await run(node, makeCtx({ cwd: workDir }));
+
+        expect(result.status).toBe('completed');
+        const observedCwd = (result as NodeRunCompleted).result['output'] as string;
+
+        // Resolve symlinks (e.g. macOS's /tmp -> /private/tmp) so the comparison
+        // isn't defeated by `pwd` reporting the temp dir's real path.
+        const expectedCwd = await realpath(workDir);
+
+        expect(observedCwd).toBe(expectedCwd);
+        // Guards against a vacuous pass if the fix regresses and the script silently
+        // falls back to inheriting the test process's own working directory.
+        expect(observedCwd).not.toBe(process.cwd());
+      } finally {
+        await rm(workDir, { recursive: true, force: true });
+      }
+    });
+
+    it('throws ENGINE_BASH_SPAWN_ERROR with diagnostic detail when ctx.cwd does not exist', async () => {
+      const workDir = await mkdtemp(join(tmpdir(), 'heimdall-bash-cwd-'));
+      const missingCwd = join(workDir, 'nonexistent-subdir');
+
+      try {
+        const node = makeNode({ id: 'n1', bash: 'echo hi' });
+
+        const err = await catchRejection(run(node, makeCtx({ cwd: missingCwd })));
+
+        expect(err).toMatchObject({ name: 'NodeError', code: 'ENGINE_BASH_SPAWN_ERROR' });
+        expect((err as Error).message).toContain('Bash script failed to start');
+        // The cause chain (surfaced via EngineError#toString) must carry execa's
+        // underlying diagnostic — otherwise a user only sees "failed to start"
+        // with no clue why.
+        expect(String(err)).toContain(missingCwd);
+      } finally {
+        await rm(workDir, { recursive: true, force: true });
+      }
+    });
+  });
+
+  describe('signal termination', () => {
+    it('throws ENGINE_BASH_NONZERO_EXIT (not ENGINE_BASH_SPAWN_ERROR) when the script is killed by a signal', async () => {
+      // execa reports exitCode undefined both when the process never spawned and when a
+      // signal terminated it; isTerminated is what tells the two apart (see the guard in
+      // BashNode#run). This test pins the signal-kill case to ENGINE_BASH_NONZERO_EXIT.
+      const node = makeNode({ id: 'n1', bash: 'kill -TERM $$' });
+
+      const err = await catchRejection(run(node));
+
+      expect(err).toMatchObject({ name: 'NodeError', code: 'ENGINE_BASH_NONZERO_EXIT' });
     });
   });
 
