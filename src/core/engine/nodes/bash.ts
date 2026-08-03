@@ -114,6 +114,7 @@ export class BashNode extends BaseNode<NodeRunCompleted | NodeRunFailed> {
     await using outputFile = await OutputFile.create();
 
     const execResult = await execa('bash', ['-c', interpolatedBash], {
+      cwd: ctx.cwd,
       env: {
         ...process.env,
         ...interpolatedEnv,
