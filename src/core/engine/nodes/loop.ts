@@ -13,11 +13,11 @@ import { LoopNodeSchema } from '../schema.ts';
 import type {
   BaseNodeData,
   ExecutionContext,
-  LoopContext,
   NodeRunCompleted,
   NodeRunExited,
   NodeRunFailed,
   NodeRunOptions,
+  ScopeContext,
 } from './base.ts';
 import { BaseNode } from './base.ts';
 import { nodeRegistry } from './registry.ts';
@@ -115,10 +115,9 @@ export class LoopNode extends BaseNode<NodeRunCompleted | NodeRunExited | NodeRu
         break;
       }
 
-      const scope: LoopContext = {
-        iteration: completedIterations,
-        nodes: lastIterationNodes,
+      const scope: ScopeContext = {
         needs: loopNeeds,
+        loop: { iteration: completedIterations, nodes: lastIterationNodes },
         outer: parentScope,
       };
 
@@ -158,7 +157,7 @@ export class LoopNode extends BaseNode<NodeRunCompleted | NodeRunExited | NodeRu
       }
 
       // The just-run iteration's snapshot — partial on a break, full otherwise. It feeds
-      // `outputs` after the loop, and the next iteration's `scope.nodes` when the loop
+      // `outputs` after the loop, and the next iteration's `scope.loop.nodes` when the loop
       // continues. Assigning the partial on the break path is safe because the next-iteration
       // read is unreachable after a break, so the partial snapshot only ever reaches `outputs`.
       lastIterationNodes = res.nodeResults;
@@ -199,7 +198,7 @@ export class LoopNode extends BaseNode<NodeRunCompleted | NodeRunExited | NodeRu
     ctx: ExecutionContext,
     nodes: ReadonlyMap<string, NodeResult>,
     loopNeeds: ReadonlyMap<string, NodeResult>,
-    parentScope: LoopContext | undefined,
+    parentScope: ScopeContext | undefined,
     iteration: number
   ): boolean {
     if (!this.until) {
@@ -212,7 +211,7 @@ export class LoopNode extends BaseNode<NodeRunCompleted | NodeRunExited | NodeRu
       needs: loopNeeds,
       sessionDir: ctx.sessionDir,
       cwd: ctx.cwd,
-      scope: { iteration, nodes, needs: loopNeeds, outer: parentScope },
+      scope: { needs: loopNeeds, loop: { iteration, nodes }, outer: parentScope },
     };
 
     let result: unknown;
@@ -238,16 +237,15 @@ export class LoopNode extends BaseNode<NodeRunCompleted | NodeRunExited | NodeRu
   }
 
   // while must yield a boolean, mirroring BaseNode.evaluateIf; the loop proceeds only while it
-  // is true. Returns true when no while is configured so the loop runs unconditionally. An empty
-  // string is a configured expression (not "unset"), so it falls through to evalCel and fails.
+  // is true. An unset or empty while leaves the loop unconditional, matching until.
   private evaluateWhile(
     ctx: ExecutionContext,
     nodes: ReadonlyMap<string, NodeResult>,
     loopNeeds: ReadonlyMap<string, NodeResult>,
-    parentScope: LoopContext | undefined,
+    parentScope: ScopeContext | undefined,
     iteration: number
   ): boolean {
-    if (this.while === undefined) {
+    if (!this.while) {
       return true;
     }
 
@@ -257,7 +255,7 @@ export class LoopNode extends BaseNode<NodeRunCompleted | NodeRunExited | NodeRu
       needs: loopNeeds,
       sessionDir: ctx.sessionDir,
       cwd: ctx.cwd,
-      scope: { iteration, nodes, needs: loopNeeds, outer: parentScope },
+      scope: { needs: loopNeeds, loop: { iteration, nodes }, outer: parentScope },
     };
 
     let result: unknown;
@@ -286,7 +284,7 @@ export class LoopNode extends BaseNode<NodeRunCompleted | NodeRunExited | NodeRu
     ctx: ExecutionContext,
     nodes: ReadonlyMap<string, NodeResult>,
     loopNeeds: ReadonlyMap<string, NodeResult>,
-    parentScope: LoopContext | undefined,
+    parentScope: ScopeContext | undefined,
     iteration: number
   ): Record<string, unknown> {
     if (this.outputs === undefined) {
@@ -299,7 +297,7 @@ export class LoopNode extends BaseNode<NodeRunCompleted | NodeRunExited | NodeRu
       needs: loopNeeds,
       sessionDir: ctx.sessionDir,
       cwd: ctx.cwd,
-      scope: { iteration, nodes, needs: loopNeeds, outer: parentScope },
+      scope: { needs: loopNeeds, loop: { iteration, nodes }, outer: parentScope },
     };
     const celContext = evalCtx as unknown as Record<string, unknown>;
 

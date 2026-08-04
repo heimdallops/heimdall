@@ -129,9 +129,9 @@ describe('evalCel', () => {
   });
 
   it('accesses a nested value from an arbitrary context key', () => {
-    const ctx = makeCtx({ scope: { iteration: 3 } });
+    const ctx = makeCtx({ scope: { loop: { iteration: 3 } } });
 
-    const result = evalCel('scope.iteration', ctx);
+    const result = evalCel('scope.loop.iteration', ctx);
 
     expect(result).toBe(3);
   });
@@ -142,7 +142,7 @@ describe('evalCel', () => {
 
     let thrown: EngineError | undefined;
     try {
-      evalCel('scope.iteration', ctx);
+      evalCel('scope.loop.iteration', ctx);
     } catch (err) {
       thrown = err as EngineError;
     }
