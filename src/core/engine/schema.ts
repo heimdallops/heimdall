@@ -141,8 +141,16 @@ export type LoopNode = z.infer<typeof BaseNodeSchema> & {
 export const LoopNodeSchema = BaseNodeSchema.extend({
   loop: z
     .object({
-      until: z.string().optional(),
-      while: z.string().optional(),
+      // An empty expression is normalized to unset so it cannot satisfy the bound refine below
+      // and produce a loop that LoopNode then runs unconditionally.
+      until: z
+        .string()
+        .optional()
+        .transform((value) => (value === '' ? undefined : value)),
+      while: z
+        .string()
+        .optional()
+        .transform((value) => (value === '' ? undefined : value)),
       max_iterations: z.number().int().min(1).optional(),
       nodes: z.array(NodeSchema).min(1),
       outputs: z.record(z.string(), z.string()).optional(),

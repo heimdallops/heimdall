@@ -241,15 +241,81 @@ describe('LoopNode', () => {
       // while is a pre-condition: the bad expression is evaluated before the body ever runs
       expect(body.runCount).toBe(0);
     });
+  });
 
-    it('throws a NodeError (ENGINE_CEL_ERROR) for an empty while instead of looping unconditionally', async () => {
-      // An empty string is a configured (but invalid) expression, not "unset": it must fail
-      // CEL evaluation rather than be treated as no-while and loop forever.
+  describe('empty until/while are treated as unset, not a configured expression', () => {
+    it('a directly-constructed loop with while: "" runs the full max_iterations count instead of throwing ENGINE_CEL_ERROR', async () => {
+      // The schema normalizes '' to undefined before LoopNode ever sees it, but the constructor
+      // itself must also treat '' as falsy (evaluateWhile's `if (!this.while)` guard) — this is
+      // the runtime contract, reachable via direct construction even though the schema can no
+      // longer produce it. Bounded by max_iterations so the loop cannot run unbounded.
       const body = new ScopeCapturingNode({ id: 'step' });
-      const loop = makeLoopNode({ while: '' }, [body]);
+      const loop = makeLoopNode({ while: '', max_iterations: 2 }, [body]);
 
-      await expect(runLoop(loop)).rejects.toMatchObject({ code: 'ENGINE_CEL_ERROR' });
-      expect(body.runCount).toBe(0);
+      const result = await runLoop(loop);
+
+      expect(result.status).toBe('completed');
+      expect(body.runCount).toBe(2);
+      expect(
+        (result as { status: 'completed'; result: NodeResult }).result['total_iterations']
+      ).toBe(2);
+    });
+
+    it('a directly-constructed loop with until: "" runs the full max_iterations count instead of stopping early', async () => {
+      const body = new ScopeCapturingNode({ id: 'step' });
+      const loop = makeLoopNode({ until: '', max_iterations: 2 }, [body]);
+
+      const result = await runLoop(loop);
+
+      expect(result.status).toBe('completed');
+      expect(body.runCount).toBe(2);
+      expect(
+        (result as { status: 'completed'; result: NodeResult }).result['total_iterations']
+      ).toBe(2);
+    });
+
+    it('LoopNode.parse normalizes while: "" alongside max_iterations, and the loop runs unconditionally to the max_iterations bound', async () => {
+      const loop = LoopNode.parse({
+        id: 'loop1',
+        loop: {
+          while: '',
+          max_iterations: 3,
+          nodes: [{ id: 'inner', bash: 'true' }],
+        },
+      });
+
+      const result = await loop.run({
+        ctx: makeCtx(),
+        emitter: createEngineEmitter(),
+        signal: new AbortController().signal,
+      });
+
+      expect(result.status).toBe('completed');
+      expect(
+        (result as { status: 'completed'; result: NodeResult }).result['total_iterations']
+      ).toBe(3);
+    });
+
+    it('LoopNode.parse normalizes until: "" alongside max_iterations, and the loop runs unconditionally to the max_iterations bound', async () => {
+      const loop = LoopNode.parse({
+        id: 'loop1',
+        loop: {
+          until: '',
+          max_iterations: 3,
+          nodes: [{ id: 'inner', bash: 'true' }],
+        },
+      });
+
+      const result = await loop.run({
+        ctx: makeCtx(),
+        emitter: createEngineEmitter(),
+        signal: new AbortController().signal,
+      });
+
+      expect(result.status).toBe('completed');
+      expect(
+        (result as { status: 'completed'; result: NodeResult }).result['total_iterations']
+      ).toBe(3);
     });
   });
 
@@ -828,6 +894,26 @@ describe('LoopNode', () => {
         LoopNode.parse({
           id: 'l1',
           loop: { max_iterations: 1, nodes: [] },
+        })
+      ).toThrow(ZodError);
+    });
+
+    it('throws a ZodError when while is an empty string and no other bound is set', () => {
+      // '' is normalized to undefined before the at-least-one-of refine runs, so this is
+      // rejected the same as omitting while entirely — not treated as a configured expression.
+      expect(() =>
+        LoopNode.parse({
+          id: 'l1',
+          loop: { while: '', nodes: [{ id: 's', bash: 'true' }] },
+        })
+      ).toThrow(ZodError);
+    });
+
+    it('throws a ZodError when until is an empty string and no other bound is set', () => {
+      expect(() =>
+        LoopNode.parse({
+          id: 'l1',
+          loop: { until: '', nodes: [{ id: 's', bash: 'true' }] },
         })
       ).toThrow(ZodError);
     });
