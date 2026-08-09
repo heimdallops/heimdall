@@ -16,9 +16,6 @@ const run = (): Promise<number> => {
     quiet: false,
   });
 
-  // When no subcommand is given, validate global flags (e.g. --quiet + --verbose
-  // conflict) and exit 0. Each registered command calls createContext, which
-  // runs loadConfig, so the root action only needs to cover the no-command path.
   program.action(async () => {
     await loadConfig(program.opts(), process.cwd());
   });

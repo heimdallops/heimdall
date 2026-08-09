@@ -20,8 +20,7 @@ export interface RunInput {
 
 /**
  * Read a workflow file, translating filesystem failures into CliErrors.
- * `filePath` is the resolved absolute path read from disk; `displayPath` is the
- * user-supplied path surfaced in error messages.
+ * `filePath` is the absolute path read; `displayPath` is shown in error messages.
  */
 const readWorkflowFile = async (filePath: string, displayPath: string): Promise<string> => {
   try {
@@ -50,12 +49,7 @@ class InvalidInputError extends CliError {
   }
 }
 
-/**
- * Coerce a raw `--input` string to the type its declaration expects. CLI inputs
- * always arrive as strings, but the engine (and CEL expressions) act on the
- * declared type, so `type: number` must become a real number rather than the
- * string "5". Declared defaults are already typed and never pass through here.
- */
+/** Coerce a raw `--input` string to the type its declaration expects. */
 const coerceInputValue = (
   key: string,
   value: string,
@@ -95,11 +89,7 @@ const coerceInputValue = (
   }
 };
 
-/**
- * Coerce every supplied `--input` value against its declaration. Unknown keys
- * are rejected before this runs; a declaration missing a `type` (only untyped
- * test stubs) passes through as a string.
- */
+/** Coerce every supplied `--input` value against its declaration. */
 const coerceInputs = (
   rawInputs: Record<string, string>,
   declaredInputs: ReadonlyMap<string, InputDeclaration>
@@ -114,11 +104,9 @@ const coerceInputs = (
 };
 
 /**
- * Interactively collect an approval decision. When feedback is enabled the
- * decision is a single choice between approve, reject-with-feedback, and reject
- * — modeled on the approve/reject/other prompt agents present. Feedback is not a
- * separate follow-up question and it is not an approval: it is a rejection that
- * carries guidance so the workflow can keep trying rather than exit.
+ * Interactively collect an approval decision. With feedback enabled, the user
+ * chooses approve, reject-with-feedback, or reject; feedback accompanies a
+ * rejection.
  */
 const promptApproval = async (
   nodeName: string,
@@ -162,18 +150,13 @@ export const run = async (
   const { printer, cwd, config, stdout } = ctx;
   const filePath = resolvePath(cwd, runInput.file);
 
-  // Approval prompts require an interactive terminal. Only tty.WriteStream sets
-  // isTTY; a piped or redirected stdout leaves it undefined.
   const stdoutIsTty = (stdout as { isTTY?: boolean }).isTTY === true;
 
-  // Captures the first interactive-prompt failure so the run fails afterward
-  // rather than silently proceeding as if the approval were declined.
+  // First interactive-prompt failure, raised after the run returns.
   let approvalError: unknown;
 
-  // A prompt failure aborts this controller, which cancels the run through the
-  // engine's cancellation signal. The external signal (e.g. SIGINT) is forwarded
-  // into it so either source cancels the run the same way. Declared outside the
-  // try so the finally can always detach the forwarding listener.
+  // Cancels the run on a prompt failure; an external signal (e.g. SIGINT) is
+  // forwarded into it.
   const abortController = new AbortController();
   const forwardExternalAbort = (): void => {
     abortController.abort();
@@ -184,9 +167,6 @@ export const run = async (
     signal?.addEventListener('abort', forwardExternalAbort, { once: true });
   }
 
-  // A single try/catch spans the run: the CLI-owned CliErrors thrown below pass
-  // through unchanged, and the engine's typed errors are mapped to CliErrors in
-  // one place rather than wrapping each statement in its own try/catch.
   try {
     const yaml = await readWorkflowFile(filePath, runInput.file);
     const workflow = await Workflow.from(yaml);
@@ -247,7 +227,7 @@ export const run = async (
 
     emitter.on('approval_requested', ({ nodeName, message, enableFeedback, resolve }) => {
       if (runInput.approve) {
-        // --approve short-circuits every gate; the run is explicitly unattended.
+        // --approve short-circuits every gate.
         printer.info(`Approval auto-approved for '${nodeName}': ${message}`);
         resolve({ approved: true });
 
@@ -255,9 +235,7 @@ export const run = async (
       }
 
       if (config.json || !stdoutIsTty) {
-        // Without an interactive TTY there is nowhere to prompt, and in --json mode
-        // the result stream is machine-readable, so auto-decline in both cases and
-        // log a normal message rather than attempting a prompt that would fail.
+        // No TTY (or --json) means nowhere to prompt, so auto-decline.
         printer.warn(
           `Approval requested for '${nodeName}' auto-declined (non-interactive): ${message}`
         );
@@ -266,25 +244,19 @@ export const run = async (
         return;
       }
 
-      // The emitter listener contract is synchronous (`=> void`), so the async
-      // prompt is fire-and-forget: resolve() is the mechanism that continues the
-      // engine. An async listener trips @typescript-eslint/no-misused-promises,
-      // so the void IIFE is the deliberate way to run async work from here.
       void (async (): Promise<void> => {
         try {
           resolve(await promptApproval(nodeName, message, enableFeedback));
         } catch (err) {
-          // A prompt failure is not a deliberate rejection. Abort the run so the
-          // engine cancels rather than proceeding as if the gate were declined;
-          // the CLI raises the error after run() returns.
+          // A prompt failure is not a rejection — abort the run; the CLI raises
+          // the error after run() returns.
           approvalError ??= err;
           abortController.abort();
         }
       })();
     });
 
-    // The engine resolves platform adapters itself via a run-owned factory, so
-    // the CLI only forwards inputs, cwd, the cancellation signal, and the emitter.
+    // Forward only inputs, cwd, the cancellation signal, and the emitter.
     const result = await workflow.run({
       inputs,
       emitter,
@@ -318,7 +290,7 @@ export const run = async (
       printer.success('Workflow completed successfully');
     }
   } catch (err) {
-    // CLI-owned failures already carry the right code/exit; pass them through.
+    // Already a CliError — pass it through.
     if (err instanceof CliError) {
       throw err;
     }

@@ -4,10 +4,6 @@ import { createContext } from '../../cli/context.ts';
 import { withSignalHandling } from '../../cli/middleware/with-signal-handling.ts';
 import { run } from './run.ts';
 
-/**
- * Parse a `key=value` input string, splitting on the first `=` only so that
- * values containing `=` are preserved intact.
- */
 const parseInputFlag = (raw: string, previous: Record<string, string>): Record<string, string> => {
   const idx = raw.indexOf('=');
 
