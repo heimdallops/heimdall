@@ -40,11 +40,15 @@ const readWorkflowFile = async (filePath: string, displayPath: string): Promise<
   }
 };
 
-const invalidInput = (key: string, value: string, expected: string): CliError =>
-  new CliError(`Invalid value for input '${key}': '${value}' is not ${expected}`, {
-    code: ERROR_CODE.INVALID_INPUT,
-    exitCode: EXIT_CODE.USAGE,
-  });
+class InvalidInputError extends CliError {
+  public constructor(key: string, value: string, expected: string) {
+    super(`Invalid value for input '${key}': '${value}' is not ${expected}`, {
+      code: ERROR_CODE.INVALID_INPUT,
+      exitCode: EXIT_CODE.USAGE,
+    });
+    this.name = 'InvalidInputError';
+  }
+}
 
 /**
  * Coerce a raw `--input` string to the type its declaration expects. CLI inputs
@@ -69,12 +73,12 @@ const coerceInputValue = (
         return false;
       }
 
-      throw invalidInput(key, value, "'true' or 'false'");
+      throw new InvalidInputError(key, value, "'true' or 'false'");
     case 'number': {
       const parsed = Number(value);
 
       if (value.trim() === '' || !Number.isFinite(parsed)) {
-        throw invalidInput(key, value, 'a number');
+        throw new InvalidInputError(key, value, 'a number');
       }
 
       return parsed;
@@ -83,7 +87,7 @@ const coerceInputValue = (
       const parsed = Number(value);
 
       if (value.trim() === '' || !Number.isInteger(parsed)) {
-        throw invalidInput(key, value, 'an integer');
+        throw new InvalidInputError(key, value, 'an integer');
       }
 
       return parsed;
