@@ -32,7 +32,7 @@ const readWorkflowFile = async (filePath: string, displayPath: string): Promise<
       isNotFound ? `File not found: ${displayPath}` : `Could not read file: ${displayPath}`,
       {
         code: isNotFound ? ERROR_CODE.FILE_NOT_FOUND : ERROR_CODE.WORKFLOW_CONFIG_ERROR,
-        exitCode: isNotFound ? EXIT_CODE.USAGE : EXIT_CODE.CONFIG,
+        exitCode: isNotFound ? EXIT_CODE.USAGE : EXIT_CODE.WORKFLOW_CONFIG,
         cause: err,
       }
     );
@@ -257,7 +257,7 @@ export const run = async (
         approvalError instanceof Error ? approvalError.message : 'interactive prompt failed';
       throw new CliError(`Approval prompt failed: ${detail}`, {
         code: ERROR_CODE.WORKFLOW_FAILED,
-        exitCode: EXIT_CODE.UNKNOWN,
+        exitCode: EXIT_CODE.WORKFLOW_FAILED,
         cause: approvalError,
       });
     }
@@ -270,7 +270,7 @@ export const run = async (
       const reason = result.exitReason ? ` (${result.exitReason})` : '';
       throw new CliError(`Workflow failed${reason}`, {
         code: ERROR_CODE.WORKFLOW_FAILED,
-        exitCode: EXIT_CODE.UNKNOWN,
+        exitCode: EXIT_CODE.WORKFLOW_FAILED,
       });
     }
 
@@ -293,7 +293,7 @@ export const run = async (
     if (err instanceof EngineConfigError) {
       throw new CliError(err.toString(), {
         code: ERROR_CODE.WORKFLOW_CONFIG_ERROR,
-        exitCode: EXIT_CODE.CONFIG,
+        exitCode: EXIT_CODE.WORKFLOW_CONFIG,
         cause: err,
       });
     }

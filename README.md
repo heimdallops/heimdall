@@ -115,9 +115,12 @@ heimdall run deploy.yaml --json
 | Code | Meaning                                                                       |
 | ---- | ----------------------------------------------------------------------------- |
 | `0`  | Workflow completed successfully                                               |
-| `1`  | Workflow ran but failed, or an unexpected error occurred                      |
+| `1`  | An unexpected error occurred                                                  |
 | `2`  | Bad invocation — missing file, unknown/invalid/missing input, or invalid YAML |
-| `3`  | Configuration error — unreadable file or invalid workflow graph               |
+| `3`  | Reserved — application configuration error                                    |
+| `4`  | Reserved — authentication error                                               |
+| `5`  | Workflow configuration error — unreadable file or invalid workflow graph      |
+| `6`  | Workflow ran but failed                                                       |
 
 **Workflow YAML**
 

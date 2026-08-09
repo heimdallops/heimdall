@@ -21,6 +21,8 @@ export const EXIT_CODE = {
   USAGE: 2,
   CONFIG: 3,
   AUTH: 4,
+  WORKFLOW_CONFIG: 5,
+  WORKFLOW_FAILED: 6,
   UNKNOWN: 1,
 } as const;
 

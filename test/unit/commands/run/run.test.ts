@@ -192,7 +192,7 @@ describe('run command — run()', () => {
 
       expect(err).toBeInstanceOf(CliError);
       expect((err as CliError).code).toBe(ERROR_CODE.WORKFLOW_CONFIG_ERROR);
-      expect((err as CliError).exitCode).toBe(EXIT_CODE.CONFIG);
+      expect((err as CliError).exitCode).toBe(EXIT_CODE.WORKFLOW_CONFIG);
     });
 
     it('includes the user-supplied file path in the error message', async () => {

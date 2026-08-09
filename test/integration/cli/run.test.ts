@@ -283,12 +283,12 @@ describe('heimdall run — integration', () => {
   // -------------------------------------------------------------------------
 
   describe('SC-007: --json flag on a failing workflow', () => {
-    it('exits 1 when the workflow fails in --json mode', async () => {
+    it('exits 6 when the workflow fails in --json mode', async () => {
       const filePath = await writeWorkflow('workflow.yaml', FAILING_WORKFLOW_YAML);
 
       const result = await execa('node', [cliPath, 'run', '--json', filePath], { reject: false });
 
-      expect(result.exitCode).toBe(1);
+      expect(result.exitCode).toBe(6);
     });
 
     it('writes a JSON line containing success:false to stdout when the workflow fails', async () => {
