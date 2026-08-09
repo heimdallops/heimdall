@@ -93,5 +93,13 @@ properties:
           Absolute path to a temporary directory scoped to this workflow run.
           Persists for the lifetime of the run. Use it to share files between
           nodes (e.g. spec.md, progress.txt) without polluting the workspace.
+      run_cwd:
+        type: string
+        description: >-
+          Absolute path to the directory the run started in. Constant for the
+          whole run and unaffected by enclosing worktrees. Use it from inside
+          a worktree body to reach paths outside that worktree (e.g. to anchor
+          a dir override).
     required:
       - session_dir
+      - run_cwd
