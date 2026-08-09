@@ -155,8 +155,6 @@ export const run = async (
   // First interactive-prompt failure, raised after the run returns.
   let approvalError: unknown;
 
-  // Cancels the run on a prompt failure; an external signal (e.g. SIGINT) is
-  // forwarded into it.
   const abortController = new AbortController();
   const forwardExternalAbort = (): void => {
     abortController.abort();
@@ -227,7 +225,6 @@ export const run = async (
 
     emitter.on('approval_requested', ({ nodeName, message, enableFeedback, resolve }) => {
       if (runInput.approve) {
-        // --approve short-circuits every gate.
         printer.info(`Approval auto-approved for '${nodeName}': ${message}`);
         resolve({ approved: true });
 
@@ -235,7 +232,6 @@ export const run = async (
       }
 
       if (config.json || !stdoutIsTty) {
-        // No TTY (or --json) means nowhere to prompt, so auto-decline.
         printer.warn(
           `Approval requested for '${nodeName}' auto-declined (non-interactive): ${message}`
         );
@@ -248,15 +244,12 @@ export const run = async (
         try {
           resolve(await promptApproval(nodeName, message, enableFeedback));
         } catch (err) {
-          // A prompt failure is not a rejection — abort the run; the CLI raises
-          // the error after run() returns.
           approvalError ??= err;
           abortController.abort();
         }
       })();
     });
 
-    // Forward only inputs, cwd, the cancellation signal, and the emitter.
     const result = await workflow.run({
       inputs,
       emitter,
@@ -290,7 +283,6 @@ export const run = async (
       printer.success('Workflow completed successfully');
     }
   } catch (err) {
-    // Already a CliError — pass it through.
     if (err instanceof CliError) {
       throw err;
     }
