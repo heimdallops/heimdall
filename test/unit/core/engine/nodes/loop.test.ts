@@ -13,6 +13,7 @@ import type {
   ExecutionContext,
   NodeRunOptions,
   NodeRunResult,
+  WorktreeDetails,
 } from '../../../../../src/core/engine/nodes/base.ts';
 import { BaseNode } from '../../../../../src/core/engine/nodes/base.ts';
 import { BreakNode } from '../../../../../src/core/engine/nodes/break.ts';
@@ -639,6 +640,109 @@ describe('LoopNode', () => {
       expect(result.status).toBe('completed');
       expect(outerIterationsSeen).toHaveLength(4);
       expect(outerIterationsSeen).toEqual([0, 0, 1, 1]);
+    });
+  });
+
+  describe('scope.worktree family propagation (FR-024)', () => {
+    const worktree: WorktreeDetails = {
+      path: '/repo/worktrees/wt-1',
+      branch: 'feat/example',
+      base_commit: 'abc1234',
+    };
+
+    it("propagates the parent scope's worktree family unchanged into the body node context", async () => {
+      const body = new ScopeCapturingNode({ id: 'step' });
+      const loop = makeLoopNode({ max_iterations: 1 }, [body]);
+      const ctx = makeCtx({ scope: { needs: new Map(), worktree } });
+
+      await runLoop(loop, ctx);
+
+      expect(body.capturedScopes[0]?.worktree).toEqual(worktree);
+    });
+
+    it('propagates the same worktree through scope.outer at every nesting level while scope.loop still shadows per level', async () => {
+      const innerBody = new ScopeCapturingNode({ id: 'inner_step' });
+      const innerLoop = makeLoopNode({ id: 'inner', max_iterations: 1 }, [innerBody]);
+      const outerLoop = makeLoopNode({ id: 'outer', max_iterations: 2 }, [innerLoop]);
+      const ctx = makeCtx({ scope: { needs: new Map(), worktree } });
+
+      await runLoop(outerLoop, ctx);
+
+      expect(innerBody.capturedScopes).toHaveLength(2);
+      innerBody.capturedScopes.forEach((scope, outerIteration) => {
+        // worktree carries through unchanged at both nesting levels...
+        expect(scope?.worktree).toEqual(worktree);
+        expect(scope?.outer?.worktree).toEqual(worktree);
+        // ...while `loop` shadows per level: the inner loop's own iteration is always 0
+        // (max_iterations: 1 resets it every outer pass), but scope.outer.loop.iteration
+        // reflects the enclosing outer loop's own iteration count.
+        expect(scope?.loop?.iteration).toBe(0);
+        expect(scope?.outer?.loop?.iteration).toBe(outerIteration);
+      });
+    });
+
+    it('omits the worktree key entirely from the body scope when the parent scope carries none, rather than exposing it as present-but-undefined', async () => {
+      const body = new ScopeCapturingNode({ id: 'step' });
+      const loop = makeLoopNode({ max_iterations: 1 }, [body]);
+
+      await runLoop(loop);
+
+      expect(Object.keys(body.capturedScopes[0] ?? {})).not.toContain('worktree');
+    });
+
+    it('while resolves scope.worktree.branch, gating iteration on the propagated family', async () => {
+      const body = new ScopeCapturingNode({ id: 'step' });
+      const loop = makeLoopNode(
+        { while: `scope.worktree.branch == '${worktree.branch}'`, max_iterations: 2 },
+        [body]
+      );
+      const ctx = makeCtx({ scope: { needs: new Map(), worktree } });
+
+      const result = await runLoop(loop, ctx);
+
+      expect(result.status).toBe('completed');
+      // while stays true on both pre-iteration checks (branch always matches); max_iterations caps it.
+      expect(body.runCount).toBe(2);
+    });
+
+    it('until resolves scope.worktree.path together with scope.loop.iteration to stop the loop', async () => {
+      const body = new ScopeCapturingNode({ id: 'step' });
+      const loop = makeLoopNode(
+        { until: `scope.worktree.path == '${worktree.path}' && scope.loop.iteration >= 1` },
+        [body]
+      );
+      const ctx = makeCtx({ scope: { needs: new Map(), worktree } });
+
+      const result = await runLoop(loop, ctx);
+
+      expect(result.status).toBe('completed');
+      expect(body.runCount).toBe(1);
+    });
+
+    it('outputs resolves scope.worktree.path, .branch, and .base_commit from the propagated family', async () => {
+      const body = new ScopeCapturingNode({ id: 'step' });
+      const loop = makeLoopNode(
+        {
+          max_iterations: 1,
+          outputs: {
+            wt_path: 'scope.worktree.path',
+            wt_branch: 'scope.worktree.branch',
+            wt_base_commit: 'scope.worktree.base_commit',
+          },
+        },
+        [body]
+      );
+      const ctx = makeCtx({ scope: { needs: new Map(), worktree } });
+
+      const result = await runLoop(loop, ctx);
+
+      expect(result.status).toBe('completed');
+      const loopResult = (result as { status: 'completed'; result: NodeResult }).result;
+      expect(loopResult['output']).toEqual({
+        wt_path: worktree.path,
+        wt_branch: worktree.branch,
+        wt_base_commit: worktree.base_commit,
+      });
     });
   });
 
