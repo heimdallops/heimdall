@@ -1,5 +1,7 @@
 import '../../../../../src/core/engine/nodes/bash.ts';
 
+import { tmpdir } from 'node:os';
+
 import { describe, expect, it } from 'vitest';
 import { ZodError } from 'zod';
 
@@ -11,6 +13,7 @@ import type {
   ExecutionContext,
   NodeRunOptions,
   NodeRunResult,
+  WorktreeDetails,
 } from '../../../../../src/core/engine/nodes/base.ts';
 import { BaseNode } from '../../../../../src/core/engine/nodes/base.ts';
 import { BreakNode } from '../../../../../src/core/engine/nodes/break.ts';
@@ -21,7 +24,9 @@ const makeCtx = (overrides: Partial<ExecutionContext> = {}): ExecutionContext =>
   vars: {},
   needs: new Map(),
   sessionDir: '/tmp/session',
-  cwd: '/tmp/work',
+  // Must be a real, existing directory: BashNode forwards ctx.cwd to execa, and this
+  // suite runs real bash body nodes, so a placeholder path like '/tmp/work' fails them.
+  cwd: tmpdir(),
   ...overrides,
 });
 
@@ -101,10 +106,10 @@ const makeLoopNode = (
 describe('LoopNode', () => {
   describe('until exits after N iterations', () => {
     it('runs the body exactly twice when until becomes true after 2 iterations', async () => {
-      // scope.iteration is 0 on first run, 1 on second — after second completes it equals 2,
-      // so "scope.iteration >= 2" becomes true and the loop exits.
+      // scope.loop.iteration is 0 on first run, 1 on second — after second completes it equals 2,
+      // so "scope.loop.iteration >= 2" becomes true and the loop exits.
       const body = new ScopeCapturingNode({ id: 'step' }, { value: 'x' });
-      const loop = makeLoopNode({ until: 'scope.iteration >= 2' }, [body]);
+      const loop = makeLoopNode({ until: 'scope.loop.iteration >= 2' }, [body]);
 
       const result = await runLoop(loop);
 
@@ -117,7 +122,7 @@ describe('LoopNode', () => {
 
     it('runs exactly once when until is satisfied after the first iteration', async () => {
       const body = new ScopeCapturingNode({ id: 'step' });
-      const loop = makeLoopNode({ until: 'scope.iteration >= 1' }, [body]);
+      const loop = makeLoopNode({ until: 'scope.loop.iteration >= 1' }, [body]);
 
       const result = await runLoop(loop);
 
@@ -174,16 +179,16 @@ describe('LoopNode', () => {
     });
 
     it('runs the body while the condition holds and stops once it becomes false', async () => {
-      // scope.iteration is 0,1,2 at the start of each iteration. while is checked first:
+      // scope.loop.iteration is 0,1,2 at the start of each iteration. while is checked first:
       // 0<3, 1<3, 2<3 pass (3 runs); on the 4th check 3<3 is false → stop.
       const body = new ScopeCapturingNode({ id: 'step' });
-      const loop = makeLoopNode({ while: 'scope.iteration < 3' }, [body]);
+      const loop = makeLoopNode({ while: 'scope.loop.iteration < 3' }, [body]);
 
       const result = await runLoop(loop);
 
       expect(result.status).toBe('completed');
       expect(body.runCount).toBe(3);
-      expect(body.capturedScopes.map((s) => s?.iteration)).toEqual([0, 1, 2]);
+      expect(body.capturedScopes.map((s) => s?.loop?.iteration)).toEqual([0, 1, 2]);
       expect(
         (result as { status: 'completed'; result: NodeResult }).result['total_iterations']
       ).toBe(3);
@@ -210,7 +215,7 @@ describe('LoopNode', () => {
       const loop = new LoopNode({
         id: 'loop1',
         depends_on: ['dep'],
-        while: 'scope.iteration < scope.needs.dep.threshold',
+        while: 'scope.loop.iteration < scope.needs.dep.threshold',
         until: undefined,
         maxIterations: undefined,
         bodyNodes: [body],
@@ -237,15 +242,81 @@ describe('LoopNode', () => {
       // while is a pre-condition: the bad expression is evaluated before the body ever runs
       expect(body.runCount).toBe(0);
     });
+  });
 
-    it('throws a NodeError (ENGINE_CEL_ERROR) for an empty while instead of looping unconditionally', async () => {
-      // An empty string is a configured (but invalid) expression, not "unset": it must fail
-      // CEL evaluation rather than be treated as no-while and loop forever.
+  describe('empty until/while are treated as unset, not a configured expression', () => {
+    it('a directly-constructed loop with while: "" runs the full max_iterations count instead of throwing ENGINE_CEL_ERROR', async () => {
+      // The schema normalizes '' to undefined before LoopNode ever sees it, but the constructor
+      // itself must also treat '' as falsy (evaluateWhile's `if (!this.while)` guard) — this is
+      // the runtime contract, reachable via direct construction even though the schema can no
+      // longer produce it. Bounded by max_iterations so the loop cannot run unbounded.
       const body = new ScopeCapturingNode({ id: 'step' });
-      const loop = makeLoopNode({ while: '' }, [body]);
+      const loop = makeLoopNode({ while: '', max_iterations: 2 }, [body]);
 
-      await expect(runLoop(loop)).rejects.toMatchObject({ code: 'ENGINE_CEL_ERROR' });
-      expect(body.runCount).toBe(0);
+      const result = await runLoop(loop);
+
+      expect(result.status).toBe('completed');
+      expect(body.runCount).toBe(2);
+      expect(
+        (result as { status: 'completed'; result: NodeResult }).result['total_iterations']
+      ).toBe(2);
+    });
+
+    it('a directly-constructed loop with until: "" runs the full max_iterations count instead of stopping early', async () => {
+      const body = new ScopeCapturingNode({ id: 'step' });
+      const loop = makeLoopNode({ until: '', max_iterations: 2 }, [body]);
+
+      const result = await runLoop(loop);
+
+      expect(result.status).toBe('completed');
+      expect(body.runCount).toBe(2);
+      expect(
+        (result as { status: 'completed'; result: NodeResult }).result['total_iterations']
+      ).toBe(2);
+    });
+
+    it('LoopNode.parse normalizes while: "" alongside max_iterations, and the loop runs unconditionally to the max_iterations bound', async () => {
+      const loop = LoopNode.parse({
+        id: 'loop1',
+        loop: {
+          while: '',
+          max_iterations: 3,
+          nodes: [{ id: 'inner', bash: 'true' }],
+        },
+      });
+
+      const result = await loop.run({
+        ctx: makeCtx(),
+        emitter: createEngineEmitter(),
+        signal: new AbortController().signal,
+      });
+
+      expect(result.status).toBe('completed');
+      expect(
+        (result as { status: 'completed'; result: NodeResult }).result['total_iterations']
+      ).toBe(3);
+    });
+
+    it('LoopNode.parse normalizes until: "" alongside max_iterations, and the loop runs unconditionally to the max_iterations bound', async () => {
+      const loop = LoopNode.parse({
+        id: 'loop1',
+        loop: {
+          until: '',
+          max_iterations: 3,
+          nodes: [{ id: 'inner', bash: 'true' }],
+        },
+      });
+
+      const result = await loop.run({
+        ctx: makeCtx(),
+        emitter: createEngineEmitter(),
+        signal: new AbortController().signal,
+      });
+
+      expect(result.status).toBe('completed');
+      expect(
+        (result as { status: 'completed'; result: NodeResult }).result['total_iterations']
+      ).toBe(3);
     });
   });
 
@@ -283,15 +354,15 @@ describe('LoopNode', () => {
     });
 
     it('stops before the cap — a conditional break after 1 full iteration yields total_iterations 1', async () => {
-      // Iteration 0 (scope.iteration=0): work runs, stopper if=false → skipped; full iteration completes (completedIterations → 1)
-      // Iteration 1 (scope.iteration=1): work runs, stopper if=true → breaks; iteration 1 does not complete → total_iterations stays 1
+      // Iteration 0 (scope.loop.iteration=0): work runs, stopper if=false → skipped; full iteration completes (completedIterations → 1)
+      // Iteration 1 (scope.loop.iteration=1): work runs, stopper if=true → breaks; iteration 1 does not complete → total_iterations stays 1
       const loop = LoopNode.parse({
         id: 'loop1',
         loop: {
           max_iterations: 10,
           nodes: [
             { id: 'work', bash: 'true' },
-            { id: 'stopper', break: true, if: 'scope.iteration >= 1', depends_on: ['work'] },
+            { id: 'stopper', break: true, if: 'scope.loop.iteration >= 1', depends_on: ['work'] },
           ],
         },
       });
@@ -308,42 +379,42 @@ describe('LoopNode', () => {
     });
   });
 
-  describe('scope.iteration starts at 0 and increments', () => {
-    it('delivers scope.iteration = 0 on the first body execution', async () => {
+  describe('scope.loop.iteration starts at 0 and increments', () => {
+    it('delivers scope.loop.iteration = 0 on the first body execution', async () => {
       const body = new ScopeCapturingNode({ id: 'step' });
       const loop = makeLoopNode({ max_iterations: 1 }, [body]);
 
       await runLoop(loop);
 
-      expect(body.capturedScopes[0]?.iteration).toBe(0);
+      expect(body.capturedScopes[0]?.loop?.iteration).toBe(0);
     });
 
-    it('delivers scope.iteration = 0, 1, 2 across three iterations', async () => {
+    it('delivers scope.loop.iteration = 0, 1, 2 across three iterations', async () => {
       const body = new ScopeCapturingNode({ id: 'step' });
       const loop = makeLoopNode({ max_iterations: 3 }, [body]);
 
       await runLoop(loop);
 
-      const iterations = body.capturedScopes.map((s) => s?.iteration);
+      const iterations = body.capturedScopes.map((s) => s?.loop?.iteration);
       expect(iterations).toEqual([0, 1, 2]);
     });
 
-    it('exits after exactly 2 body runs when until uses scope.iteration >= 2', async () => {
+    it('exits after exactly 2 body runs when until uses scope.loop.iteration >= 2', async () => {
       // Validates that the until expression sees the UPDATED iteration count (post-completion).
       const body = new ScopeCapturingNode({ id: 'step' });
-      const loop = makeLoopNode({ until: 'scope.iteration >= 2' }, [body]);
+      const loop = makeLoopNode({ until: 'scope.loop.iteration >= 2' }, [body]);
 
       await runLoop(loop);
 
       expect(body.runCount).toBe(2);
-      const iterations = body.capturedScopes.map((s) => s?.iteration);
-      // Body sees 0 and 1 (scope.iteration is completedIterations at the START of each iteration)
+      const iterations = body.capturedScopes.map((s) => s?.loop?.iteration);
+      // Body sees 0 and 1 (scope.loop.iteration is completedIterations at the START of each iteration)
       expect(iterations).toEqual([0, 1]);
     });
   });
 
   describe('outputs evaluated at exit from final iteration context', () => {
-    it('resolves output.last_value from scope.nodes.<id> of the final iteration', async () => {
+    it('resolves output.last_value from scope.loop.nodes.<id> of the final iteration', async () => {
       // Each iteration: body produces { count: i+1 }.
       let callIndex = 0;
       const body = new FactoryNode({ id: 'counter' }, () => {
@@ -355,7 +426,7 @@ describe('LoopNode', () => {
       const loop = makeLoopNode(
         {
           max_iterations: 3,
-          outputs: { last_count: 'scope.nodes.counter.count' },
+          outputs: { last_count: 'scope.loop.nodes.counter.count' },
         },
         [body]
       );
@@ -368,12 +439,12 @@ describe('LoopNode', () => {
       expect(loopResult['output']).toEqual({ last_count: 3 });
     });
 
-    it('resolves output.final_iter from scope.iteration (equals total_iterations on normal exit)', async () => {
+    it('resolves output.final_iter from scope.loop.iteration (equals total_iterations on normal exit)', async () => {
       const body = new ScopeCapturingNode({ id: 'step' });
       const loop = makeLoopNode(
         {
           max_iterations: 2,
-          outputs: { final_iter: 'scope.iteration' },
+          outputs: { final_iter: 'scope.loop.iteration' },
         },
         [body]
       );
@@ -382,18 +453,18 @@ describe('LoopNode', () => {
 
       expect(result.status).toBe('completed');
       const loopResult = (result as { status: 'completed'; result: NodeResult }).result;
-      // scope.iteration in evaluateOutputs is completedIterations = 2
+      // scope.loop.iteration in evaluateOutputs is completedIterations = 2
       expect(loopResult['output']).toEqual({ final_iter: 2 });
     });
   });
 
-  describe('scope.nodes', () => {
-    it('until and outputs read scope.nodes from the just-completed iteration', async () => {
-      // Iteration 0 (scope.iteration=0): body runs → result { val: 1 }. After completion,
-      //   until sees scope.iteration=1, scope.nodes.counter.val=1.
-      // Iteration 1 (scope.iteration=1): body runs → result { val: 2 }. After completion,
-      //   until sees scope.iteration=2, scope.nodes.counter.val=2. >= 2 → stop.
-      // outputs also sees scope.nodes from the final completed iteration: { val: 2 }.
+  describe('scope.loop.nodes', () => {
+    it('until and outputs read scope.loop.nodes from the just-completed iteration', async () => {
+      // Iteration 0 (scope.loop.iteration=0): body runs → result { val: 1 }. After completion,
+      //   until sees scope.loop.iteration=1, scope.loop.nodes.counter.val=1.
+      // Iteration 1 (scope.loop.iteration=1): body runs → result { val: 2 }. After completion,
+      //   until sees scope.loop.iteration=2, scope.loop.nodes.counter.val=2. >= 2 → stop.
+      // outputs also sees scope.loop.nodes from the final completed iteration: { val: 2 }.
       let callCount = 0;
       const body = new FactoryNode({ id: 'counter' }, () => {
         callCount++;
@@ -403,8 +474,8 @@ describe('LoopNode', () => {
 
       const loop = makeLoopNode(
         {
-          until: 'scope.nodes.counter.val >= 2',
-          outputs: { last_val: 'scope.nodes.counter.val' },
+          until: 'scope.loop.nodes.counter.val >= 2',
+          outputs: { last_val: 'scope.loop.nodes.counter.val' },
         },
         [body]
       );
@@ -417,16 +488,16 @@ describe('LoopNode', () => {
       expect(loopResult['total_iterations']).toBe(2);
     });
 
-    it('body node sees scope.nodes from the previous completed iteration, not the current one', async () => {
+    it('body node sees scope.loop.nodes from the previous completed iteration, not the current one', async () => {
       // A body node that both captures the scope it receives AND returns a distinct per-iteration
       // result. This proves the one-iteration lag: when the body runs in iteration N it sees
-      // scope.nodes populated from iteration N-1 (or empty on iteration 0).
+      // scope.loop.nodes populated from iteration N-1 (or empty on iteration 0).
       //
-      // Iteration 0 (scope.iteration=0):
-      //   scope.nodes passed to body is empty (no previous iteration).
+      // Iteration 0 (scope.loop.iteration=0):
+      //   scope.loop.nodes passed to body is empty (no previous iteration).
       //   Body returns { pass: 0 }.
-      // Iteration 1 (scope.iteration=1):
-      //   scope.nodes passed to body contains the snapshot from iteration 0 → { pass: 0 }.
+      // Iteration 1 (scope.loop.iteration=1):
+      //   scope.loop.nodes passed to body contains the snapshot from iteration 0 → { pass: 0 }.
       //   Body returns { pass: 1 }.
       const capturedScopes: ExecutionContext['scope'][] = [];
 
@@ -447,15 +518,15 @@ describe('LoopNode', () => {
       const result = await runLoop(loop);
 
       expect(result.status).toBe('completed');
-      // Iteration 0: scope.nodes has NO entry for 'tracker' — empty map, no prior iteration.
-      expect(capturedScopes[0]?.nodes.has('tracker')).toBe(false);
-      expect(capturedScopes[0]?.nodes.size).toBe(0);
-      // Iteration 1: scope.nodes contains iteration 0's result for 'tracker' → { pass: 0 }.
-      expect(capturedScopes[1]?.nodes.has('tracker')).toBe(true);
-      expect(capturedScopes[1]?.nodes.get('tracker')).toEqual({ pass: 0 });
+      // Iteration 0: scope.loop.nodes has NO entry for 'tracker' — empty map, no prior iteration.
+      expect(capturedScopes[0]?.loop?.nodes.has('tracker')).toBe(false);
+      expect(capturedScopes[0]?.loop?.nodes.size).toBe(0);
+      // Iteration 1: scope.loop.nodes contains iteration 0's result for 'tracker' → { pass: 0 }.
+      expect(capturedScopes[1]?.loop?.nodes.has('tracker')).toBe(true);
+      expect(capturedScopes[1]?.loop?.nodes.get('tracker')).toEqual({ pass: 0 });
     });
 
-    it('on break: scope.nodes is the partial snapshot — completed nodes present, skipped and cut-off nodes absent (not backfilled)', async () => {
+    it('on break: scope.loop.nodes is the partial snapshot — completed nodes present, skipped and cut-off nodes absent (not backfilled)', async () => {
       let workerCallIdx = 0;
       let afterRunCount = 0;
       const loop = new LoopNode({
@@ -468,11 +539,11 @@ describe('LoopNode', () => {
 
             return { status: 'completed', result: { pass: workerCallIdx } };
           }),
-          new FactoryNode({ id: 'optional', if: 'scope.iteration < 1' }, () => ({
+          new FactoryNode({ id: 'optional', if: 'scope.loop.iteration < 1' }, () => ({
             status: 'completed',
             result: { kept: true },
           })),
-          new BreakNode({ id: 'stopper', if: 'scope.iteration >= 1', depends_on: ['worker'] }),
+          new BreakNode({ id: 'stopper', if: 'scope.loop.iteration >= 1', depends_on: ['worker'] }),
           // `after` depends on the break: it runs while the break is skipped (a skipped break
           // does not cascade its skip) and is cancelled once the break fires.
           new FactoryNode({ id: 'after', depends_on: ['stopper'] }, () => {
@@ -482,9 +553,9 @@ describe('LoopNode', () => {
           }),
         ],
         outputs: {
-          worker_pass: 'scope.nodes.worker.pass',
-          kept: 'has(scope.nodes.optional) ? scope.nodes.optional.kept : "absent"',
-          after_done: 'has(scope.nodes.after) ? scope.nodes.after.done : "cut_off"',
+          worker_pass: 'scope.loop.nodes.worker.pass',
+          kept: 'has(scope.loop.nodes.optional) ? scope.loop.nodes.optional.kept : "absent"',
+          after_done: 'has(scope.loop.nodes.after) ? scope.loop.nodes.after.done : "cut_off"',
         },
       });
 
@@ -500,16 +571,16 @@ describe('LoopNode', () => {
     });
   });
 
-  describe('absent node in scope.nodes causes a CEL error, not a crash', () => {
+  describe('absent node in scope.loop.nodes causes a CEL error, not a crash', () => {
     it('throws a NodeError (ENGINE_CEL_ERROR) when outputs reference a node that never ran', async () => {
-      // Body: a node that always skips (if: false). scope.nodes.never_ran is absent.
+      // Body: a node that always skips (if: false). scope.loop.nodes.never_ran is absent.
       // outputs referencing it should throw ENGINE_CEL_ERROR from evaluateOutputs.
       const loop = LoopNode.parse({
         id: 'loop1',
         loop: {
           max_iterations: 1,
           nodes: [{ id: 'ghost', bash: 'true', if: 'false' }],
-          outputs: { val: 'scope.nodes.ghost.output' },
+          outputs: { val: 'scope.loop.nodes.ghost.output' },
         },
       });
 
@@ -523,14 +594,16 @@ describe('LoopNode', () => {
     });
 
     it('resolves completed with a default value when outputs use has() to guard an absent node', async () => {
-      // has() is the safe escape hatch: if the node never ran, scope.nodes.ghost is absent,
-      // and has(scope.nodes.ghost) returns false, so the ternary falls back to "default".
+      // has() is the safe escape hatch: if the node never ran, scope.loop.nodes.ghost is absent,
+      // and has(scope.loop.nodes.ghost) returns false, so the ternary falls back to "default".
       const loop = LoopNode.parse({
         id: 'loop1',
         loop: {
           max_iterations: 1,
           nodes: [{ id: 'ghost', bash: 'true', if: 'false' }],
-          outputs: { val: 'has(scope.nodes.ghost) ? scope.nodes.ghost.output : "default"' },
+          outputs: {
+            val: 'has(scope.loop.nodes.ghost) ? scope.loop.nodes.ghost.output : "default"',
+          },
         },
       });
 
@@ -548,12 +621,12 @@ describe('LoopNode', () => {
   });
 
   describe('nested loops expose scope.outer', () => {
-    it("inner loop body sees scope.outer.iteration equal to the enclosing loop's iteration count", async () => {
+    it("inner loop body sees scope.outer.loop.iteration equal to the enclosing loop's iteration count", async () => {
       const outerIterationsSeen: number[] = [];
 
       const innerBodyNode = new (class extends BaseNode {
         public override run(opts: NodeRunOptions): Promise<NodeRunResult> {
-          outerIterationsSeen.push(opts.ctx.scope?.outer?.iteration ?? -1);
+          outerIterationsSeen.push(opts.ctx.scope?.outer?.loop?.iteration ?? -1);
 
           return Promise.resolve({ status: 'completed', result: {} });
         }
@@ -567,6 +640,109 @@ describe('LoopNode', () => {
       expect(result.status).toBe('completed');
       expect(outerIterationsSeen).toHaveLength(4);
       expect(outerIterationsSeen).toEqual([0, 0, 1, 1]);
+    });
+  });
+
+  describe('scope.worktree family propagation (FR-024)', () => {
+    const worktree: WorktreeDetails = {
+      path: '/repo/worktrees/wt-1',
+      branch: 'feat/example',
+      base_commit: 'abc1234',
+    };
+
+    it("propagates the parent scope's worktree family unchanged into the body node context", async () => {
+      const body = new ScopeCapturingNode({ id: 'step' });
+      const loop = makeLoopNode({ max_iterations: 1 }, [body]);
+      const ctx = makeCtx({ scope: { needs: new Map(), worktree } });
+
+      await runLoop(loop, ctx);
+
+      expect(body.capturedScopes[0]?.worktree).toEqual(worktree);
+    });
+
+    it('propagates the same worktree through scope.outer at every nesting level while scope.loop still shadows per level', async () => {
+      const innerBody = new ScopeCapturingNode({ id: 'inner_step' });
+      const innerLoop = makeLoopNode({ id: 'inner', max_iterations: 1 }, [innerBody]);
+      const outerLoop = makeLoopNode({ id: 'outer', max_iterations: 2 }, [innerLoop]);
+      const ctx = makeCtx({ scope: { needs: new Map(), worktree } });
+
+      await runLoop(outerLoop, ctx);
+
+      expect(innerBody.capturedScopes).toHaveLength(2);
+      innerBody.capturedScopes.forEach((scope, outerIteration) => {
+        // worktree carries through unchanged at both nesting levels...
+        expect(scope?.worktree).toEqual(worktree);
+        expect(scope?.outer?.worktree).toEqual(worktree);
+        // ...while `loop` shadows per level: the inner loop's own iteration is always 0
+        // (max_iterations: 1 resets it every outer pass), but scope.outer.loop.iteration
+        // reflects the enclosing outer loop's own iteration count.
+        expect(scope?.loop?.iteration).toBe(0);
+        expect(scope?.outer?.loop?.iteration).toBe(outerIteration);
+      });
+    });
+
+    it('omits the worktree key entirely from the body scope when the parent scope carries none, rather than exposing it as present-but-undefined', async () => {
+      const body = new ScopeCapturingNode({ id: 'step' });
+      const loop = makeLoopNode({ max_iterations: 1 }, [body]);
+
+      await runLoop(loop);
+
+      expect(Object.keys(body.capturedScopes[0] ?? {})).not.toContain('worktree');
+    });
+
+    it('while resolves scope.worktree.branch, gating iteration on the propagated family', async () => {
+      const body = new ScopeCapturingNode({ id: 'step' });
+      const loop = makeLoopNode(
+        { while: `scope.worktree.branch == '${worktree.branch}'`, max_iterations: 2 },
+        [body]
+      );
+      const ctx = makeCtx({ scope: { needs: new Map(), worktree } });
+
+      const result = await runLoop(loop, ctx);
+
+      expect(result.status).toBe('completed');
+      // while stays true on both pre-iteration checks (branch always matches); max_iterations caps it.
+      expect(body.runCount).toBe(2);
+    });
+
+    it('until resolves scope.worktree.path together with scope.loop.iteration to stop the loop', async () => {
+      const body = new ScopeCapturingNode({ id: 'step' });
+      const loop = makeLoopNode(
+        { until: `scope.worktree.path == '${worktree.path}' && scope.loop.iteration >= 1` },
+        [body]
+      );
+      const ctx = makeCtx({ scope: { needs: new Map(), worktree } });
+
+      const result = await runLoop(loop, ctx);
+
+      expect(result.status).toBe('completed');
+      expect(body.runCount).toBe(1);
+    });
+
+    it('outputs resolves scope.worktree.path, .branch, and .base_commit from the propagated family', async () => {
+      const body = new ScopeCapturingNode({ id: 'step' });
+      const loop = makeLoopNode(
+        {
+          max_iterations: 1,
+          outputs: {
+            wt_path: 'scope.worktree.path',
+            wt_branch: 'scope.worktree.branch',
+            wt_base_commit: 'scope.worktree.base_commit',
+          },
+        },
+        [body]
+      );
+      const ctx = makeCtx({ scope: { needs: new Map(), worktree } });
+
+      const result = await runLoop(loop, ctx);
+
+      expect(result.status).toBe('completed');
+      const loopResult = (result as { status: 'completed'; result: NodeResult }).result;
+      expect(loopResult['output']).toEqual({
+        wt_path: worktree.path,
+        wt_branch: worktree.branch,
+        wt_base_commit: worktree.base_commit,
+      });
     });
   });
 
@@ -594,7 +770,7 @@ describe('LoopNode', () => {
       const loop = new LoopNode({
         id: 'loop1',
         depends_on: ['dep'],
-        until: 'scope.iteration >= 1',
+        until: 'scope.loop.iteration >= 1',
         bodyNodes: [body],
         outputs: undefined,
         maxIterations: undefined,
@@ -653,7 +829,7 @@ describe('LoopNode', () => {
       const loop = new LoopNode({
         id: 'loop1',
         depends_on: ['dep'],
-        until: 'scope.iteration >= scope.needs.dep.threshold',
+        until: 'scope.loop.iteration >= scope.needs.dep.threshold',
         bodyNodes: [body],
         outputs: undefined,
         maxIterations: undefined,
@@ -705,7 +881,7 @@ describe('LoopNode', () => {
   describe('top-level needs.<dep> resolves loop depends_on in until/outputs', () => {
     it('until reads top-level needs.<dep> to control iteration count', async () => {
       // The loop has depends_on: ['dep'] and ctx.needs has dep = { threshold: 2 }.
-      // until: 'scope.iteration >= needs.dep.threshold' — the top-level `needs` in the
+      // until: 'scope.loop.iteration >= needs.dep.threshold' — the top-level `needs` in the
       // until eval context is loopNeeds (the loop's own external deps), so needs.dep
       // resolves to { threshold: 2 }. The loop should run exactly 2 body iterations.
       const depResult: NodeResult = { threshold: 2 };
@@ -715,7 +891,7 @@ describe('LoopNode', () => {
       const loop = new LoopNode({
         id: 'loop1',
         depends_on: ['dep'],
-        until: 'scope.iteration >= needs.dep.threshold',
+        until: 'scope.loop.iteration >= needs.dep.threshold',
         bodyNodes: [body],
         outputs: undefined,
         maxIterations: undefined,
@@ -767,8 +943,8 @@ describe('LoopNode', () => {
     });
 
     it('body node id referenced via top-level needs.<bodyNodeId> in outputs causes ENGINE_CEL_ERROR', async () => {
-      // Body results live on scope.nodes, not the loop-level needs map. If an outputs
-      // expression uses needs.<bodyNodeId> (instead of scope.nodes.<bodyNodeId>), loopNeeds
+      // Body results live on scope.loop.nodes, not the loop-level needs map. If an outputs
+      // expression uses needs.<bodyNodeId> (instead of scope.loop.nodes.<bodyNodeId>), loopNeeds
       // has no entry for that id, so needs.step resolves to null in CEL. Accessing
       // needs.step.count then throws a CEL error, surfaced as ENGINE_CEL_ERROR.
       const body = new ScopeCapturingNode({ id: 'step' }, { count: 99 });
@@ -777,7 +953,7 @@ describe('LoopNode', () => {
         maxIterations: 1,
         until: undefined,
         bodyNodes: [body],
-        // 'step' is a body node id — it lives in scope.nodes, NOT in the top-level needs map.
+        // 'step' is a body node id — it lives in scope.loop.nodes, NOT in the top-level needs map.
         // Accessing needs.step.count must fail with ENGINE_CEL_ERROR.
         outputs: { bad: 'needs.step.count' },
       });
@@ -822,6 +998,26 @@ describe('LoopNode', () => {
         LoopNode.parse({
           id: 'l1',
           loop: { max_iterations: 1, nodes: [] },
+        })
+      ).toThrow(ZodError);
+    });
+
+    it('throws a ZodError when while is an empty string and no other bound is set', () => {
+      // '' is normalized to undefined before the at-least-one-of refine runs, so this is
+      // rejected the same as omitting while entirely — not treated as a configured expression.
+      expect(() =>
+        LoopNode.parse({
+          id: 'l1',
+          loop: { while: '', nodes: [{ id: 's', bash: 'true' }] },
+        })
+      ).toThrow(ZodError);
+    });
+
+    it('throws a ZodError when until is an empty string and no other bound is set', () => {
+      expect(() =>
+        LoopNode.parse({
+          id: 'l1',
+          loop: { until: '', nodes: [{ id: 's', bash: 'true' }] },
         })
       ).toThrow(ZodError);
     });
