@@ -156,14 +156,9 @@ export const run = async (
   let approvalError: unknown;
 
   const abortController = new AbortController();
-  const forwardExternalAbort = (): void => {
-    abortController.abort();
-  };
-  if (signal?.aborted) {
-    abortController.abort();
-  } else {
-    signal?.addEventListener('abort', forwardExternalAbort, { once: true });
-  }
+  const runSignal = signal
+    ? AbortSignal.any([signal, abortController.signal])
+    : abortController.signal;
 
   try {
     const yaml = await readWorkflowFile(filePath, runInput.file);
@@ -254,7 +249,7 @@ export const run = async (
       inputs,
       emitter,
       cwd,
-      signal: abortController.signal,
+      signal: runSignal,
     });
 
     if (approvalError !== undefined) {
@@ -304,7 +299,5 @@ export const run = async (
     }
 
     throw err;
-  } finally {
-    signal?.removeEventListener('abort', forwardExternalAbort);
   }
 };
