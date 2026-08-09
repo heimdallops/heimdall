@@ -59,11 +59,19 @@ export interface LoopDetails {
   readonly nodes: ReadonlyMap<string, NodeResult>;
 }
 
+export interface WorktreeDetails {
+  readonly path: string;
+  // Absent in detached mode.
+  readonly branch?: string | undefined;
+  readonly base_commit: string;
+}
+
 // Scope state is namespaced per scope-node type so nested scopes of different kinds coexist.
 // Same-family nesting shadows the enclosing binding; `outer` is the route to what was shadowed.
 export interface ScopeContext {
   readonly needs: ReadonlyMap<string, NodeResult>;
   readonly loop?: LoopDetails | undefined;
+  readonly worktree?: WorktreeDetails | undefined;
   readonly outer?: ScopeContext | undefined;
 }
 

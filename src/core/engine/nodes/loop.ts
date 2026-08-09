@@ -30,6 +30,19 @@ interface LoopNodeData extends BaseNodeData {
   outputs?: Record<string, string> | undefined;
 }
 
+// Generic spread on purpose: new scope families propagate without touching LoopNode (FR-024).
+const buildBodyScope = (
+  nodes: ReadonlyMap<string, NodeResult>,
+  loopNeeds: ReadonlyMap<string, NodeResult>,
+  parentScope: ScopeContext | undefined,
+  iteration: number
+): ScopeContext => ({
+  ...parentScope,
+  needs: loopNeeds,
+  loop: { iteration, nodes },
+  outer: parentScope,
+});
+
 export class LoopNode extends BaseNode<NodeRunCompleted | NodeRunExited | NodeRunFailed> {
   private readonly until: string | undefined;
   private readonly while: string | undefined;
@@ -115,11 +128,7 @@ export class LoopNode extends BaseNode<NodeRunCompleted | NodeRunExited | NodeRu
         break;
       }
 
-      const scope: ScopeContext = {
-        needs: loopNeeds,
-        loop: { iteration: completedIterations, nodes: lastIterationNodes },
-        outer: parentScope,
-      };
+      const scope = buildBodyScope(lastIterationNodes, loopNeeds, parentScope, completedIterations);
 
       const innerCtx: ExecutionContext = {
         inputs: ctx.inputs,
@@ -211,7 +220,7 @@ export class LoopNode extends BaseNode<NodeRunCompleted | NodeRunExited | NodeRu
       needs: loopNeeds,
       sessionDir: ctx.sessionDir,
       cwd: ctx.cwd,
-      scope: { needs: loopNeeds, loop: { iteration, nodes }, outer: parentScope },
+      scope: buildBodyScope(nodes, loopNeeds, parentScope, iteration),
     };
 
     let result: unknown;
@@ -255,7 +264,7 @@ export class LoopNode extends BaseNode<NodeRunCompleted | NodeRunExited | NodeRu
       needs: loopNeeds,
       sessionDir: ctx.sessionDir,
       cwd: ctx.cwd,
-      scope: { needs: loopNeeds, loop: { iteration, nodes }, outer: parentScope },
+      scope: buildBodyScope(nodes, loopNeeds, parentScope, iteration),
     };
 
     let result: unknown;
@@ -297,7 +306,7 @@ export class LoopNode extends BaseNode<NodeRunCompleted | NodeRunExited | NodeRu
       needs: loopNeeds,
       sessionDir: ctx.sessionDir,
       cwd: ctx.cwd,
-      scope: { needs: loopNeeds, loop: { iteration, nodes }, outer: parentScope },
+      scope: buildBodyScope(nodes, loopNeeds, parentScope, iteration),
     };
     const celContext = evalCtx as unknown as Record<string, unknown>;
 
