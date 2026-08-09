@@ -28,7 +28,7 @@ export const registerRunCommand = (program: Command): void => {
     .argument('<file>', 'Path to the workflow YAML file')
     .option(
       '-i, --input <key=value>',
-      'Pass a runtime input to the workflow (repeatable; last value wins)',
+      'Pass a runtime input to the workflow (repeatable; last value for a given key wins)',
       parseInputFlag,
       {}
     )
