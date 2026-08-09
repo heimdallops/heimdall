@@ -146,7 +146,7 @@ describe('ClaudeCodeAdapter integration', () => {
       expect(output).toMatch(/20/);
       expect(chunks.length).toBeGreaterThanOrEqual(1);
     },
-    30_000
+    60_000
   );
 
   it.skipIf(!claudeAvailable)(
