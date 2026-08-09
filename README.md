@@ -107,7 +107,7 @@ Machine-readable output:
 
 ```sh
 heimdall run deploy.yaml --json
-# stdout: {"success":true}
+# {"success":true}
 ```
 
 **Exit codes**
