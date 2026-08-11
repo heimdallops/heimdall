@@ -492,6 +492,77 @@ nodes:
     });
   });
 
+  describe('workflow.run — heimdall.run_cwd', () => {
+    // '\x24{{ }}' avoids the JS template-literal parser treating ${ as an interpolation
+    // opener, matching the convention used by the chained-needs test below.
+    const celRunCwd = '\x24{{ heimdall.run_cwd }}';
+    const runCwdWorkflow = `
+name: run-cwd
+nodes:
+  - id: step1
+    bash: 'echo -n "${celRunCwd}" > "$HEIMDALL_OUTPUT"'
+`;
+
+    it('exposes the explicit run cwd option as heimdall.run_cwd to a CEL expression in a node', async () => {
+      const explicitCwd = await mkdtemp(join(tmpdir(), 'heimdall-run-cwd-'));
+
+      try {
+        const workflow = await Workflow.from(runCwdWorkflow);
+        const emitter = createEngineEmitter();
+        const completed = collectEvents(emitter, 'node_completed');
+
+        const result = await workflow.run({ inputs: {}, emitter, cwd: explicitCwd });
+
+        expect(result.success).toBe(true);
+        expect(completed[0]!.result['output']).toBe(explicitCwd);
+      } finally {
+        await rm(explicitCwd, { recursive: true, force: true });
+      }
+    });
+
+    it('falls back to process.cwd() as heimdall.run_cwd when no cwd option is supplied', async () => {
+      const workflow = await Workflow.from(runCwdWorkflow);
+      const emitter = createEngineEmitter();
+      const completed = collectEvents(emitter, 'node_completed');
+
+      const result = await workflow.run({ inputs: {}, emitter });
+
+      expect(result.success).toBe(true);
+      expect(completed[0]!.result['output']).toBe(process.cwd());
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // workflow.run — heimdall.session_dir
+  // -------------------------------------------------------------------------
+
+  describe('workflow.run — heimdall.session_dir', () => {
+    it('exposes the run session directory as heimdall.session_dir to a CEL expression in a node', async () => {
+      // '\x24{{ }}' avoids the JS template-literal parser treating ${ as an interpolation opener.
+      const celSessionDir = '\x24{{ heimdall.session_dir }}';
+      const yaml = `
+name: session-dir
+nodes:
+  - id: step1
+    bash: 'echo -n "${celSessionDir}" > "$HEIMDALL_OUTPUT"'
+`;
+      const workflow = await Workflow.from(yaml);
+      const emitter = createEngineEmitter();
+      const completed = collectEvents(emitter, 'node_completed');
+
+      const result = await workflow.run({ inputs: {}, emitter });
+
+      expect(result.success).toBe(true);
+      const sessionDir = completed[0]!.result['output'] as string;
+      // The run's session directory lives under XDG_DATA_HOME/heimdall/runs/<uuid>/session;
+      // xdgRoot is stubbed per-test (see the outer beforeEach), so this proves
+      // heimdall.session_dir resolves to the real, run-specific session directory rather
+      // than an unrelated, stale, or hardcoded value.
+      expect(sessionDir.startsWith(join(xdgRoot, 'heimdall', 'runs'))).toBe(true);
+      expect(sessionDir.split(/[/\\]/).pop()).toBe('session');
+    });
+  });
+
   // -------------------------------------------------------------------------
   // workflow.run — cancellation via the signal option
   // -------------------------------------------------------------------------

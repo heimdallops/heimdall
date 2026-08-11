@@ -18,10 +18,10 @@ const makeCtx = (overrides: Partial<ExecutionContext> = {}): ExecutionContext =>
   inputs: {},
   vars: {},
   needs: new Map(),
-  sessionDir: '/tmp',
   // Must be a real, existing directory: BashNode now forwards ctx.cwd to execa,
   // so a placeholder path like '/tmp/work' fails every script invocation with ENOENT.
   cwd: tmpdir(),
+  heimdall: { run_cwd: tmpdir(), session_dir: '/tmp' },
   ...overrides,
 });
 

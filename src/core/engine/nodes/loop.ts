@@ -134,8 +134,8 @@ export class LoopNode extends BaseNode<NodeRunCompleted | NodeRunExited | NodeRu
         inputs: ctx.inputs,
         vars: ctx.vars,
         needs: new Map(),
-        sessionDir: ctx.sessionDir,
         cwd: ctx.cwd,
+        heimdall: ctx.heimdall,
         scope,
       };
 
@@ -218,8 +218,8 @@ export class LoopNode extends BaseNode<NodeRunCompleted | NodeRunExited | NodeRu
       inputs: ctx.inputs,
       vars: ctx.vars,
       needs: loopNeeds,
-      sessionDir: ctx.sessionDir,
       cwd: ctx.cwd,
+      heimdall: ctx.heimdall,
       scope: buildBodyScope(nodes, loopNeeds, parentScope, iteration),
     };
 
@@ -262,8 +262,8 @@ export class LoopNode extends BaseNode<NodeRunCompleted | NodeRunExited | NodeRu
       inputs: ctx.inputs,
       vars: ctx.vars,
       needs: loopNeeds,
-      sessionDir: ctx.sessionDir,
       cwd: ctx.cwd,
+      heimdall: ctx.heimdall,
       scope: buildBodyScope(nodes, loopNeeds, parentScope, iteration),
     };
 
@@ -304,8 +304,8 @@ export class LoopNode extends BaseNode<NodeRunCompleted | NodeRunExited | NodeRu
       inputs: ctx.inputs,
       vars: ctx.vars,
       needs: loopNeeds,
-      sessionDir: ctx.sessionDir,
       cwd: ctx.cwd,
+      heimdall: ctx.heimdall,
       scope: buildBodyScope(nodes, loopNeeds, parentScope, iteration),
     };
     const celContext = evalCtx as unknown as Record<string, unknown>;

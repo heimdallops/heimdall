@@ -16,8 +16,8 @@ const makeCtx = (
   inputs,
   vars: {},
   needs: new Map(),
-  sessionDir: '/tmp/session',
   cwd: '/tmp/work',
+  heimdall: { run_cwd: '/tmp/work', session_dir: '/tmp/session' },
 });
 
 const makeNode = (raw: Record<string, unknown>): BaseNode<NodeRunResult> => ApprovalNode.parse(raw);
