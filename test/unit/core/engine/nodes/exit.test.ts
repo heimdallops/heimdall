@@ -9,8 +9,8 @@ const makeCtx = (): ExecutionContext => ({
   inputs: {},
   vars: {},
   needs: new Map(),
-  sessionDir: '/tmp/session',
   cwd: '/tmp/work',
+  heimdall: { run_cwd: '/tmp/work', session_dir: '/tmp/session' },
 });
 
 describe('ExitNode', () => {

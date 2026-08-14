@@ -10,7 +10,7 @@ const makeCtx = (overrides?: Partial<CelContext>): CelContext => ({
   inputs: {},
   vars: {},
   needs: new Map(),
-  sessionDir: '/tmp/session',
+  heimdall: { run_cwd: '/tmp/work', session_dir: '/tmp/session' },
   ...overrides,
 });
 
@@ -268,12 +268,12 @@ describe('sanitize (via evalCel / interpolate)', () => {
         inputs: {},
         vars: {},
         needs: new Map(),
-        sessionDir: '/tmp/session',
+        cwd: '/tmp/work',
         constructor: 'blocked',
       };
 
       // Safe keys survive sanitization.
-      expect(evalCel('sessionDir', ctx)).toBe('/tmp/session');
+      expect(evalCel('cwd', ctx)).toBe('/tmp/work');
 
       // The blocked key is stripped; accessing it throws.
       let thrown: EngineError | undefined;

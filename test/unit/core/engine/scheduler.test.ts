@@ -15,6 +15,7 @@ import { EngineError, NodeError } from '../../../../src/core/engine/errors.ts';
 import { ApprovalNode } from '../../../../src/core/engine/nodes/approval.ts';
 import type {
   ExecutionContext,
+  HeimdallContext,
   NodeRunOptions,
   NodeRunResult,
 } from '../../../../src/core/engine/nodes/base.ts';
@@ -106,8 +107,8 @@ const makeCtx = (overrides: Partial<ExecutionContext> = {}): ExecutionContext =>
   inputs: {},
   vars: {},
   needs: new Map(),
-  sessionDir: '/tmp/session',
   cwd: '/tmp/work',
+  heimdall: { run_cwd: '/tmp/work', session_dir: '/tmp/session' },
   ...overrides,
 });
 
@@ -474,6 +475,40 @@ describe('runScheduler', () => {
       expect(capturedVars[0]).toEqual({ region: 'us-east-1', debug: 'true' });
     });
 
+    it('delivers the same heimdall value to every node in a run, including one dispatched after a fan-in wave', async () => {
+      const seenHeimdall: HeimdallContext[] = [];
+
+      const makeRecordingNode = (id: string, deps?: string[]): BaseNode =>
+        new (class extends BaseNode {
+          public run(opts: NodeRunOptions): Promise<NodeRunResult> {
+            seenHeimdall.push(opts.ctx.heimdall);
+
+            return Promise.resolve({ status: 'completed', result: {} });
+          }
+        })({ id, ...(deps !== undefined ? { depends_on: deps } : {}) });
+
+      // nodeA and nodeB dispatch in the first wave; nodeC depends on both, so it is only
+      // dispatched in a later wave, once the scheduler has rebuilt its context with a
+      // different `needs` map. heimdall must still come through unchanged for nodeC too.
+      const nodeA = makeRecordingNode('nodeA');
+      const nodeB = makeRecordingNode('nodeB');
+      const nodeC = makeRecordingNode('nodeC', ['nodeA', 'nodeB']);
+
+      const heimdall: HeimdallContext = {
+        run_cwd: '/tmp/work',
+        session_dir: '/tmp/specific-session-123',
+      };
+      const ctx = makeCtx({ heimdall });
+      await runScheduler([nodeA, nodeB, nodeC], ctx, options);
+
+      expect(seenHeimdall).toHaveLength(3);
+      // Deduplicate by value (not reference) so this only fails when a run actually observes
+      // a different heimdall, not merely a freshly-constructed-but-equal object.
+      const distinctValues = new Set(seenHeimdall.map((h) => JSON.stringify(h)));
+      expect(distinctValues.size).toBe(1);
+      expect(seenHeimdall[0]).toEqual(heimdall);
+    });
+
     it('makes upstream needs available to a downstream node that depends on a node with pre-existing needs', async () => {
       const existingNeeds = new Map([['seed', { value: 'seed-value' }]]);
       const ctx = makeCtx({ needs: existingNeeds });
@@ -492,32 +527,6 @@ describe('runScheduler', () => {
       await runScheduler([node], ctx, options);
 
       expect(capturedNeeds.get('seed')).toEqual({ value: 'seed-value' });
-    });
-  });
-
-  describe('sessionDir consistency', () => {
-    it('passes the same sessionDir to all nodes in a single run', async () => {
-      const seenSessionDirs: string[] = [];
-
-      const makeRecordingNode = (id: string, deps?: string[]): BaseNode =>
-        new (class extends BaseNode {
-          public run(opts: NodeRunOptions): Promise<NodeRunResult> {
-            seenSessionDirs.push(opts.ctx.sessionDir);
-
-            return Promise.resolve({ status: 'completed', result: {} });
-          }
-        })({ id, ...(deps !== undefined ? { depends_on: deps } : {}) });
-
-      const nodeA = makeRecordingNode('nodeA');
-      const nodeB = makeRecordingNode('nodeB');
-      const nodeC = makeRecordingNode('nodeC', ['nodeA', 'nodeB']);
-
-      const ctx = makeCtx({ sessionDir: '/tmp/specific-session-123' });
-      await runScheduler([nodeA, nodeB, nodeC], ctx, options);
-
-      expect(seenSessionDirs).toHaveLength(3);
-      expect(new Set(seenSessionDirs).size).toBe(1);
-      expect(seenSessionDirs[0]).toBe('/tmp/specific-session-123');
     });
   });
 
