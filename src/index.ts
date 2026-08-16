@@ -16,13 +16,12 @@ const run = (): Promise<number> => {
     quiet: false,
   });
 
+  program.action(async () => {
+    await loadConfig(program.opts(), process.cwd());
+  });
+
   return withErrorBoundary(bootstrapPrinter, async (): Promise<void> => {
     await program.parseAsync(process.argv);
-    // With no subcommands registered yet, parseAsync dispatches to no action
-    // handler, so createContext (and loadConfig) is never called via the command
-    // path. This standalone call ensures flag-conflict validation still fires.
-    // Remove once every command path calls createContext.
-    await loadConfig(program.opts(), process.cwd());
   });
 };
 
