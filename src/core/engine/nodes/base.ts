@@ -75,12 +75,19 @@ export interface ScopeContext {
   readonly outer?: ScopeContext | undefined;
 }
 
+// Workflow-scoped runtime values, identical at every scope depth.
+// Author-facing CEL surface, hence snake_case.
+export interface HeimdallContext {
+  readonly run_cwd: string;
+  readonly session_dir: string;
+}
+
 export interface ExecutionContext {
   readonly inputs: Record<string, string | number | bigint | boolean>;
   readonly vars: Record<string, string | number | bigint | boolean>;
   readonly needs: ReadonlyMap<string, NodeResult>;
-  readonly sessionDir: string;
   readonly cwd: string;
+  readonly heimdall: HeimdallContext;
   readonly scope?: ScopeContext | undefined;
 }
 

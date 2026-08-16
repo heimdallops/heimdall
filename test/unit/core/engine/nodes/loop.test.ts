@@ -23,10 +23,10 @@ const makeCtx = (overrides: Partial<ExecutionContext> = {}): ExecutionContext =>
   inputs: {},
   vars: {},
   needs: new Map(),
-  sessionDir: '/tmp/session',
   // Must be a real, existing directory: BashNode forwards ctx.cwd to execa, and this
   // suite runs real bash body nodes, so a placeholder path like '/tmp/work' fails them.
   cwd: tmpdir(),
+  heimdall: { run_cwd: tmpdir(), session_dir: '/tmp/session' },
   ...overrides,
 });
 
@@ -743,6 +743,108 @@ describe('LoopNode', () => {
         wt_branch: worktree.branch,
         wt_base_commit: worktree.base_commit,
       });
+    });
+  });
+
+  describe('heimdall propagation into loop bodies (run_cwd and session_dir)', () => {
+    // Deliberately distinct from makeCtx's default `cwd` (tmpdir()) so a test that reads
+    // this value back cannot pass by accident if the implementation forwarded ctx.cwd instead.
+    const runCwd = '/original/run-cwd';
+    // Likewise distinct from makeCtx's default heimdall.session_dir ('/tmp/session').
+    const sessionDir = '/original/session-dir';
+
+    it('delivers heimdall unchanged into the body node context, including both run_cwd and session_dir', async () => {
+      const capturedRunCwd: string[] = [];
+      const capturedSessionDir: string[] = [];
+      const body = new (class extends BaseNode {
+        public override run(opts: NodeRunOptions): Promise<NodeRunResult> {
+          capturedRunCwd.push(opts.ctx.heimdall.run_cwd);
+          capturedSessionDir.push(opts.ctx.heimdall.session_dir);
+
+          return Promise.resolve({ status: 'completed', result: {} });
+        }
+      })({ id: 'step' });
+      const loop = makeLoopNode({ max_iterations: 1 }, [body]);
+      const ctx = makeCtx({ heimdall: { run_cwd: runCwd, session_dir: sessionDir } });
+
+      await runLoop(loop, ctx);
+
+      expect(capturedRunCwd).toEqual([runCwd]);
+      // heimdall.session_dir must survive the same body-context construction site as run_cwd —
+      // both fields ride the same `heimdall: ctx.heimdall` passthrough, so a regression that
+      // reconstructs the object field-by-field and drops one is caught here.
+      expect(capturedSessionDir).toEqual([sessionDir]);
+    });
+
+    it('propagates the same heimdall.run_cwd unchanged through nested loop bodies', async () => {
+      const capturedRunCwd: string[] = [];
+      const innerBody = new (class extends BaseNode {
+        public override run(opts: NodeRunOptions): Promise<NodeRunResult> {
+          capturedRunCwd.push(opts.ctx.heimdall.run_cwd);
+
+          return Promise.resolve({ status: 'completed', result: {} });
+        }
+      })({ id: 'inner_step' });
+
+      const innerLoop = makeLoopNode({ id: 'inner', max_iterations: 1 }, [innerBody]);
+      const outerLoop = makeLoopNode({ id: 'outer', max_iterations: 2 }, [innerLoop]);
+      const ctx = makeCtx({ heimdall: { run_cwd: runCwd, session_dir: sessionDir } });
+
+      const result = await runLoop(outerLoop, ctx);
+
+      expect(result.status).toBe('completed');
+      // Two outer iterations, one inner iteration each — both see the identical run_cwd
+      // even though scope.loop shadows per level.
+      expect(capturedRunCwd).toEqual([runCwd, runCwd]);
+    });
+
+    it('while resolves heimdall.run_cwd, gating iteration on the propagated value', async () => {
+      const body = new ScopeCapturingNode({ id: 'step' });
+      const loop = makeLoopNode({ while: `heimdall.run_cwd == '${runCwd}'`, max_iterations: 2 }, [
+        body,
+      ]);
+      const ctx = makeCtx({ heimdall: { run_cwd: runCwd, session_dir: sessionDir } });
+
+      const result = await runLoop(loop, ctx);
+
+      expect(result.status).toBe('completed');
+      // while stays true on both pre-iteration checks (run_cwd always matches); max_iterations caps it.
+      expect(body.runCount).toBe(2);
+    });
+
+    it('until resolves heimdall.run_cwd together with scope.loop.iteration to stop the loop', async () => {
+      const body = new ScopeCapturingNode({ id: 'step' });
+      // max_iterations is a safety net, not part of the behavior under test: without it, a
+      // regression that breaks heimdall threading into evaluateUntil leaves until permanently
+      // false, spinning LoopNode's unbounded `for (;;)` until the worker OOMs instead of
+      // failing a normal assertion.
+      const loop = makeLoopNode(
+        {
+          until: `heimdall.run_cwd == '${runCwd}' && scope.loop.iteration >= 1`,
+          max_iterations: 5,
+        },
+        [body]
+      );
+      const ctx = makeCtx({ heimdall: { run_cwd: runCwd, session_dir: sessionDir } });
+
+      const result = await runLoop(loop, ctx);
+
+      expect(result.status).toBe('completed');
+      expect(body.runCount).toBe(1);
+    });
+
+    it('outputs resolves heimdall.run_cwd from the propagated context', async () => {
+      const body = new ScopeCapturingNode({ id: 'step' });
+      const loop = makeLoopNode({ max_iterations: 1, outputs: { run_cwd: 'heimdall.run_cwd' } }, [
+        body,
+      ]);
+      const ctx = makeCtx({ heimdall: { run_cwd: runCwd, session_dir: sessionDir } });
+
+      const result = await runLoop(loop, ctx);
+
+      expect(result.status).toBe('completed');
+      const loopResult = (result as { status: 'completed'; result: NodeResult }).result;
+      expect(loopResult['output']).toEqual({ run_cwd: runCwd });
     });
   });
 

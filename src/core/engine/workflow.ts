@@ -141,8 +141,8 @@ export class Workflow {
         inputs: resolvedInputs,
         vars: this.definition.vars ?? {},
         needs: new Map(),
-        sessionDir,
         cwd,
+        heimdall: { run_cwd: cwd, session_dir: sessionDir },
       };
 
       result = await runScheduler(this.sortedNodes, ctx, {
