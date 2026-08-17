@@ -1,0 +1,197 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Heimdall</title>
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html, body {
+  width: 100%; height: 100%;
+  background: #080d1a;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+</style>
+</head>
+<body>
+<svg id="mark" viewBox="0 0 400 400"
+     style="width:min(320px,80vw,80vh);height:min(320px,80vw,80vh)"
+     xmlns="http://www.w3.org/2000/svg">
+<defs>
+  <!-- Pillar gradient: light cyan-blue top-left → dark navy bottom-right -->
+  <linearGradient id="pg" x1="20%" y1="0%" x2="80%" y2="100%">
+    <stop offset="0%"   stop-color="#93c5fd"/>
+    <stop offset="35%"  stop-color="#3b82f6"/>
+    <stop offset="100%" stop-color="#1e3a8a"/>
+  </linearGradient>
+  <!-- Subtle glow for cyan elements -->
+  <filter id="glow" x="-20%" y="-20%" width="140%" height="140%">
+    <feGaussianBlur stdDeviation="3" result="b"/>
+    <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+  </filter>
+  <filter id="sm" x="-15%" y="-15%" width="130%" height="130%">
+    <feGaussianBlur stdDeviation="2" result="b"/>
+    <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+  </filter>
+</defs>
+
+<!-- background -->
+<rect width="400" height="400" fill="#080d1a"/>
+
+<!-- ── H letter mark ────────────────────────────────────────────────── -->
+<!-- width=270 spans x=65..335 (circuit anchor points); crossbar centre lands at (200,222) = eye centre -->
+<image href="/heimdall-h.svg" x="65" y="21" width="270" height="373"/>
+
+<!-- ── Iris (rotates around eye centre 200,222) ───────────────────────── -->
+<g id="iris" filter="url(#sm)">
+  <!-- outer ring -->
+  <circle cx="200" cy="222" r="31.1" fill="none" stroke="#22d3ee" stroke-width="2.2"/>
+  <!-- inner segmented ring (4 × 80° arcs at r=19.6, gaps at cardinal directions) -->
+  <path d="M219.4,223.7 A19.6,19.6 0 0,1 201.7,241.4" fill="none" stroke="#22d3ee" stroke-width="3" stroke-linecap="round"/>
+  <path d="M198.3,241.4 A19.6,19.6 0 0,1 180.6,223.7" fill="none" stroke="#22d3ee" stroke-width="3" stroke-linecap="round"/>
+  <path d="M180.6,220.3 A19.6,19.6 0 0,1 198.3,202.6" fill="none" stroke="#22d3ee" stroke-width="3" stroke-linecap="round"/>
+  <path d="M201.7,202.6 A19.6,19.6 0 0,1 219.4,220.3" fill="none" stroke="#22d3ee" stroke-width="3" stroke-linecap="round"/>
+  <!-- crosshair arms -->
+  <line x1="200" y1="222" x2="231.1" y2="222" stroke="#22d3ee" stroke-width="1.6" stroke-linecap="round"/>
+  <line x1="200" y1="222" x2="200" y2="253.1" stroke="#22d3ee" stroke-width="1.6" stroke-linecap="round"/>
+  <line x1="200" y1="222" x2="168.9" y2="222" stroke="#22d3ee" stroke-width="1.6" stroke-linecap="round"/>
+  <line x1="200" y1="222" x2="200" y2="190.9" stroke="#22d3ee" stroke-width="1.6" stroke-linecap="round"/>
+  <!-- centre dot -->
+  <circle cx="200" cy="222" r="5.8" fill="#22d3ee"/>
+  <animateTransform attributeName="transform" type="rotate"
+    from="0 200 222" to="360 200 222" dur="12s" repeatCount="indefinite"/>
+</g>
+
+
+<!-- ── Circuit lines: LEFT ───────────────────────────────────────────── -->
+<path id="ll1" d="M65,157 L30,157"  fill="none" stroke="#22d3ee" stroke-width="1.5" stroke-linecap="round"/>
+<path id="ll2" d="M30,157 L30,193"  fill="none" stroke="#22d3ee" stroke-width="1.5" stroke-linecap="round"/>
+<path id="ll3" d="M30,193 L10,193"  fill="none" stroke="#22d3ee" stroke-width="1.5" stroke-linecap="round"/>
+<path id="ll4" d="M65,289 L30,289"  fill="none" stroke="#22d3ee" stroke-width="1.5" stroke-linecap="round"/>
+<path id="ll5" d="M30,289 L30,253"  fill="none" stroke="#22d3ee" stroke-width="1.5" stroke-linecap="round"/>
+<path id="ll6" d="M30,253 L10,253"  fill="none" stroke="#22d3ee" stroke-width="1.5" stroke-linecap="round"/>
+<!-- corner junction dots -->
+<circle cx="30" cy="157" r="2.5" fill="#22d3ee" opacity="0.75"/>
+<circle cx="30" cy="289" r="2.5" fill="#22d3ee" opacity="0.75"/>
+<!-- end nodes (circle style) -->
+<circle cx="10" cy="193" r="6.5" fill="#080d1a" stroke="#22d3ee" stroke-width="2">
+  <animate attributeName="stroke-opacity" values="0.4;1;0.4" dur="2s" begin="0.2s" repeatCount="indefinite"/>
+</circle>
+<circle cx="10" cy="193" r="3" fill="#22d3ee">
+  <animate attributeName="opacity" values="0.3;1;0.3" dur="2s" begin="0.2s" repeatCount="indefinite"/>
+</circle>
+<circle cx="10" cy="253" r="6.5" fill="#080d1a" stroke="#22d3ee" stroke-width="2">
+  <animate attributeName="stroke-opacity" values="0.4;1;0.4" dur="2s" begin="1s" repeatCount="indefinite"/>
+</circle>
+<circle cx="10" cy="253" r="3" fill="#22d3ee">
+  <animate attributeName="opacity" values="0.3;1;0.3" dur="2s" begin="1s" repeatCount="indefinite"/>
+</circle>
+
+<!-- ── Circuit lines: RIGHT ──────────────────────────────────────────── -->
+<path id="rl1" d="M335,157 L370,157" fill="none" stroke="#22d3ee" stroke-width="1.5" stroke-linecap="round"/>
+<path id="rl2" d="M370,157 L370,193" fill="none" stroke="#22d3ee" stroke-width="1.5" stroke-linecap="round"/>
+<path id="rl3" d="M370,193 L390,193" fill="none" stroke="#22d3ee" stroke-width="1.5" stroke-linecap="round"/>
+<path id="rl4" d="M335,289 L370,289" fill="none" stroke="#22d3ee" stroke-width="1.5" stroke-linecap="round"/>
+<path id="rl5" d="M370,289 L370,253" fill="none" stroke="#22d3ee" stroke-width="1.5" stroke-linecap="round"/>
+<path id="rl6" d="M370,253 L390,253" fill="none" stroke="#22d3ee" stroke-width="1.5" stroke-linecap="round"/>
+<!-- corner junction dots -->
+<circle cx="370" cy="157" r="2.5" fill="#22d3ee" opacity="0.75"/>
+<circle cx="370" cy="289" r="2.5" fill="#22d3ee" opacity="0.75"/>
+<!-- end nodes (diamond style) -->
+<polygon points="390,187 397,193 390,199 383,193" fill="#080d1a" stroke="#22d3ee" stroke-width="2">
+  <animate attributeName="stroke-opacity" values="0.4;1;0.4" dur="2s" begin="0.6s" repeatCount="indefinite"/>
+</polygon>
+<circle cx="390" cy="193" r="2.5" fill="#22d3ee">
+  <animate attributeName="opacity" values="0.3;1;0.3" dur="2s" begin="0.6s" repeatCount="indefinite"/>
+</circle>
+<polygon points="390,247 397,253 390,259 383,253" fill="#080d1a" stroke="#22d3ee" stroke-width="2">
+  <animate attributeName="stroke-opacity" values="0.4;1;0.4" dur="2s" begin="1.4s" repeatCount="indefinite"/>
+</polygon>
+<circle cx="390" cy="253" r="2.5" fill="#22d3ee">
+  <animate attributeName="opacity" values="0.3;1;0.3" dur="2s" begin="1.4s" repeatCount="indefinite"/>
+</circle>
+
+</svg>
+
+<script>
+const svg = document.getElementById('mark');
+
+// Travel a glowing dot along a chain of path segments.
+function pulse(ids, travelMs, loopMs, delayMs) {
+  const segs = ids.map(id => document.getElementById(id)).filter(Boolean);
+  if (!segs.length) return;
+  const lens = segs.map(p => p.getTotalLength());
+  const total = lens.reduce((a, b) => a + b, 0);
+
+  const dot = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+  dot.setAttribute('r', '3.5');
+  dot.setAttribute('fill', '#67e8f9');
+  dot.setAttribute('opacity', '0');
+  svg.appendChild(dot);
+
+  const start = performance.now() + delayMs;
+
+  function frame(now) {
+    const elapsed = now - start;
+    if (elapsed < 0) { requestAnimationFrame(frame); return; }
+
+    const cycle = elapsed % loopMs;
+    const t = cycle / travelMs; // 0→1 during travel, >1 during pause
+
+    if (t <= 1) {
+      let rem = t * total;
+      for (let i = 0; i < segs.length; i++) {
+        if (rem <= lens[i]) {
+          const pt = segs[i].getPointAtLength(rem);
+          dot.setAttribute('cx', pt.x);
+          dot.setAttribute('cy', pt.y);
+          const fade = t < 0.1 ? t / 0.1 : t > 0.88 ? (1 - t) / 0.12 : 1;
+          dot.setAttribute('opacity', (fade * 0.95).toFixed(3));
+          break;
+        }
+        rem -= lens[i];
+      }
+    } else {
+      dot.setAttribute('opacity', '0');
+    }
+    requestAnimationFrame(frame);
+  }
+  requestAnimationFrame(frame);
+}
+
+// Left upper / lower circuits (travel outward from pillar)
+pulse(['ll1', 'll2', 'll3'], 1400, 2600,    0);
+pulse(['ll4', 'll5', 'll6'], 1400, 2600,  900);
+// Right upper / lower circuits
+pulse(['rl1', 'rl2', 'rl3'], 1400, 2600,  400);
+pulse(['rl4', 'rl5', 'rl6'], 1400, 2600, 1300);
+
+// Occasional eye blink
+;(function blink() {
+  const eye = document.getElementById('mark');
+  // Scale the eye almond vertically via a clip rect on the iris+almond
+  // Simpler: tween scaleY on the eye group using a wrapper
+  // We'll use a CSS keyframe injected on the #iris element's parent
+  // Actually: scale the entire mark on Y very briefly
+  const wait = 4000 + Math.random() * 5000;
+  setTimeout(() => {
+    const iris = document.getElementById('iris');
+    const targets = [iris];
+    targets.forEach(el => {
+      el.animate(
+        [{ transform: 'scaleY(1)'  , transformOrigin: '200px 222px', transformBox: 'view-box' },
+         { transform: 'scaleY(0.04)', transformOrigin: '200px 222px', transformBox: 'view-box' },
+         { transform: 'scaleY(0.9)', transformOrigin: '200px 222px', transformBox: 'view-box' },
+         { transform: 'scaleY(1)'  , transformOrigin: '200px 222px', transformBox: 'view-box' }],
+        { duration: 300, easing: 'ease-in-out', fill: 'none' }
+      );
+    });
+    blink();
+  }, wait);
+}());
+</script>
+</body>
+</html>

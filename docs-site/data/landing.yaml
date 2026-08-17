@@ -1,0 +1,117 @@
+hero:
+  enable: true
+  weight: 10
+  template: hero
+
+  badge:
+    text: Preview
+    color: primary
+    pill: true
+    soft: true
+
+  title: 'Heimdall'
+  subtitle: |
+    A CLI for **deterministic agentic workflows** from YAML. Agents provide the intelligence;
+    Heimdall owns the structure — phases, gates, feedback loops, and isolated git worktrees.
+
+  image:
+    path: 'images/logos'
+    filename: 'unofficial_logo.png'
+    alt: 'Heimdall logo'
+    boxShadow: true
+    rounded: true
+
+  ctaButton:
+    icon: rocket_launch
+    btnText: 'Get started'
+    url: '/docs/getting-started/'
+  cta2Button:
+    icon: menu_book
+    btnText: 'Read the docs'
+    url: '/docs/about/'
+
+  info: '**Open source** · MIT Licensed · `npm install -g heimdall` *(coming soon)*'
+
+imageCompare:
+  enable: false
+
+getStarted:
+  enable: true
+  weight: 25
+  template: get started
+
+  title: Up and running in minutes
+  subtitle: |
+    Requires **Node.js 22+** and **Git**. Install Heimdall, drop a workflow YAML into your repo, and run it — each execution gets its own isolated worktree.
+
+  steps:
+    - icon: download
+      title: Install
+      description: 'One command gets the CLI on your PATH.'
+      code: 'npm install -g heimdall'
+
+    - icon: edit_note
+      title: Define a workflow
+      description: 'Describe agents, phases, gates, and handoffs in a YAML file in your repo.'
+      code: 'heimdall init fix-issue'
+
+    - icon: play_circle
+      title: Run
+      description: 'Heimdall creates an isolated worktree and drives each phase to completion.'
+      code: 'heimdall workflow run fix-issue'
+
+  ctaButton:
+    icon: rocket_launch
+    btnText: 'View full guide'
+    url: '/docs/getting-started/'
+
+featureGrid:
+  enable: true
+  weight: 30
+  template: feature grid
+
+  title: Why Heimdall?
+  subtitle: Make agentic development explicit — structure, validation, and handoffs are first-class, not improvised.
+
+  items:
+    - title: Deterministic structure
+      icon: account_tree
+      description: YAML workflows define phases, gates, artifacts, and completion criteria so every run follows the same playbook.
+      ctaLink:
+        text: Learn more
+        url: /docs/about/
+
+    - title: Feedback loops
+      icon: loop
+      description: Review, validation, correction, and retry paths are part of the workflow model — not bolted on after the fact.
+      ctaLink:
+        text: Learn more
+        url: /docs/about/
+
+    - title: Isolated execution
+      icon: fork_right
+      description: Each run uses a separate git worktree so parallel fixes and implementations do not mix changes.
+      ctaLink:
+        text: Learn more
+        url: /docs/about/
+
+    - title: PR-ready paths
+      icon: merge
+      description: Model workflows from ticket intake through implementation, validation, review, and pull request creation.
+      ctaLink:
+        text: Example workflow
+        url: /docs/guides/workflows/
+
+    - title: Complex branching
+      icon: hub
+      description: Branching, iteration, and explicit handoffs — built for real team processes, not linear prompt chains.
+      ctaLink:
+        text: Workflow YAML
+        url: /docs/guides/workflows/
+
+    - title: Dark mode docs
+      icon: dark_mode
+      description: Read comfortably with Lotus Docs dark mode and Heimdall's cyan accent palette inspired by the brand mark.
+      ctaLink:
+        text: Get started
+        url: /docs/getting-started/
