@@ -4,6 +4,8 @@ description: Implement code changes using a multi-agent engineer → test → re
 
 Implement the task provided at the end of this prompt using the structured workflow below. If the task is empty, ask the user to describe what they want implemented before proceeding.
 
+Before beginning your work, create a worktree and branch with a name that follows conventional branch naming conventions.
+
 ---
 
 ## Workflow
