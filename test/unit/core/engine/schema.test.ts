@@ -3,6 +3,7 @@ import { ZodError } from 'zod';
 
 import {
   ApprovalNodeSchema,
+  BashNodeSchema,
   InputDeclarationSchema,
   LoopNodeSchema,
   NodeSchema,
@@ -68,7 +69,12 @@ describe('WorkflowDefinitionSchema', () => {
       ['a space', 'my node'],
       ['a dot', 'my.node'],
       ['an empty string', ''],
-    ])('rejects a node id containing %s', (_label, id) => {
+      ['a leading digit', '123build'],
+      ['only digits', '123'],
+      ['the sanitizer-blocked id __proto__', '__proto__'],
+      ['the sanitizer-blocked id constructor', 'constructor'],
+      ['the sanitizer-blocked id prototype', 'prototype'],
+    ])('rejects a workflow whose node id contains %s, before execution', (_label, id) => {
       const result = WorkflowDefinitionSchema.safeParse({
         ...baseWorkflow,
         nodes: [node(id)],
@@ -81,6 +87,7 @@ describe('WorkflowDefinitionSchema', () => {
       ['only letters', 'stepone'],
       ['letters, digits, and underscores', 'step_1_final'],
       ['a leading underscore', '_internal'],
+      ['mixed case', 'MixedCase_1'],
     ])('accepts a node id with %s', (_label, id) => {
       const result = WorkflowDefinitionSchema.safeParse({
         ...baseWorkflow,
@@ -175,8 +182,48 @@ describe('NodeSchema', () => {
     expect(paths).toContain('id');
   });
 
-  it('rejects a node whose id contains invalid characters', () => {
-    const result = NodeSchema.safeParse({ id: 'bad-id', bash: 'echo hi' });
+  describe('id validation', () => {
+    it.each([
+      ['contains a hyphen', 'bad-id'],
+      ['starts with a digit', '1abc'],
+      ['is all digits', '123'],
+    ])('rejects an id that %s, flagging the grammar rule', (_label, id) => {
+      const result = NodeSchema.safeParse({ id, bash: 'echo hi' });
+
+      expect(result.success).toBe(false);
+      if (result.success) {
+        return;
+      }
+
+      const issue = result.error.issues.find((i) => i.path.includes('id'));
+      expect(issue).toBeDefined();
+      expect(issue?.message).toMatch(/Node id must match/);
+    });
+
+    it.each(['__proto__', 'constructor', 'prototype'])(
+      'rejects the sanitizer-blocked id %s, flagging the blocked-word rule',
+      (id) => {
+        const result = NodeSchema.safeParse({ id, bash: 'echo hi' });
+
+        expect(result.success).toBe(false);
+        if (result.success) {
+          return;
+        }
+
+        const issue = result.error.issues.find((i) => i.path.includes('id'));
+        expect(issue).toBeDefined();
+        expect(issue?.message).toMatch(/must not be one of/);
+      }
+    );
+  });
+});
+
+describe('BashNodeSchema', () => {
+  it.each([
+    ['starts with a digit', '123build'],
+    ['is all digits', '123'],
+  ])('rejects a bash node whose id %s, flagging the grammar rule', (_label, id) => {
+    const result = BashNodeSchema.safeParse({ id, bash: 'true' });
 
     expect(result.success).toBe(false);
     if (result.success) {
@@ -186,6 +233,68 @@ describe('NodeSchema', () => {
     const issue = result.error.issues.find((i) => i.path.includes('id'));
     expect(issue).toBeDefined();
     expect(issue?.message).toMatch(/Node id must match/);
+  });
+
+  it.each(['__proto__', 'constructor', 'prototype'])(
+    'rejects a bash node with the sanitizer-blocked id %s',
+    (id) => {
+      const result = BashNodeSchema.safeParse({ id, bash: 'true' });
+
+      expect(result.success).toBe(false);
+      if (result.success) {
+        return;
+      }
+
+      const issue = result.error.issues.find((i) => i.path.includes('id'));
+      expect(issue).toBeDefined();
+      expect(issue?.message).toMatch(/must not be one of/);
+    }
+  );
+
+  describe('depends_on', () => {
+    it('rejects a depends_on entry that starts with a digit, at its array index path', () => {
+      const result = BashNodeSchema.safeParse({
+        id: 'valid_id',
+        bash: 'true',
+        depends_on: ['123build'],
+      });
+
+      expect(result.success).toBe(false);
+      if (result.success) {
+        return;
+      }
+
+      const issue = result.error.issues.find((i) => i.path.join('.') === 'depends_on.0');
+      expect(issue).toBeDefined();
+      expect(issue?.message).toMatch(/Node id must match/);
+    });
+
+    it('rejects a depends_on entry that is a sanitizer-blocked id, at its array index path', () => {
+      const result = BashNodeSchema.safeParse({
+        id: 'valid_id',
+        bash: 'true',
+        depends_on: ['__proto__'],
+      });
+
+      expect(result.success).toBe(false);
+      if (result.success) {
+        return;
+      }
+
+      const issue = result.error.issues.find((i) => i.path.join('.') === 'depends_on.0');
+      expect(issue).toBeDefined();
+      expect(issue?.message).toMatch(/must not be one of/);
+    });
+
+    it('accepts a depends_on array of grammatically valid, non-blocked ids', () => {
+      const result = BashNodeSchema.safeParse({
+        id: 'valid_id',
+        bash: 'true',
+        depends_on: ['other_step', '_internal'],
+      });
+
+      expect(result.success).toBe(true);
+    });
   });
 });
 
@@ -224,6 +333,36 @@ describe('LoopNodeSchema', () => {
 
     const issue = result.error.issues.find((i) => i.path.includes('nodes'));
     expect(issue).toBeDefined();
+  });
+
+  it('rejects a loop body node whose id starts with a digit', () => {
+    const result = LoopNodeSchema.safeParse(
+      baseLoop({ max_iterations: 3, nodes: [{ id: '123build', bash: 'echo loop' }] })
+    );
+
+    expect(result.success).toBe(false);
+    if (result.success) {
+      return;
+    }
+
+    const issue = result.error.issues.find((i) => i.path.join('.') === 'loop.nodes.0.id');
+    expect(issue).toBeDefined();
+    expect(issue?.message).toMatch(/Node id must match/);
+  });
+
+  it('rejects a loop body node with a sanitizer-blocked id', () => {
+    const result = LoopNodeSchema.safeParse(
+      baseLoop({ max_iterations: 3, nodes: [{ id: '__proto__', bash: 'echo loop' }] })
+    );
+
+    expect(result.success).toBe(false);
+    if (result.success) {
+      return;
+    }
+
+    const issue = result.error.issues.find((i) => i.path.join('.') === 'loop.nodes.0.id');
+    expect(issue).toBeDefined();
+    expect(issue?.message).toMatch(/must not be one of/);
   });
 
   it('accepts a loop node with max_iterations and at least one inner node', () => {
