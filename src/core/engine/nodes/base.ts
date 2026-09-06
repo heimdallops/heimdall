@@ -152,6 +152,17 @@ export abstract class BaseNode<R extends NodeRunResult = NodeRunResult> {
     return true;
   }
 
+  // Default false: subclasses that introduce a scope for their child nodes override to true.
+  public isScopedNode(): boolean {
+    return false;
+  }
+
+  // A scoped node's child nodes as a single list; a node holding several distinct bodies
+  // concatenates them, because that grouping is internal to the node.
+  public getScopeBody(): readonly BaseNode[] {
+    return [];
+  }
+
   public evaluateIf(ctx: ExecutionContext): boolean {
     if (this.ifExpr === undefined) {
       return true;
