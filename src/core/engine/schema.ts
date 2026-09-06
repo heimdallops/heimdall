@@ -55,14 +55,23 @@ export const WorkspaceConfigSchema = z.object({
 
 export type WorkspaceConfig = z.infer<typeof WorkspaceConfigSchema>;
 
-const idPattern = /^[a-zA-Z0-9_]+$/;
+const idPattern = /^[A-Za-z_][A-Za-z0-9_]*$/;
+
+// The CEL context sanitizer drops these keys, so an id spelling one of them is absent from every
+// id-keyed expression map.
+const blockedIds = new Set(['__proto__', 'constructor', 'prototype']);
+
+const NodeIdSchema = z
+  .string()
+  .regex(idPattern, `Node id must match ${idPattern.source}`)
+  .refine((id) => !blockedIds.has(id), {
+    message: `Node id must not be one of: ${[...blockedIds].join(', ')}`,
+  });
 
 const BaseNodeSchema = z.object({
-  id: z.string().regex(idPattern, 'Node id must match ^[a-zA-Z0-9_]+$'),
+  id: NodeIdSchema,
   name: z.string().optional(),
-  depends_on: z
-    .array(z.string().regex(idPattern, 'depends_on must be an array of valid node ids'))
-    .optional(),
+  depends_on: z.array(NodeIdSchema).optional(),
   if: z.string().optional(),
   timeout: z.number().min(0).optional(),
   retries: RetryPolicySchema.optional(),
@@ -122,9 +131,7 @@ export const BreakNodeSchema = BaseNodeSchema.extend({
 // is the single place that recognizes node types, rather than a closed union this schema
 // would have to enumerate. Loop bodies are likewise validated by LoopNode.validate(), not
 // recursively here.
-export const NodeSchema = z
-  .object({ id: z.string().regex(idPattern, 'Node id must match ^[a-zA-Z0-9_]+$') })
-  .loose();
+export const NodeSchema = z.object({ id: NodeIdSchema }).loose();
 
 export type Node = z.infer<typeof NodeSchema>;
 
