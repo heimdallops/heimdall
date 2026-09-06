@@ -2,6 +2,7 @@ import type { Platform } from '../../platform/index.ts';
 import { evalCel } from '../cel.ts';
 import type { EngineEmitter, NodeResult } from '../emitter.ts';
 import { NodeError } from '../errors.ts';
+import { buildEntryContext } from '../expression-context.ts';
 import type { RetryPolicy } from '../schema.ts';
 
 export type { NodeResult, RetryPolicy };
@@ -54,26 +55,28 @@ export interface PlatformRuntime {
   defaultPlatformOptions?: Record<string, unknown> | undefined;
 }
 
-export interface LoopDetails {
-  readonly iteration: number;
-  readonly nodes: ReadonlyMap<string, NodeResult>;
+// One entry per enclosing scoped node, keyed by node id. Flat keying is unambiguous because node
+// ids are unique across the whole workflow.
+export interface ScopeEntryBase {
+  readonly needs: ReadonlyMap<string, NodeResult>;
+  readonly [attribute: string]: unknown;
 }
 
-export interface WorktreeDetails {
+export interface LoopScopeEntry extends ScopeEntryBase {
+  readonly index: number;
+  readonly prev: ReadonlyMap<string, NodeResult>;
+}
+
+export interface WorktreeScopeEntry extends ScopeEntryBase {
   readonly path: string;
   // Absent in detached mode.
   readonly branch?: string | undefined;
   readonly base_commit: string;
 }
 
-// Scope state is namespaced per scope-node type so nested scopes of different kinds coexist.
-// Same-family nesting shadows the enclosing binding; `outer` is the route to what was shadowed.
-export interface ScopeContext {
-  readonly needs: ReadonlyMap<string, NodeResult>;
-  readonly loop?: LoopDetails | undefined;
-  readonly worktree?: WorktreeDetails | undefined;
-  readonly outer?: ScopeContext | undefined;
-}
+export type ScopeEntry = LoopScopeEntry | WorktreeScopeEntry | ScopeEntryBase;
+
+export type ScopeChain = ReadonlyMap<string, ScopeEntry>;
 
 // Workflow-scoped runtime values, identical at every scope depth.
 // Author-facing CEL surface, hence snake_case.
@@ -85,10 +88,13 @@ export interface HeimdallContext {
 export interface ExecutionContext {
   readonly inputs: Record<string, string | number | bigint | boolean>;
   readonly vars: Record<string, string | number | bigint | boolean>;
+  // Every completed result the scheduler holds; narrowed to declared edges when projected as
+  // self.needs.
   readonly needs: ReadonlyMap<string, NodeResult>;
+  // Engine-only working directory; not a CEL binding.
   readonly cwd: string;
   readonly heimdall: HeimdallContext;
-  readonly scope?: ScopeContext | undefined;
+  readonly scopes: ScopeChain;
 }
 
 export interface NodeRunOptions {
@@ -168,7 +174,7 @@ export abstract class BaseNode<R extends NodeRunResult = NodeRunResult> {
       return true;
     }
 
-    const result = evalCel(this.ifExpr, ctx as unknown as Record<string, unknown>);
+    const result = evalCel(this.ifExpr, buildEntryContext(ctx, this.depends_on));
 
     if (typeof result !== 'boolean') {
       throw new NodeError(
