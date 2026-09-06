@@ -7,6 +7,7 @@ import {
 } from '../dag-utils.ts';
 import type { NodeResult } from '../emitter.ts';
 import { NodeError } from '../errors.ts';
+import { buildCheckpointContext, extendScope, selectNeeds } from '../expression-context.ts';
 import { runScheduler } from '../scheduler.ts';
 import { LoopNodeSchema } from '../schema.ts';
 import type {
@@ -16,7 +17,6 @@ import type {
   NodeRunExited,
   NodeRunFailed,
   NodeRunOptions,
-  ScopeContext,
 } from './base.ts';
 import { BaseNode } from './base.ts';
 import { nodeRegistry } from './registry.ts';
@@ -28,19 +28,6 @@ interface LoopNodeData extends BaseNodeData {
   bodyNodes: BaseNode[];
   outputs?: Record<string, string> | undefined;
 }
-
-// Generic spread on purpose: new scope families propagate without touching LoopNode (FR-024).
-const buildBodyScope = (
-  nodes: ReadonlyMap<string, NodeResult>,
-  loopNeeds: ReadonlyMap<string, NodeResult>,
-  parentScope: ScopeContext | undefined,
-  iteration: number
-): ScopeContext => ({
-  ...parentScope,
-  needs: loopNeeds,
-  loop: { iteration, nodes },
-  outer: parentScope,
-});
 
 export class LoopNode extends BaseNode<NodeRunCompleted | NodeRunExited | NodeRunFailed> {
   private readonly until: string | undefined;
@@ -85,7 +72,7 @@ export class LoopNode extends BaseNode<NodeRunCompleted | NodeRunExited | NodeRu
 
   // Validates the loop body in isolation: depends_on references, shared-context
   // fan-in, and cycles are all scoped to the body list, so a body node cannot
-  // reference a node outside the loop (FR-024). Nested loops validate recursively.
+  // reference a node outside the loop. Nested loops validate recursively.
   public override validate(): void {
     validateDependencyReferences(this.bodyNodes);
     validateSharedContextFanIn(this.bodyNodes);
@@ -108,17 +95,8 @@ export class LoopNode extends BaseNode<NodeRunCompleted | NodeRunExited | NodeRu
     options: NodeRunOptions
   ): Promise<NodeRunCompleted | NodeRunExited | NodeRunFailed> {
     const { ctx, platform, emitter, signal } = options;
-    const parentScope = ctx.scope;
 
-    // Body nodes reach external dependencies only via scope.needs.<id> (FR-030),
-    // never the top-level needs map.
-    const loopNeeds = new Map<string, NodeResult>();
-    for (const depId of this.getDependencies()) {
-      const depResult = ctx.needs.get(depId);
-      if (depResult !== undefined) {
-        loopNeeds.set(depId, depResult);
-      }
-    }
+    const loopNeeds = selectNeeds(ctx.needs, this.getDependencies());
 
     let lastIterationNodes: ReadonlyMap<string, NodeResult> = new Map<string, NodeResult>();
     let completedIterations = 0;
@@ -128,13 +106,9 @@ export class LoopNode extends BaseNode<NodeRunCompleted | NodeRunExited | NodeRu
         return this.cancelledResult();
       }
 
-      if (
-        !this.evaluateWhile(ctx, lastIterationNodes, loopNeeds, parentScope, completedIterations)
-      ) {
+      if (!this.evaluateWhile(ctx, lastIterationNodes, completedIterations)) {
         break;
       }
-
-      const scope = buildBodyScope(lastIterationNodes, loopNeeds, parentScope, completedIterations);
 
       const innerCtx: ExecutionContext = {
         inputs: ctx.inputs,
@@ -142,7 +116,12 @@ export class LoopNode extends BaseNode<NodeRunCompleted | NodeRunExited | NodeRu
         needs: new Map(),
         cwd: ctx.cwd,
         heimdall: ctx.heimdall,
-        scope,
+        scopes: extendScope(
+          ctx.scopes,
+          this.id,
+          { needs: loopNeeds, prev: lastIterationNodes },
+          { index: completedIterations }
+        ),
       };
 
       const res = await runScheduler(this.bodyNodes, innerCtx, {
@@ -171,21 +150,17 @@ export class LoopNode extends BaseNode<NodeRunCompleted | NodeRunExited | NodeRu
         };
       }
 
-      // The just-run iteration's snapshot — partial on a break, full otherwise. It feeds
-      // `outputs` after the loop, and the next iteration's `scope.loop.nodes` when the loop
-      // continues. Assigning the partial on the break path is safe because the next-iteration
-      // read is unreachable after a break, so the partial snapshot only ever reaches `outputs`.
+      // Latest body execution only, never merged across executions: it is read as `self.nodes` at
+      // the loop's checkpoints and as `scopes.<id>.prev` inside the next body execution.
       lastIterationNodes = res.nodeResults;
+
+      completedIterations += 1;
 
       if (res.outcome === 'broke') {
         break;
       }
 
-      completedIterations += 1;
-
-      if (
-        this.evaluateUntil(ctx, lastIterationNodes, loopNeeds, parentScope, completedIterations)
-      ) {
+      if (this.evaluateUntil(ctx, lastIterationNodes, completedIterations)) {
         break;
       }
 
@@ -194,15 +169,9 @@ export class LoopNode extends BaseNode<NodeRunCompleted | NodeRunExited | NodeRu
       }
     }
 
-    const output = this.evaluateOutputs(
-      ctx,
-      lastIterationNodes,
-      loopNeeds,
-      parentScope,
-      completedIterations
-    );
+    const output = this.evaluateOutputs(ctx, lastIterationNodes, completedIterations);
 
-    const result: NodeResult = { total_iterations: completedIterations, output };
+    const result: NodeResult = { iterations: completedIterations, output };
 
     return { status: 'completed', result };
   }
@@ -212,26 +181,19 @@ export class LoopNode extends BaseNode<NodeRunCompleted | NodeRunExited | NodeRu
   private evaluateUntil(
     ctx: ExecutionContext,
     nodes: ReadonlyMap<string, NodeResult>,
-    loopNeeds: ReadonlyMap<string, NodeResult>,
-    parentScope: ScopeContext | undefined,
-    iteration: number
+    completedIterations: number
   ): boolean {
     if (!this.until) {
       return false;
     }
 
-    const evalCtx: ExecutionContext = {
-      inputs: ctx.inputs,
-      vars: ctx.vars,
-      needs: loopNeeds,
-      cwd: ctx.cwd,
-      heimdall: ctx.heimdall,
-      scope: buildBodyScope(nodes, loopNeeds, parentScope, iteration),
-    };
+    const evalCtx = buildCheckpointContext(ctx, this.getDependencies(), nodes, {
+      iterations: completedIterations,
+    });
 
     let result: unknown;
     try {
-      result = evalCel(this.until, evalCtx as unknown as Record<string, unknown>);
+      result = evalCel(this.until, evalCtx);
     } catch (err) {
       throw new NodeError('Failed to evaluate until expression', 'ENGINE_CEL_ERROR', this.id, {
         nodeName: this.name,
@@ -256,26 +218,19 @@ export class LoopNode extends BaseNode<NodeRunCompleted | NodeRunExited | NodeRu
   private evaluateWhile(
     ctx: ExecutionContext,
     nodes: ReadonlyMap<string, NodeResult>,
-    loopNeeds: ReadonlyMap<string, NodeResult>,
-    parentScope: ScopeContext | undefined,
-    iteration: number
+    completedIterations: number
   ): boolean {
     if (!this.while) {
       return true;
     }
 
-    const evalCtx: ExecutionContext = {
-      inputs: ctx.inputs,
-      vars: ctx.vars,
-      needs: loopNeeds,
-      cwd: ctx.cwd,
-      heimdall: ctx.heimdall,
-      scope: buildBodyScope(nodes, loopNeeds, parentScope, iteration),
-    };
+    const evalCtx = buildCheckpointContext(ctx, this.getDependencies(), nodes, {
+      iterations: completedIterations,
+    });
 
     let result: unknown;
     try {
-      result = evalCel(this.while, evalCtx as unknown as Record<string, unknown>);
+      result = evalCel(this.while, evalCtx);
     } catch (err) {
       throw new NodeError('Failed to evaluate while expression', 'ENGINE_CEL_ERROR', this.id, {
         nodeName: this.name,
@@ -298,28 +253,20 @@ export class LoopNode extends BaseNode<NodeRunCompleted | NodeRunExited | NodeRu
   private evaluateOutputs(
     ctx: ExecutionContext,
     nodes: ReadonlyMap<string, NodeResult>,
-    loopNeeds: ReadonlyMap<string, NodeResult>,
-    parentScope: ScopeContext | undefined,
-    iteration: number
+    completedIterations: number
   ): Record<string, unknown> {
     if (this.outputs === undefined) {
       return {};
     }
 
-    const evalCtx: ExecutionContext = {
-      inputs: ctx.inputs,
-      vars: ctx.vars,
-      needs: loopNeeds,
-      cwd: ctx.cwd,
-      heimdall: ctx.heimdall,
-      scope: buildBodyScope(nodes, loopNeeds, parentScope, iteration),
-    };
-    const celContext = evalCtx as unknown as Record<string, unknown>;
+    const evalCtx = buildCheckpointContext(ctx, this.getDependencies(), nodes, {
+      iterations: completedIterations,
+    });
 
     const output: Record<string, unknown> = {};
     for (const [key, expr] of Object.entries(this.outputs)) {
       try {
-        output[key] = evalCel(expr, celContext);
+        output[key] = evalCel(expr, evalCtx);
       } catch (err) {
         throw new NodeError(`Failed to evaluate output '${key}'`, 'ENGINE_CEL_ERROR', this.id, {
           nodeName: this.name,

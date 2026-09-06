@@ -68,7 +68,7 @@ nodes:
     bash: "true"
 `;
 
-/** A workflow whose single bash node writes its needs.A output to HEIMDALL_OUTPUT.
+/** A workflow whose single bash node writes its self.needs.A output to HEIMDALL_OUTPUT.
  *  Used for the three-node chain test.  All three are bash nodes so the workflow
  *  parses them without needing stub injection. */
 const threeNodeChainWorkflow = `
@@ -699,20 +699,9 @@ nodes:
     });
 
     it('gives nodeC access to nodeB output via needs (chained context)', async () => {
-      // nodeA writes "value_a", nodeB reads it via ${{ needs.nodeA.output }} and appends "-b",
-      // nodeC reads nodeB's output via ${{ needs.nodeB.output }} and appends "-c".
-      // The final output on nodeC proves the needs chain flowed A→B→C through CEL interpolation.
-      //
-      // CEL interpolation syntax: ${{ needs.<id>.output }} — verified against:
-      //   - bash.ts: passes ctx (including ctx.needs Map) through interpolate()
-      //   - cel.ts: sanitize() converts Maps to plain objects via mapToObj(), so
-      //     needs.nodeB.output accesses needs['nodeB']['output'] after conversion
-      //   - bash.test.ts: confirms ${{ inputs.name }} pattern works (same interpolate path)
-      //
-      // Note: the ${{ }} tokens below are written using '\x24{{ }}' to prevent the JS
-      // template-literal parser from treating ${ as an interpolation opener.
-      const celNodeA = '\x24{{ needs.nodeA.output }}';
-      const celNodeB = '\x24{{ needs.nodeB.output }}';
+      // '\x24{{ }}' avoids the JS template-literal parser treating ${ as an interpolation opener.
+      const celNodeA = '\x24{{ self.needs.nodeA.output }}';
+      const celNodeB = '\x24{{ self.needs.nodeB.output }}';
       const yaml = `
 name: chain-needs
 nodes:
