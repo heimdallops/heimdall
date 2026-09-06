@@ -105,11 +105,11 @@ Comments that are borderline — present but marginally useful, or missing where
 ---
 ```
 
-| Classification      | Description                                                                               |
-| ------------------- | ----------------------------------------------------------------------------------------- |
-| `UNNECESSARY`       | Comment should be removed; it restates the code, adds no context, or is dead/misleading   |
-| `NEEDS_IMPROVEMENT` | Comment exists but is inaccurate, hollow, or references the wrong thing; show the rewrite |
-| `MISSING`           | No comment exists where one is genuinely needed; show what it should say                  |
+| Classification      | Description                                                                                                                                             |
+| ------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `UNNECESSARY`       | Comment should be removed; it restates the code, adds no context, or is dead/misleading                                                                 |
+| `NEEDS_IMPROVEMENT` | Comment exists but is inaccurate, hollow, or references the wrong thing; show the rewrite                                                               |
+| `MISSING`           | No comment exists where one is genuinely needed; show what it should say                                                                                |
 | `DESIGN_SMELL`      | Comment is accurate but exists to justify a decision or prop up complex code; recommend redesign, simplification, or escalation — not a comment rewrite |
 
 ---
