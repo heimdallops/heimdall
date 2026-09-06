@@ -143,6 +143,7 @@ export class Workflow {
         needs: new Map(),
         cwd,
         heimdall: { run_cwd: cwd, session_dir: sessionDir },
+        scopes: new Map(),
       };
 
       result = await runScheduler(this.sortedNodes, ctx, {

@@ -1,6 +1,7 @@
 import { interpolate } from '../cel.ts';
 import type { ApprovalResult } from '../emitter.ts';
 import { NodeError } from '../errors.ts';
+import { buildEntryContext } from '../expression-context.ts';
 import { ApprovalNodeSchema } from '../schema.ts';
 import type {
   BaseNodeData,
@@ -62,9 +63,10 @@ export class ApprovalNode extends BaseNode<NodeRunCompleted | NodeRunExited | No
 
     let interpolatedMessage: string;
     try {
-      // interpolate is CEL-agnostic and accepts any Record;
-      // ExecutionContext satisfies this shape at runtime.
-      interpolatedMessage = interpolate(this.message, ctx as unknown as Record<string, unknown>);
+      interpolatedMessage = interpolate(
+        this.message,
+        buildEntryContext(ctx, this.getDependencies())
+      );
     } catch (err) {
       throw new NodeError(
         'Failed to interpolate approval message',

@@ -9,8 +9,9 @@ type CelContext = Record<string, unknown>;
 const makeCtx = (overrides?: Partial<CelContext>): CelContext => ({
   inputs: {},
   vars: {},
-  needs: new Map(),
   heimdall: { run_cwd: '/tmp/work', session_dir: '/tmp/session' },
+  self: { needs: new Map() },
+  scopes: new Map(),
   ...overrides,
 });
 
@@ -80,9 +81,9 @@ describe('interpolate', () => {
   });
 
   it('serializes a plain-object result to its JSON string representation', () => {
-    const ctx = makeCtx({ needs: new Map([['step', { key: 'val' }]]) });
+    const ctx = makeCtx({ self: { needs: new Map([['step', { key: 'val' }]]) } });
 
-    const result = interpolate('${{ needs.step }}', ctx);
+    const result = interpolate('${{ self.needs.step }}', ctx);
 
     expect(result).toBe('{"key":"val"}');
   });
@@ -128,44 +129,48 @@ describe('evalCel', () => {
     expect(result).toBe(6n);
   });
 
-  it('accesses a nested value from an arbitrary context key', () => {
-    const ctx = makeCtx({ scope: { loop: { iteration: 3 } } });
+  it('accesses a scope attribute through the id of the enclosing node', () => {
+    const ctx = makeCtx({ scopes: new Map([['ci', { index: 3 }]]) });
 
-    const result = evalCel('scope.loop.iteration', ctx);
+    const result = evalCel('scopes.ci.index', ctx);
 
     expect(result).toBe(3);
   });
 
-  it('throws EngineError wrapping a CEL EvaluationError when a context key is absent', () => {
-    expect.assertions(2);
-    const ctx = makeCtx();
+  // cwd is engine-only: BashNode forwards it to the process, and it is never bound as a root.
+  it.each(['scopes.ci.index', 'cwd'])(
+    'throws EngineError wrapping a CEL EvaluationError for the unresolvable reference %s',
+    (expr) => {
+      expect.assertions(2);
+      const ctx = makeCtx();
 
-    let thrown: EngineError | undefined;
-    try {
-      evalCel('scope.loop.iteration', ctx);
-    } catch (err) {
-      thrown = err as EngineError;
+      let thrown: EngineError | undefined;
+      try {
+        evalCel(expr, ctx);
+      } catch (err) {
+        thrown = err as EngineError;
+      }
+
+      expect(thrown?.code).toBe('ENGINE_CEL_ERROR');
+      expect(thrown?.cause).toBeInstanceOf(EvaluationError);
     }
-
-    expect(thrown?.code).toBe('ENGINE_CEL_ERROR');
-    expect(thrown?.cause).toBeInstanceOf(EvaluationError);
-  });
+  );
 });
 
 describe('sanitize (via evalCel / interpolate)', () => {
   describe('Map → plain object conversion', () => {
     it('exposes Map string keys as accessible fields in CEL', () => {
-      const ctx = makeCtx({ needs: new Map([['build', { exitCode: 0 }]]) });
+      const ctx = makeCtx({ self: { needs: new Map([['build', { exitCode: 0 }]]) } });
 
-      const result = evalCel('needs.build.exitCode', ctx);
+      const result = evalCel('self.needs.build.exitCode', ctx);
 
       expect(result).toBe(0);
     });
 
     it('makes a Map value interpolatable as a nested field reference', () => {
-      const ctx = makeCtx({ needs: new Map([['lint', { passed: true }]]) });
+      const ctx = makeCtx({ self: { needs: new Map([['lint', { passed: true }]]) } });
 
-      const result = interpolate('${{ needs.lint.passed }}', ctx);
+      const result = interpolate('${{ self.needs.lint.passed }}', ctx);
 
       expect(result).toBe('true');
     });
@@ -205,14 +210,14 @@ describe('sanitize (via evalCel / interpolate)', () => {
     it('strips a blocked key nested inside a plain object so it is not accessible in CEL', () => {
       expect.assertions(2);
       // Verifies blocked-key stripping recurses into nested objects, not just the top level.
-      const ctx = makeCtx({ scope: { constructor: 'should-be-gone', safe: 'ok' } });
+      const ctx = makeCtx({ scopes: { ci: { constructor: 'should-be-gone', safe: 'ok' } } });
 
-      const safeResult = evalCel('scope.safe', ctx);
+      const safeResult = evalCel('scopes.ci.safe', ctx);
       expect(safeResult).toBe('ok');
 
       let thrown: EngineError | undefined;
       try {
-        evalCel('scope.constructor', ctx);
+        evalCel('scopes.ci.constructor', ctx);
       } catch (err) {
         thrown = err as EngineError;
       }
@@ -267,13 +272,14 @@ describe('sanitize (via evalCel / interpolate)', () => {
       const ctx: Record<string, unknown> = {
         inputs: {},
         vars: {},
-        needs: new Map(),
-        cwd: '/tmp/work',
+        heimdall: { run_cwd: '/tmp/work', session_dir: '/tmp/session' },
+        self: { needs: new Map() },
+        scopes: new Map(),
         constructor: 'blocked',
       };
 
       // Safe keys survive sanitization.
-      expect(evalCel('cwd', ctx)).toBe('/tmp/work');
+      expect(evalCel('heimdall.run_cwd', ctx)).toBe('/tmp/work');
 
       // The blocked key is stripped; accessing it throws.
       let thrown: EngineError | undefined;
