@@ -2,14 +2,19 @@ import { describe, expect, it } from 'vitest';
 
 import {
   buildContextInheritanceMap,
+  RESERVED_SCOPED_IDS,
   topologicalSort,
   validateDependencyReferences,
+  validateNodeIds,
   validateNoNodeTypes,
   validateSharedContextFanIn,
-  validateUniqueIds,
 } from '../../../../src/core/engine/dag-utils.ts';
 import { EngineConfigError } from '../../../../src/core/engine/errors.ts';
-import type { NodeRunOptions, NodeRunResult } from '../../../../src/core/engine/nodes/base.ts';
+import type {
+  BaseNodeData,
+  NodeRunOptions,
+  NodeRunResult,
+} from '../../../../src/core/engine/nodes/base.ts';
 import { BaseNode } from '../../../../src/core/engine/nodes/base.ts';
 
 class StubNode extends BaseNode {
@@ -64,66 +69,160 @@ class NonAgenticSharedContextNode extends BaseNode {
   }
 }
 
-describe('validateUniqueIds', () => {
-  it('does not throw when the node list is empty', () => {
-    expect(() => {
-      validateUniqueIds([]);
-    }).not.toThrow();
+// A generic scoped node, standing in for any concrete node that overrides
+// isScopedNode()/getScopeBody() (e.g. LoopNode), so these tests don't depend
+// on a specific node type.
+interface ScopedStubNodeData extends BaseNodeData {
+  body: BaseNode[];
+}
+
+class ScopedStubNode extends BaseNode {
+  private readonly body: BaseNode[];
+
+  public constructor(data: ScopedStubNodeData) {
+    super(data);
+    this.body = data.body;
+  }
+
+  public override isScopedNode(): boolean {
+    return true;
+  }
+
+  public override getScopeBody(): readonly BaseNode[] {
+    return this.body;
+  }
+
+  public run(_options: NodeRunOptions): Promise<NodeRunResult> {
+    return Promise.resolve({ status: 'completed', result: {} });
+  }
+}
+
+describe('validateNodeIds', () => {
+  describe('accepting structurally valid trees', () => {
+    it('does not throw when the node list is empty', () => {
+      expect(() => {
+        validateNodeIds([]);
+      }).not.toThrow();
+    });
+
+    it('does not throw when all node ids are distinct across nested scopes', () => {
+      const leaf = new StubNode({ id: 'leaf' });
+      const middle = new ScopedStubNode({ id: 'middle', body: [leaf] });
+      const root = new ScopedStubNode({ id: 'root', body: [middle] });
+      const sibling = new StubNode({ id: 'sibling' });
+
+      expect(() => {
+        validateNodeIds([root, sibling]);
+      }).not.toThrow();
+    });
+
+    it('does not throw when a scoped node has an empty body', () => {
+      const node = new ScopedStubNode({ id: 'container', body: [] });
+
+      expect(() => {
+        validateNodeIds([node]);
+      }).not.toThrow();
+    });
+
+    it.each([...RESERVED_SCOPED_IDS])(
+      'does not throw when a plain, non-scoped node uses the reserved id %s',
+      (id) => {
+        expect(() => {
+          validateNodeIds([new StubNode({ id })]);
+        }).not.toThrow();
+      }
+    );
   });
 
-  it('does not throw when all node ids are distinct', () => {
-    const nodes = [
-      new StubNode({ id: 'alpha' }),
-      new StubNode({ id: 'beta' }),
-      new StubNode({ id: 'gamma' }),
-    ];
+  describe('rejecting reserved words on scoped nodes', () => {
+    it.each([...RESERVED_SCOPED_IDS])(
+      'throws EngineConfigError naming the id when a scoped node uses the reserved word %s',
+      (id) => {
+        const node = new ScopedStubNode({ id, body: [new StubNode({ id: 'child' })] });
 
-    expect(() => {
-      validateUniqueIds(nodes);
-    }).not.toThrow();
+        let thrown: unknown;
+        try {
+          validateNodeIds([node]);
+        } catch (e) {
+          thrown = e;
+        }
+
+        expect(thrown).toBeInstanceOf(EngineConfigError);
+        expect((thrown as Error).message).toContain(`Node '${id}' introduces a scope`);
+      }
+    );
+
+    it('throws EngineConfigError when a scoped node uses a reserved word even though its scope body is empty', () => {
+      const node = new ScopedStubNode({ id: 'loop', body: [] });
+
+      expect(() => {
+        validateNodeIds([node]);
+      }).toThrow("Node 'loop' introduces a scope");
+    });
   });
 
-  it('throws EngineConfigError naming only the duplicated id when a non-duplicated id is also present', () => {
-    const nodes = [
-      new StubNode({ id: 'unique' }),
-      new StubNode({ id: 'dup' }),
-      new StubNode({ id: 'dup' }),
-    ];
+  describe('rejecting duplicate ids at every relation', () => {
+    it('throws EngineConfigError naming the id when two root-level siblings share an id', () => {
+      const nodes = [
+        new StubNode({ id: 'unique' }),
+        new StubNode({ id: 'dup' }),
+        new StubNode({ id: 'dup' }),
+      ];
 
-    let thrown: unknown;
-    try {
-      validateUniqueIds(nodes);
-    } catch (e) {
-      thrown = e;
-    }
+      let thrown: unknown;
+      try {
+        validateNodeIds(nodes);
+      } catch (e) {
+        thrown = e;
+      }
 
-    expect(thrown).toBeInstanceOf(EngineConfigError);
-    expect((thrown as Error).message).toBe("Duplicate node id(s): ['dup']");
-  });
+      expect(thrown).toBeInstanceOf(EngineConfigError);
+      expect((thrown as Error).message).toBe(
+        "Duplicate node id: 'dup'; node ids must be unique across the entire workflow"
+      );
+    });
 
-  it('reports all distinct duplicated ids when multiple different ids are each duplicated', () => {
-    const nodes = [
-      new StubNode({ id: 'a' }),
-      new StubNode({ id: 'unique' }),
-      new StubNode({ id: 'b' }),
-      new StubNode({ id: 'a' }),
-      new StubNode({ id: 'b' }),
-      new StubNode({ id: 'b' }),
-    ];
+    it('throws EngineConfigError naming the id when a scoped node id matches a node directly in its own body', () => {
+      const child = new StubNode({ id: 'dup' });
+      const ancestor = new ScopedStubNode({ id: 'dup', body: [child] });
 
-    let thrown: unknown;
-    try {
-      validateUniqueIds(nodes);
-    } catch (e) {
-      thrown = e;
-    }
+      let thrown: unknown;
+      try {
+        validateNodeIds([ancestor]);
+      } catch (e) {
+        thrown = e;
+      }
 
-    expect(thrown).toBeInstanceOf(EngineConfigError);
-    const { message } = thrown as Error;
-    expect(message).toContain("'a'");
-    expect(message).toContain("'b'");
-    expect(message).not.toContain("'unique'");
-    expect(message).toMatch(/^Duplicate node id\(s\):/);
+      expect(thrown).toBeInstanceOf(EngineConfigError);
+      expect((thrown as Error).message).toContain("'dup'");
+    });
+
+    it('throws EngineConfigError naming the id when nodes in two unrelated sibling scopes share an id', () => {
+      const nodeInA = new StubNode({ id: 'dup' });
+      const scopeA = new ScopedStubNode({ id: 'scopeA', body: [nodeInA] });
+      const nodeInB = new StubNode({ id: 'dup' });
+      const scopeB = new ScopedStubNode({ id: 'scopeB', body: [nodeInB] });
+
+      expect(() => {
+        validateNodeIds([scopeA, scopeB]);
+      }).toThrow("'dup'");
+    });
+
+    it('throws EngineConfigError naming the id when two siblings inside the same nested scope body share an id', () => {
+      const siblingA = new StubNode({ id: 'dup' });
+      const siblingB = new StubNode({ id: 'dup' });
+      const node = new ScopedStubNode({ id: 'container', body: [siblingA, siblingB] });
+
+      let thrown: unknown;
+      try {
+        validateNodeIds([node]);
+      } catch (e) {
+        thrown = e;
+      }
+
+      expect(thrown).toBeInstanceOf(EngineConfigError);
+      expect((thrown as Error).message).toContain("'dup'");
+    });
   });
 });
 

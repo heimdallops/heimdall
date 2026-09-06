@@ -4,7 +4,6 @@ import {
   topologicalSort,
   validateDependencyReferences,
   validateSharedContextFanIn,
-  validateUniqueIds,
 } from '../dag-utils.ts';
 import type { NodeResult } from '../emitter.ts';
 import { NodeError } from '../errors.ts';
@@ -88,7 +87,6 @@ export class LoopNode extends BaseNode<NodeRunCompleted | NodeRunExited | NodeRu
   // fan-in, and cycles are all scoped to the body list, so a body node cannot
   // reference a node outside the loop (FR-024). Nested loops validate recursively.
   public override validate(): void {
-    validateUniqueIds(this.bodyNodes);
     validateDependencyReferences(this.bodyNodes);
     validateSharedContextFanIn(this.bodyNodes);
     topologicalSort(this.bodyNodes);
@@ -96,6 +94,14 @@ export class LoopNode extends BaseNode<NodeRunCompleted | NodeRunExited | NodeRu
     for (const node of this.bodyNodes) {
       node.validate();
     }
+  }
+
+  public override isScopedNode(): boolean {
+    return true;
+  }
+
+  public override getScopeBody(): readonly BaseNode[] {
+    return this.bodyNodes;
   }
 
   public override async run(
