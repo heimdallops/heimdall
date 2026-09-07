@@ -1,50 +1,15 @@
 import { EngineConfigError } from './errors.ts';
 import type { BaseNode } from './nodes/base.ts';
 
-// These names are part of the expression language's own vocabulary, current or anticipated, so a
-// scoped node may not claim one as its id.
-export const RESERVED_SCOPED_IDS: ReadonlySet<string> = new Set([
-  'loop',
-  'worktree',
-  'switch',
-  'each',
-  'outer',
-  'needs',
-  'nodes',
-  'prev',
-  'item',
-  'previtem',
-  'self',
-  'scopes',
-  'inputs',
-  'vars',
-  'heimdall',
-]);
-
-const walkNodeIds = (nodes: readonly BaseNode[], seen: Set<string>): void => {
-  for (const node of nodes) {
-    if (node.isScopedNode() && RESERVED_SCOPED_IDS.has(node.id)) {
-      throw new EngineConfigError(
-        `Node '${node.id}' introduces a scope, so its id must not be a reserved word: [${[...RESERVED_SCOPED_IDS].map((id) => `'${id}'`).join(', ')}]`
-      );
-    }
-
-    if (seen.has(node.id)) {
-      throw new EngineConfigError(
-        `Duplicate node id: '${node.id}'; node ids must be unique across the entire workflow`
-      );
-    }
-
-    seen.add(node.id);
-
-    walkNodeIds(node.getScopeBody(), seen);
-  }
-};
-
-// Ids are unique across the whole workflow, not merely among siblings. Purely structural:
-// no expression is parsed or evaluated.
+// Ids are unique across the whole workflow, not merely among siblings, so one accumulating set
+// spans every root node and everything beneath them. Purely structural: no expression is parsed
+// or evaluated.
 export const validateNodeIds = (nodes: readonly BaseNode[]): void => {
-  walkNodeIds(nodes, new Set());
+  let seen = new Set<string>();
+
+  for (const node of nodes) {
+    seen = node.validateIds(seen);
+  }
 };
 
 export const validateDependencyReferences = (nodes: BaseNode[]): void => {

@@ -1,10 +1,32 @@
 import type { Platform } from '../../platform/index.ts';
 import { evalCel } from '../cel.ts';
 import type { EngineEmitter, NodeResult } from '../emitter.ts';
-import { NodeError } from '../errors.ts';
+import { EngineConfigError, NodeError } from '../errors.ts';
 import type { RetryPolicy } from '../schema.ts';
 
 export type { NodeResult, RetryPolicy };
+
+// These names are part of the expression language's own vocabulary, current or anticipated, so no
+// node may claim one as its id. Reserved for every node, not only the scope-introducing ones that
+// key the scope chain: the narrower rule read as arbitrary to reviewers. Loosening this later is
+// backward-compatible; tightening it would not be.
+export const RESERVED_IDS: ReadonlySet<string> = new Set([
+  'loop',
+  'worktree',
+  'switch',
+  'each',
+  'outer',
+  'needs',
+  'nodes',
+  'prev',
+  'item',
+  'previtem',
+  'self',
+  'scopes',
+  'inputs',
+  'vars',
+  'heimdall',
+]);
 
 export interface NodeRunCompleted {
   status: 'completed';
@@ -152,15 +174,23 @@ export abstract class BaseNode<R extends NodeRunResult = NodeRunResult> {
     return true;
   }
 
-  // Default false: subclasses that introduce a scope for their child nodes override to true.
-  public isScopedNode(): boolean {
-    return false;
-  }
+  // Ids are unique across the whole workflow, not merely among siblings, so `seen` carries every
+  // id already claimed anywhere in the tree. Subclasses that hold child nodes override this to
+  // thread the returned set through them.
+  public validateIds(seen: Set<string>): Set<string> {
+    if (RESERVED_IDS.has(this.id)) {
+      throw new EngineConfigError(
+        `Node id '${this.id}' is reserved: [${[...RESERVED_IDS].map((id) => `'${id}'`).join(', ')}]`
+      );
+    }
 
-  // A scoped node's child nodes as a single list; a node holding several distinct bodies
-  // concatenates them, because that grouping is internal to the node.
-  public getScopeBody(): readonly BaseNode[] {
-    return [];
+    if (seen.has(this.id)) {
+      throw new EngineConfigError(
+        `Duplicate node id: '${this.id}'; node ids must be unique across the entire workflow`
+      );
+    }
+
+    return new Set(seen).add(this.id);
   }
 
   public evaluateIf(ctx: ExecutionContext): boolean {

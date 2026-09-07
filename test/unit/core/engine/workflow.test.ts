@@ -252,6 +252,20 @@ nodes:
         expect((err as EngineConfigError).message).toMatch(/Duplicate node id/);
       });
 
+      it('throws EngineConfigError when a plain node uses a reserved word as its id', async () => {
+        const yaml = `
+name: plain-reserved-id
+nodes:
+  - id: each
+    bash: "true"
+`;
+
+        const err = await Workflow.from(yaml).catch((e: unknown) => e);
+
+        expect(err).toBeInstanceOf(EngineConfigError);
+        expect((err as EngineConfigError).message).toContain("Node id 'each' is reserved");
+      });
+
       it('throws EngineConfigError when a loop node uses a reserved word as its own id', async () => {
         const yaml = `
 name: loop-reserved-id
@@ -267,8 +281,7 @@ nodes:
         const err = await Workflow.from(yaml).catch((e: unknown) => e);
 
         expect(err).toBeInstanceOf(EngineConfigError);
-        expect((err as EngineConfigError).message).toContain("'loop'");
-        expect((err as EngineConfigError).message).toContain('introduces a scope');
+        expect((err as EngineConfigError).message).toContain("Node id 'loop' is reserved");
       });
 
       it('throws EngineConfigError when a BreakNode appears at the top level', async () => {

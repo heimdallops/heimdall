@@ -2,7 +2,6 @@ import { describe, expect, it } from 'vitest';
 
 import {
   buildContextInheritanceMap,
-  RESERVED_SCOPED_IDS,
   topologicalSort,
   validateDependencyReferences,
   validateNodeIds,
@@ -15,7 +14,7 @@ import type {
   NodeRunOptions,
   NodeRunResult,
 } from '../../../../src/core/engine/nodes/base.ts';
-import { BaseNode } from '../../../../src/core/engine/nodes/base.ts';
+import { BaseNode, RESERVED_IDS } from '../../../../src/core/engine/nodes/base.ts';
 
 class StubNode extends BaseNode {
   public run(_options: NodeRunOptions): Promise<NodeRunResult> {
@@ -69,9 +68,8 @@ class NonAgenticSharedContextNode extends BaseNode {
   }
 }
 
-// A generic scoped node, standing in for any concrete node that overrides
-// isScopedNode()/getScopeBody() (e.g. LoopNode), so these tests don't depend
-// on a specific node type.
+// A generic node holding children, standing in for any concrete node that recurses through them
+// (e.g. LoopNode), so these tests don't depend on a specific node type.
 interface ScopedStubNodeData extends BaseNodeData {
   body: BaseNode[];
 }
@@ -84,12 +82,14 @@ class ScopedStubNode extends BaseNode {
     this.body = data.body;
   }
 
-  public override isScopedNode(): boolean {
-    return true;
-  }
+  public override validateIds(seen: Set<string>): Set<string> {
+    let claimed = super.validateIds(seen);
 
-  public override getScopeBody(): readonly BaseNode[] {
-    return this.body;
+    for (const node of this.body) {
+      claimed = node.validateIds(claimed);
+    }
+
+    return claimed;
   }
 
   public run(_options: NodeRunOptions): Promise<NodeRunResult> {
@@ -124,40 +124,38 @@ describe('validateNodeIds', () => {
       }).not.toThrow();
     });
 
-    it.each([...RESERVED_SCOPED_IDS])(
-      'does not throw when a plain, non-scoped node uses the reserved id %s',
-      (id) => {
-        expect(() => {
-          validateNodeIds([new StubNode({ id })]);
-        }).not.toThrow();
-      }
-    );
+    it('does not throw when ids merely resemble reserved words', () => {
+      const nodes = [new StubNode({ id: 'loop_body' }), new StubNode({ id: 'my_switch' })];
+
+      expect(() => {
+        validateNodeIds(nodes);
+      }).not.toThrow();
+    });
   });
 
-  describe('rejecting reserved words on scoped nodes', () => {
-    it.each([...RESERVED_SCOPED_IDS])(
-      'throws EngineConfigError naming the id when a scoped node uses the reserved word %s',
+  describe('rejecting reserved words as ids', () => {
+    it.each([...RESERVED_IDS])(
+      'throws EngineConfigError naming the id when a node uses the reserved word %s',
       (id) => {
-        const node = new ScopedStubNode({ id, body: [new StubNode({ id: 'child' })] });
-
         let thrown: unknown;
         try {
-          validateNodeIds([node]);
+          validateNodeIds([new StubNode({ id })]);
         } catch (e) {
           thrown = e;
         }
 
         expect(thrown).toBeInstanceOf(EngineConfigError);
-        expect((thrown as Error).message).toContain(`Node '${id}' introduces a scope`);
+        expect((thrown as Error).message).toContain(`Node id '${id}' is reserved`);
       }
     );
 
-    it('throws EngineConfigError when a scoped node uses a reserved word even though its scope body is empty', () => {
-      const node = new ScopedStubNode({ id: 'loop', body: [] });
+    it('throws EngineConfigError when a node nested inside a scope uses a reserved word', () => {
+      const nested = new StubNode({ id: 'prev' });
+      const container = new ScopedStubNode({ id: 'container', body: [nested] });
 
       expect(() => {
-        validateNodeIds([node]);
-      }).toThrow("Node 'loop' introduces a scope");
+        validateNodeIds([container]);
+      }).toThrow("Node id 'prev' is reserved");
     });
   });
 

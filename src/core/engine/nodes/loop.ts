@@ -96,12 +96,14 @@ export class LoopNode extends BaseNode<NodeRunCompleted | NodeRunExited | NodeRu
     }
   }
 
-  public override isScopedNode(): boolean {
-    return true;
-  }
+  public override validateIds(seen: Set<string>): Set<string> {
+    let claimed = super.validateIds(seen);
 
-  public override getScopeBody(): readonly BaseNode[] {
-    return this.bodyNodes;
+    for (const node of this.bodyNodes) {
+      claimed = node.validateIds(claimed);
+    }
+
+    return claimed;
   }
 
   public override async run(
