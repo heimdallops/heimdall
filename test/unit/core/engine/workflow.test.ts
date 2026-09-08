@@ -231,6 +231,59 @@ nodes:
         expect((err as EngineConfigError).message).toMatch(/Duplicate node id/);
       });
 
+      it('throws EngineConfigError naming the id when a node inside a loop body collides with a top-level node id', async () => {
+        const yaml = `
+name: loop-body-dup
+nodes:
+  - id: build
+    bash: "true"
+  - id: wrap
+    loop:
+      max_iterations: 1
+      nodes:
+        - id: build
+          bash: "true"
+`;
+
+        const err = await Workflow.from(yaml).catch((e: unknown) => e);
+
+        expect(err).toBeInstanceOf(EngineConfigError);
+        expect((err as EngineConfigError).message).toContain('build');
+        expect((err as EngineConfigError).message).toMatch(/Duplicate node id/);
+      });
+
+      it('throws EngineConfigError when a plain node uses a reserved word as its id', async () => {
+        const yaml = `
+name: plain-reserved-id
+nodes:
+  - id: each
+    bash: "true"
+`;
+
+        const err = await Workflow.from(yaml).catch((e: unknown) => e);
+
+        expect(err).toBeInstanceOf(EngineConfigError);
+        expect((err as EngineConfigError).message).toContain("Node id 'each' is reserved");
+      });
+
+      it('throws EngineConfigError when a loop node uses a reserved word as its own id', async () => {
+        const yaml = `
+name: loop-reserved-id
+nodes:
+  - id: loop
+    loop:
+      max_iterations: 1
+      nodes:
+        - id: inner
+          bash: "true"
+`;
+
+        const err = await Workflow.from(yaml).catch((e: unknown) => e);
+
+        expect(err).toBeInstanceOf(EngineConfigError);
+        expect((err as EngineConfigError).message).toContain("Node id 'loop' is reserved");
+      });
+
       it('throws EngineConfigError when a BreakNode appears at the top level', async () => {
         const yaml = `
 name: top-level-break

@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os';
 import { describe, expect, it } from 'vitest';
 import { ZodError } from 'zod';
 
+import { validateNodeIds } from '../../../../../src/core/engine/dag-utils.ts';
 import type { NodeResult } from '../../../../../src/core/engine/emitter.ts';
 import { createEngineEmitter } from '../../../../../src/core/engine/emitter.ts';
 import { EngineConfigError } from '../../../../../src/core/engine/errors.ts';
@@ -1276,23 +1277,73 @@ describe('LoopNode', () => {
     });
   });
 
-  describe('validate', () => {
-    it('throws EngineConfigError naming the duplicated id when two body nodes share the same id', () => {
-      const nodeA = new ScopeCapturingNode({ id: 'dup' });
-      const nodeB = new ScopeCapturingNode({ id: 'dup' });
-      const loop = makeLoopNode({ max_iterations: 1 }, [nodeA, nodeB]);
+  describe('validateIds', () => {
+    it('rejects a body node whose id repeats the loop id', () => {
+      const body = new ScopeCapturingNode({ id: 'dup' });
+      const loop = makeLoopNode({ id: 'dup', max_iterations: 1 }, [body]);
 
-      let thrown: unknown;
-      try {
-        loop.validate();
-      } catch (e) {
-        thrown = e;
-      }
-
-      expect(thrown).toBeInstanceOf(EngineConfigError);
-      expect((thrown as Error).message).toBe("Duplicate node id(s): ['dup']");
+      expect(() => {
+        validateNodeIds([loop]);
+      }).toThrow("Duplicate node id: 'dup'");
     });
 
+    it('rejects two body nodes sharing an id', () => {
+      const first = new ScopeCapturingNode({ id: 'dup' });
+      const second = new ScopeCapturingNode({ id: 'dup' });
+      const loop = makeLoopNode({ max_iterations: 1 }, [first, second]);
+
+      expect(() => {
+        validateNodeIds([loop]);
+      }).toThrow("Duplicate node id: 'dup'");
+    });
+
+    it('rejects an id shared between a body node and a node outside the loop', () => {
+      const body = new ScopeCapturingNode({ id: 'dup' });
+      const loop = makeLoopNode({ max_iterations: 1 }, [body]);
+      const outside = new ScopeCapturingNode({ id: 'dup' });
+
+      expect(() => {
+        validateNodeIds([loop, outside]);
+      }).toThrow("Duplicate node id: 'dup'");
+    });
+
+    it('rejects an id shared by nodes in two unrelated loops', () => {
+      const loopA = makeLoopNode({ id: 'loopA', max_iterations: 1 }, [
+        new ScopeCapturingNode({ id: 'dup' }),
+      ]);
+      const loopB = makeLoopNode({ id: 'loopB', max_iterations: 1 }, [
+        new ScopeCapturingNode({ id: 'dup' }),
+      ]);
+
+      expect(() => {
+        validateNodeIds([loopA, loopB]);
+      }).toThrow("Duplicate node id: 'dup'");
+    });
+
+    it('reaches a node nested two loops deep', () => {
+      const inner = makeLoopNode({ id: 'inner', max_iterations: 1 }, [
+        new ScopeCapturingNode({ id: 'prev' }),
+      ]);
+      const outer = makeLoopNode({ id: 'outer_loop', max_iterations: 1 }, [inner]);
+
+      expect(() => {
+        validateNodeIds([outer]);
+      }).toThrow("Node id 'prev' is reserved");
+    });
+
+    it('accepts a nested loop whose ids are all distinct and unreserved', () => {
+      const inner = makeLoopNode({ id: 'inner', max_iterations: 1 }, [
+        new ScopeCapturingNode({ id: 'work' }),
+      ]);
+      const outer = makeLoopNode({ id: 'outer_loop', max_iterations: 1 }, [inner]);
+
+      expect(() => {
+        validateNodeIds([outer, new ScopeCapturingNode({ id: 'after' })]);
+      }).not.toThrow();
+    });
+  });
+
+  describe('validate', () => {
     it('throws EngineConfigError when a body node references an unknown depends_on id', () => {
       const body = new ScopeCapturingNode({ id: 'step', depends_on: ['nonexistent'] });
       const loop = makeLoopNode({ max_iterations: 1 }, [body]);
