@@ -5,6 +5,7 @@ import { configHome } from '../../../utils/config-home.ts';
 import type { Platform } from '../../platform/index.ts';
 import { interpolate } from '../cel.ts';
 import { NodeError } from '../errors.ts';
+import { buildEntryContext } from '../expression-context.ts';
 import type { AgenticBaseNode as ParsedAgenticBase } from '../schema.ts';
 import { AgentNodeSchema, PromptFileNodeSchema, PromptNodeSchema } from '../schema.ts';
 import type {
@@ -206,7 +207,9 @@ export class PromptNode extends AgenticNode {
   }
 
   protected override resolvePrompt(ctx: ExecutionContext): Promise<string> {
-    return Promise.resolve(interpolateField(this.prompt, 'prompt', ctx, this.id, this.name));
+    return Promise.resolve(
+      interpolateField(this.prompt, 'prompt', ctx, this.getDependencies(), this.id, this.name)
+    );
   }
 }
 
@@ -236,14 +239,28 @@ export class AgentNode extends AgenticNode {
 
   protected override resolvePrompt(ctx: ExecutionContext): Promise<string> {
     return Promise.resolve(
-      interpolateField(this.instructions ?? '', 'instructions', ctx, this.id, this.name)
+      interpolateField(
+        this.instructions ?? '',
+        'instructions',
+        ctx,
+        this.getDependencies(),
+        this.id,
+        this.name
+      )
     );
   }
 
   // The agent reference supports ${{ }} interpolation but is otherwise forwarded unresolved —
   // the platform owns agent lookup.
   protected override buildExtraOptions(ctx: ExecutionContext): Record<string, unknown> {
-    const agent = interpolateField(this.agent, 'agent', ctx, this.id, this.name);
+    const agent = interpolateField(
+      this.agent,
+      'agent',
+      ctx,
+      this.getDependencies(),
+      this.id,
+      this.name
+    );
 
     // Platforms silently ignore an empty agent reference, so a reference that interpolates to
     // nothing would run without the agent and mask the workflow bug. Fail loudly instead.
@@ -279,10 +296,25 @@ export class PromptFileNode extends AgenticNode {
   }
 
   protected override async resolvePrompt(ctx: ExecutionContext): Promise<string> {
-    const promptFile = interpolateField(this.promptFile, 'prompt_file', ctx, this.id, this.name);
+    const dependencies = this.getDependencies();
+    const promptFile = interpolateField(
+      this.promptFile,
+      'prompt_file',
+      ctx,
+      dependencies,
+      this.id,
+      this.name
+    );
     const contents = await this.readPromptFile(promptFile, ctx);
 
-    return interpolateField(contents, 'prompt file contents', ctx, this.id, this.name);
+    return interpolateField(
+      contents,
+      'prompt file contents',
+      ctx,
+      dependencies,
+      this.id,
+      this.name
+    );
   }
 
   // Reads the first candidate path that exists; fails with the full search list if none do.
@@ -354,11 +386,12 @@ const interpolateField = (
   template: string,
   field: string,
   ctx: ExecutionContext,
+  dependencies: readonly string[],
   nodeId: string,
   nodeName: string | undefined
 ): string => {
   try {
-    return interpolate(template, ctx as unknown as Record<string, unknown>);
+    return interpolate(template, buildEntryContext(ctx, dependencies));
   } catch (err) {
     throw new NodeError(
       `Failed to interpolate ${field}`,
