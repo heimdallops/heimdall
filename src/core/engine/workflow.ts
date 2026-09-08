@@ -52,10 +52,20 @@ export interface WorkflowResult {
 // CEL reads a JS number as a double and a BigInt as an int, and rejects arithmetic mixing the
 // two — so `integer` inputs are bound as BigInt to keep `inputs.count - 1` working.
 const coerceDeclaredInteger = (
+  name: string,
   value: string | number | bigint | boolean,
   type: InputDeclaration['type']
-): string | number | bigint | boolean =>
-  type === 'integer' && typeof value === 'number' ? BigInt(value) : value;
+): string | number | bigint | boolean => {
+  if (type !== 'integer' || typeof value !== 'number') {
+    return value;
+  }
+
+  if (!Number.isInteger(value)) {
+    throw new EngineConfigError(`Input '${name}' is declared as an integer but received ${value}`);
+  }
+
+  return BigInt(value);
+};
 
 /**
  * A parsed, validated workflow ready to execute.
@@ -189,9 +199,9 @@ export class Workflow {
 
     for (const [name, declaration] of Object.entries(declared)) {
       if (name in runtimeInputs) {
-        resolved[name] = coerceDeclaredInteger(runtimeInputs[name]!, declaration.type);
+        resolved[name] = coerceDeclaredInteger(name, runtimeInputs[name]!, declaration.type);
       } else if (declaration.default !== undefined) {
-        resolved[name] = coerceDeclaredInteger(declaration.default, declaration.type);
+        resolved[name] = coerceDeclaredInteger(name, declaration.default, declaration.type);
       } else {
         missing.push(name);
       }

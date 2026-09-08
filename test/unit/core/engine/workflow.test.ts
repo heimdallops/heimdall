@@ -474,6 +474,16 @@ nodes:
       expect(completed[0]?.result['output']).toBe('5');
     });
 
+    it('rejects a non-integer supplied for an integer input with EngineConfigError, naming the input', async () => {
+      const workflow = await Workflow.from(integerInputWorkflow(celMinusOne, true));
+
+      const err = await workflow.run({ inputs: { count: 1.5 } }).catch((e: unknown) => e);
+
+      expect(err).toBeInstanceOf(EngineConfigError);
+      expect((err as Error).message).toContain('count');
+      expect((err as Error).message).toContain('1.5');
+    });
+
     it('leaves a number-typed input as a double, so int-literal arithmetic fails', async () => {
       const numberInputWorkflow = `
 name: num-input

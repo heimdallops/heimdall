@@ -72,6 +72,24 @@ describe('interpolate', () => {
     expect(result).toBe('6');
   });
 
+  it('serializes a BigInt inside an object result as a JSON number', () => {
+    const ctx = makeCtx({ inputs: { count: 5n } });
+
+    const result = interpolate('${{ {"n": inputs.count} }}', ctx);
+
+    expect(result).toBe('{"n":5}');
+  });
+
+  it('serializes a BigInt beyond the exact double range as a decimal string, not a rounded number', () => {
+    const beyondDouble = BigInt(Number.MAX_SAFE_INTEGER) + 2n;
+    const ctx = makeCtx({ inputs: { count: beyondDouble } });
+
+    const result = interpolate('${{ {"n": inputs.count} }}', ctx);
+
+    expect(result).toBe(`{"n":"${beyondDouble.toString()}"}`);
+    expect(result).not.toContain(String(Number(beyondDouble)));
+  });
+
   it('serializes a boolean result to its string representation', () => {
     const ctx = makeCtx({ inputs: { enabled: true } });
 
