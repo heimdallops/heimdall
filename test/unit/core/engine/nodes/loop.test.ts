@@ -43,7 +43,7 @@ const runLoop = (node: LoopNode, ctx: ExecutionContext = makeCtx()): Promise<Nod
 const scopeIndexOf = (
   scopes: ExecutionContext['scopes'] | undefined,
   id: string
-): number | undefined => scopes?.get(id)?.index as number | undefined;
+): bigint | undefined => scopes?.get(id)?.index as bigint | undefined;
 
 // Reads a scope entry's `prev` attribute — the previous body execution's result snapshot.
 const scopePrevOf = (
@@ -130,7 +130,7 @@ describe('LoopNode', () => {
 
       expect(result.status).toBe('completed');
       expect(body.runCount).toBe(2);
-      expect((result as { status: 'completed'; result: NodeResult }).result['iterations']).toBe(2);
+      expect((result as { status: 'completed'; result: NodeResult }).result['iterations']).toBe(2n);
     });
 
     it('runs exactly once when until is satisfied after the first iteration', async () => {
@@ -141,7 +141,7 @@ describe('LoopNode', () => {
 
       expect(result.status).toBe('completed');
       expect(body.runCount).toBe(1);
-      expect((result as { status: 'completed'; result: NodeResult }).result['iterations']).toBe(1);
+      expect((result as { status: 'completed'; result: NodeResult }).result['iterations']).toBe(1n);
     });
   });
 
@@ -154,7 +154,7 @@ describe('LoopNode', () => {
 
       expect(result.status).toBe('completed');
       expect(body.runCount).toBe(3);
-      expect((result as { status: 'completed'; result: NodeResult }).result['iterations']).toBe(3);
+      expect((result as { status: 'completed'; result: NodeResult }).result['iterations']).toBe(3n);
     });
 
     it('resolves completed when only max_iterations is set (no until)', async () => {
@@ -165,7 +165,7 @@ describe('LoopNode', () => {
 
       expect(result.status).toBe('completed');
       expect(body.runCount).toBe(2);
-      expect((result as { status: 'completed'; result: NodeResult }).result['iterations']).toBe(2);
+      expect((result as { status: 'completed'; result: NodeResult }).result['iterations']).toBe(2n);
     });
   });
 
@@ -180,7 +180,7 @@ describe('LoopNode', () => {
 
       expect(result.status).toBe('completed');
       expect(body.runCount).toBe(0);
-      expect((result as { status: 'completed'; result: NodeResult }).result['iterations']).toBe(0);
+      expect((result as { status: 'completed'; result: NodeResult }).result['iterations']).toBe(0n);
     });
 
     it('runs the body while the condition holds and stops once it becomes false', async () => {
@@ -193,8 +193,8 @@ describe('LoopNode', () => {
 
       expect(result.status).toBe('completed');
       expect(body.runCount).toBe(3);
-      expect(body.capturedScopes.map((s) => scopeIndexOf(s, 'loop1'))).toEqual([0, 1, 2]);
-      expect((result as { status: 'completed'; result: NodeResult }).result['iterations']).toBe(3);
+      expect(body.capturedScopes.map((s) => scopeIndexOf(s, 'loop1'))).toEqual([0n, 1n, 2n]);
+      expect((result as { status: 'completed'; result: NodeResult }).result['iterations']).toBe(3n);
     });
 
     it('caps a while loop with max_iterations when the condition stays true', async () => {
@@ -205,7 +205,7 @@ describe('LoopNode', () => {
 
       expect(result.status).toBe('completed');
       expect(body.runCount).toBe(2);
-      expect((result as { status: 'completed'; result: NodeResult }).result['iterations']).toBe(2);
+      expect((result as { status: 'completed'; result: NodeResult }).result['iterations']).toBe(2n);
     });
 
     it("evaluates while against self.needs (the loop's own declared depends_on)", async () => {
@@ -258,7 +258,7 @@ describe('LoopNode', () => {
 
       expect(result.status).toBe('completed');
       expect(body.runCount).toBe(2);
-      expect((result as { status: 'completed'; result: NodeResult }).result['iterations']).toBe(2);
+      expect((result as { status: 'completed'; result: NodeResult }).result['iterations']).toBe(2n);
     });
 
     it('a directly-constructed loop with until: "" runs the full max_iterations count instead of stopping early', async () => {
@@ -269,7 +269,7 @@ describe('LoopNode', () => {
 
       expect(result.status).toBe('completed');
       expect(body.runCount).toBe(2);
-      expect((result as { status: 'completed'; result: NodeResult }).result['iterations']).toBe(2);
+      expect((result as { status: 'completed'; result: NodeResult }).result['iterations']).toBe(2n);
     });
 
     it('LoopNode.parse normalizes while: "" alongside max_iterations, and the loop runs unconditionally to the max_iterations bound', async () => {
@@ -289,7 +289,7 @@ describe('LoopNode', () => {
       });
 
       expect(result.status).toBe('completed');
-      expect((result as { status: 'completed'; result: NodeResult }).result['iterations']).toBe(3);
+      expect((result as { status: 'completed'; result: NodeResult }).result['iterations']).toBe(3n);
     });
 
     it('LoopNode.parse normalizes until: "" alongside max_iterations, and the loop runs unconditionally to the max_iterations bound', async () => {
@@ -309,7 +309,7 @@ describe('LoopNode', () => {
       });
 
       expect(result.status).toBe('completed');
-      expect((result as { status: 'completed'; result: NodeResult }).result['iterations']).toBe(3);
+      expect((result as { status: 'completed'; result: NodeResult }).result['iterations']).toBe(3n);
     });
   });
 
@@ -342,7 +342,7 @@ describe('LoopNode', () => {
       // The loop itself resolves as completed (break is normal exit, not failure).
       expect(result.status).toBe('completed');
       const loopResult = (result as { status: 'completed'; result: NodeResult }).result;
-      expect(loopResult['iterations']).toBe(1);
+      expect(loopResult['iterations']).toBe(1n);
     });
 
     it('stops before the cap — a conditional break during body index 1 yields iterations 2', async () => {
@@ -368,7 +368,7 @@ describe('LoopNode', () => {
 
       expect(result.status).toBe('completed');
       const loopResult = (result as { status: 'completed'; result: NodeResult }).result;
-      expect(loopResult['iterations']).toBe(2);
+      expect(loopResult['iterations']).toBe(2n);
     });
   });
 
@@ -379,7 +379,7 @@ describe('LoopNode', () => {
 
       await runLoop(loop);
 
-      expect(scopeIndexOf(body.capturedScopes[0], 'loop1')).toBe(0);
+      expect(scopeIndexOf(body.capturedScopes[0], 'loop1')).toBe(0n);
     });
 
     it('delivers scopes.loop1.index = 0, 1, 2 across three iterations', async () => {
@@ -389,7 +389,7 @@ describe('LoopNode', () => {
       await runLoop(loop);
 
       const indexes = body.capturedScopes.map((s) => scopeIndexOf(s, 'loop1'));
-      expect(indexes).toEqual([0, 1, 2]);
+      expect(indexes).toEqual([0n, 1n, 2n]);
     });
 
     it('exits after exactly 2 body runs when until uses self.iterations >= 2', async () => {
@@ -402,7 +402,7 @@ describe('LoopNode', () => {
       expect(body.runCount).toBe(2);
       const indexes = body.capturedScopes.map((s) => scopeIndexOf(s, 'loop1'));
       // Body sees 0 and 1 (scopes.loop1.index is completedIterations at the START of each execution)
-      expect(indexes).toEqual([0, 1]);
+      expect(indexes).toEqual([0n, 1n]);
     });
   });
 
@@ -446,7 +446,7 @@ describe('LoopNode', () => {
 
       expect(result.status).toBe('completed');
       const loopResult = (result as { status: 'completed'; result: NodeResult }).result;
-      expect(loopResult['output']).toEqual({ final_iter: 2 });
+      expect(loopResult['output']).toEqual({ final_iter: 2n });
     });
   });
 
@@ -478,7 +478,7 @@ describe('LoopNode', () => {
       expect(result.status).toBe('completed');
       const loopResult = (result as { status: 'completed'; result: NodeResult }).result;
       expect(loopResult['output']).toEqual({ last_val: 2 });
-      expect(loopResult['iterations']).toBe(2);
+      expect(loopResult['iterations']).toBe(2n);
     });
 
     it('on break: self.nodes is the partial snapshot — completed nodes present, skipped and cut-off nodes absent (not backfilled)', async () => {
@@ -521,8 +521,8 @@ describe('LoopNode', () => {
       const loopResult = (result as { status: 'completed'; result: NodeResult }).result;
       // The break fires during body index 1 (see the earlier BreakNode tests for why the
       // interrupted execution still counts).
-      expect(loopResult['iterations']).toBe(2);
-      expect(loopResult['output']).toMatchObject({ worker_pass: 2, final_iterations: 2 });
+      expect(loopResult['iterations']).toBe(2n);
+      expect(loopResult['output']).toMatchObject({ worker_pass: 2, final_iterations: 2n });
       expect(loopResult['output']).toMatchObject({ kept: 'absent' });
       expect(afterRunCount).toBe(1);
       expect(loopResult['output']).toMatchObject({ after_done: 'cut_off' });
@@ -576,11 +576,7 @@ describe('LoopNode', () => {
       const checker = new FactoryNode(
         {
           id: 'checker',
-          // At index 0 there is no prior execution to compare against; from index 1 onward the
-          // previous execution's tracker result must be exactly one execution old. (`1.0`, not
-          // `1`: this CEL evaluator treats bound numbers as doubles and rejects int/double
-          // arithmetic — subtraction requires matching literal types, unlike comparison.)
-          if: 'scopes.loop1.index == 0 || scopes.loop1.prev.tracker.pass == scopes.loop1.index - 1.0',
+          if: 'scopes.loop1.index == 0 || scopes.loop1.prev.tracker.pass == scopes.loop1.index - 1',
         },
         () => {
           checkerRunCount += 1;
@@ -651,13 +647,13 @@ describe('LoopNode', () => {
 
   describe('ancestor scope entries resolve independently by id, with no traversal or shadowing', () => {
     it("inner loop body reads the enclosing loop's index via scopes.ci.index and its own loop's index via scopes.retry.index in the same capture", async () => {
-      const ciIndexSeen: number[] = [];
-      const retryIndexSeen: number[] = [];
+      const ciIndexSeen: bigint[] = [];
+      const retryIndexSeen: bigint[] = [];
 
       const innerBodyNode = new (class extends BaseNode {
         public override run(opts: NodeRunOptions): Promise<NodeRunResult> {
-          ciIndexSeen.push(scopeIndexOf(opts.ctx.scopes, 'ci') ?? -1);
-          retryIndexSeen.push(scopeIndexOf(opts.ctx.scopes, 'retry') ?? -1);
+          ciIndexSeen.push(scopeIndexOf(opts.ctx.scopes, 'ci') ?? -1n);
+          retryIndexSeen.push(scopeIndexOf(opts.ctx.scopes, 'retry') ?? -1n);
 
           return Promise.resolve({ status: 'completed', result: {} });
         }
@@ -669,8 +665,8 @@ describe('LoopNode', () => {
       const result = await runLoop(ciLoop);
 
       expect(result.status).toBe('completed');
-      expect(ciIndexSeen).toEqual([0, 0, 1, 1]);
-      expect(retryIndexSeen).toEqual([0, 1, 0, 1]);
+      expect(ciIndexSeen).toEqual([0n, 0n, 1n, 1n]);
+      expect(retryIndexSeen).toEqual([0n, 1n, 0n, 1n]);
     });
   });
 
@@ -987,7 +983,7 @@ describe('LoopNode', () => {
 
       expect(result.status).toBe('completed');
       expect(body.runCount).toBe(2);
-      expect((result as { status: 'completed'; result: NodeResult }).result['iterations']).toBe(2);
+      expect((result as { status: 'completed'; result: NodeResult }).result['iterations']).toBe(2n);
     });
 
     it('outputs referencing bare needs.<dep> fails with ENGINE_CEL_ERROR', async () => {
@@ -1134,7 +1130,7 @@ describe('LoopNode', () => {
 
       expect(result.status).toBe('completed');
       expect(bodyRan).toBe(true);
-      expect((result as { status: 'completed'; result: NodeResult }).result['iterations']).toBe(1);
+      expect((result as { status: 'completed'; result: NodeResult }).result['iterations']).toBe(1n);
     });
   });
 
@@ -1175,11 +1171,11 @@ describe('LoopNode', () => {
 
   describe('scopes.<loop_id>.index resolves identically regardless of enclosing nesting (wrap-safety)', () => {
     it('resolves scopes.ci.index for a body node the same way whether or not the ci subtree is wrapped in a further enclosing loop', async () => {
-      const buildCiSubtree = (): { ciLoop: LoopNode; indexReadings: number[] } => {
-        const indexReadings: number[] = [];
+      const buildCiSubtree = (): { ciLoop: LoopNode; indexReadings: bigint[] } => {
+        const indexReadings: bigint[] = [];
         const innerBody = new (class extends BaseNode {
           public override run(opts: NodeRunOptions): Promise<NodeRunResult> {
-            indexReadings.push(scopeIndexOf(opts.ctx.scopes, 'ci') ?? -1);
+            indexReadings.push(scopeIndexOf(opts.ctx.scopes, 'ci') ?? -1n);
 
             return Promise.resolve({ status: 'completed', result: {} });
           }
@@ -1196,7 +1192,7 @@ describe('LoopNode', () => {
       const wrapper = makeLoopNode({ id: 'wrapper', max_iterations: 1 }, [wrapped.ciLoop]);
       await runLoop(wrapper);
 
-      expect(unwrapped.indexReadings).toEqual([0, 1, 2]);
+      expect(unwrapped.indexReadings).toEqual([0n, 1n, 2n]);
       expect(wrapped.indexReadings).toEqual(unwrapped.indexReadings);
     });
   });
@@ -1216,29 +1212,29 @@ describe('LoopNode', () => {
         [innerBody]
       );
 
-      const ctxAtCiIndex = (index: number): ExecutionContext =>
+      const ctxAtCiIndex = (index: bigint): ExecutionContext =>
         makeCtx({ scopes: new Map([['ci', { needs: new Map(), index, prev: new Map() }]]) });
 
       const resultAt0 = await retryLoop.run({
-        ctx: ctxAtCiIndex(0),
+        ctx: ctxAtCiIndex(0n),
         emitter: createEngineEmitter(),
         signal: new AbortController().signal,
       });
       const resultAt1 = await retryLoop.run({
-        ctx: ctxAtCiIndex(1),
+        ctx: ctxAtCiIndex(1n),
         emitter: createEngineEmitter(),
         signal: new AbortController().signal,
       });
 
       expect(resultAt0.status).toBe('completed');
       expect((resultAt0 as { status: 'completed'; result: NodeResult }).result['output']).toEqual({
-        self_iterations: 2,
-        ci_index: 0,
+        self_iterations: 2n,
+        ci_index: 0n,
       });
       expect(resultAt1.status).toBe('completed');
       expect((resultAt1 as { status: 'completed'; result: NodeResult }).result['output']).toEqual({
-        self_iterations: 2,
-        ci_index: 1,
+        self_iterations: 2n,
+        ci_index: 1n,
       });
     });
 
@@ -1355,8 +1351,8 @@ describe('LoopNode', () => {
       expect(result.status).toBe('completed');
       expect(body.runCount).toBe(0);
       const loopResult = (result as { status: 'completed'; result: NodeResult }).result;
-      expect(loopResult['output']).toEqual({ present: false, iters: 0 });
-      expect(loopResult['iterations']).toBe(0);
+      expect(loopResult['output']).toEqual({ present: false, iters: 0n });
+      expect(loopResult['iterations']).toBe(0n);
     });
 
     it('an unguarded reference into the empty self.nodes map fails with ENGINE_CEL_ERROR', async () => {
@@ -1366,6 +1362,58 @@ describe('LoopNode', () => {
       ]);
 
       await expect(runLoop(loop)).rejects.toMatchObject({ code: 'ENGINE_CEL_ERROR' });
+    });
+  });
+
+  describe('plain integer arithmetic against loop counters', () => {
+    it('gates a body node on scopes.loop1.index % 2 == 0, running only on even indices', async () => {
+      let evenRunCount = 0;
+      const evenOnly = new FactoryNode(
+        { id: 'even_only', if: 'scopes.loop1.index % 2 == 0' },
+        () => {
+          evenRunCount += 1;
+
+          return { status: 'completed', result: {} };
+        }
+      );
+
+      const loop = makeLoopNode({ max_iterations: 5 }, [evenOnly]);
+      const result = await runLoop(loop);
+
+      expect(result.status).toBe('completed');
+      // Indices 0..4: even_only's if holds on 0, 2, 4.
+      expect(evenRunCount).toBe(3);
+    });
+
+    it('stops the loop once self.iterations * 2 reaches a threshold, exercising integer multiplication in until', async () => {
+      const body = new ScopeCapturingNode({ id: 'step' });
+      const loop = makeLoopNode({ until: 'self.iterations * 2 >= 6', max_iterations: 10 }, [body]);
+
+      const result = await runLoop(loop);
+
+      expect(result.status).toBe('completed');
+      // self.iterations after each execution: 1 (2>=6 false), 2 (4>=6 false), 3 (6>=6 true) → stop.
+      expect(body.runCount).toBe(3);
+    });
+
+    it('computes outputs.half via integer division on self.iterations, flooring an odd count instead of producing a fractional double', async () => {
+      const body = new ScopeCapturingNode({ id: 'step' });
+      const loop = makeLoopNode(
+        {
+          until: 'self.iterations >= 5',
+          max_iterations: 10,
+          outputs: { half: 'self.iterations / 2' },
+        },
+        [body]
+      );
+
+      const result = await runLoop(loop);
+
+      expect(result.status).toBe('completed');
+      expect(body.runCount).toBe(5);
+      const loopResult = (result as { status: 'completed'; result: NodeResult }).result;
+      // Integer division floors: 5 / 2 is 2n, not the double 2.5.
+      expect(loopResult['output']).toEqual({ half: 2n });
     });
   });
 

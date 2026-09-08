@@ -126,7 +126,7 @@ nodes:
             max_iterations: 2
             nodes:
               - id: work
-                bash: 'echo -n done > "$HEIMDALL_OUTPUT"'
+                bash: 'echo -n "\${{ scopes.retry.index - 1 }}" > "$HEIMDALL_OUTPUT"'
             outputs:
 ${indentBlock(retryOutputs, 14)}
 `;
@@ -180,7 +180,7 @@ ${indentBlock(options.refineIf === undefined ? '' : `if: '${options.refineIf}'`,
         threshold: 'self.needs.seed.output'
   - id: report
     depends_on: [refine]
-    bash: 'echo -n "verdict=\${{ self.needs.refine.output.verdict }} rounds=\${{ self.needs.refine.output.rounds }}" > "$HEIMDALL_OUTPUT"'
+    bash: 'echo -n ''verdict=\${{ self.needs.refine.output.verdict }} rounds=\${{ self.needs.refine.output.rounds }} all=\${{ self.needs.refine.output }}'' > "$HEIMDALL_OUTPUT"'
 `;
 
     let run: RunOutcome;
@@ -192,19 +192,23 @@ ${indentBlock(options.refineIf === undefined ? '' : `if: '${options.refineIf}'`,
     it('runs the body until its own counter, body snapshot and declared edge all agree', () => {
       expect(run.result.success).toBe(true);
       expect(outputsOf(run, 'attempt')).toHaveLength(3);
-      expect(resultsOf(run, 'refine')[0]?.['iterations']).toBe(3);
+      expect(resultsOf(run, 'refine')[0]?.['iterations']).toBe(3n);
     });
 
     it('resolves all three checkpoint values into the loop outputs map', () => {
       expect(loopOutputsOf(run, 'refine')).toEqual({
         verdict: 'pass',
-        rounds: 3,
+        rounds: 3n,
         threshold: '3',
       });
     });
 
-    it('resolves a downstream read of the loop result through the same self.needs spelling', () => {
-      expect(outputsOf(run, 'report')).toEqual(['verdict=pass rounds=3']);
+    // report single-quotes its script so the shell keeps the double quotes of the interpolated
+    // JSON object instead of stripping them.
+    it('resolves a downstream read of the loop result, member-wise and whole', () => {
+      expect(outputsOf(run, 'report')).toEqual([
+        'verdict=pass rounds=3 all={"verdict":"pass","rounds":3,"threshold":"3"}',
+      ]);
     });
 
     it.each([
@@ -263,7 +267,7 @@ ${indentBlock(options.refineIf === undefined ? '' : `if: '${options.refineIf}'`,
 
     it('carries the innermost result outward through each enclosing loop outputs map', () => {
       expect(outputsOf(run, 'retry')).toEqual([{ last: 'c0r1' }, { last: 'c1r1' }]);
-      expect(resultsOf(run, 'ci')[0]?.['iterations']).toBe(2);
+      expect(resultsOf(run, 'ci')[0]?.['iterations']).toBe(2n);
       expect(loopOutputsOf(run, 'ci')).toEqual({ last: 'c1r1' });
     });
 
@@ -298,27 +302,39 @@ nodes:
 last: 'self.nodes.work.output'
 mine: 'self.iterations'
 enclosing: 'scopes.ci.index'
+doubled: 'self.iterations * 2'
 `.trim();
 
-    it('reads its own terminated-execution count and the current index of the enclosing loop', async () => {
-      const run = await runWorkflow(checkpointVantageWorkflow(retryOutputs));
+    let run: RunOutcome;
 
+    beforeAll(async () => {
+      run = await runWorkflow(checkpointVantageWorkflow(retryOutputs));
+    });
+
+    it('reads its own terminated-execution count and the current index of the enclosing loop', () => {
       expect(run.result.success).toBe(true);
       expect(outputsOf(run, 'retry')).toEqual([
-        { last: 'done', mine: 2, enclosing: 0 },
-        { last: 'done', mine: 2, enclosing: 1 },
+        { last: '0', mine: 2n, enclosing: 0n, doubled: 4n },
+        { last: '0', mine: 2n, enclosing: 1n, doubled: 4n },
       ]);
+    });
+
+    it('binds both counters as integers, so arithmetic against an int literal resolves', () => {
+      expect(outputsOf(run, 'work')).toEqual(['-1', '0', '-1', '0']);
+      expect(loopOutputsOf(run, 'retry')['doubled']).toBe(4n);
     });
 
     it.each([
       ["own: 'scopes.retry.index'", 'a loop never appears in its own scopes map'],
       ["own: 'self.index'", 'a checkpoint has no index'],
     ])('fails the loop when its outputs add %s — %s', async (badOutput) => {
-      const run = await runWorkflow(checkpointVantageWorkflow(`${retryOutputs}\n${badOutput}`));
+      const brokenRun = await runWorkflow(
+        checkpointVantageWorkflow(`${retryOutputs}\n${badOutput}`)
+      );
 
-      expect(run.result.success).toBe(false);
-      expect(failureTextFor(run, 'retry')).toContain('CEL evaluation failed');
-      expect(resultsOf(run, 'retry')).toHaveLength(0);
+      expect(brokenRun.result.success).toBe(false);
+      expect(failureTextFor(brokenRun, 'retry')).toContain('CEL evaluation failed');
+      expect(resultsOf(brokenRun, 'retry')).toHaveLength(0);
     });
 
     it('fails a body node reading iterations off an enclosing loop — a body has an index', async () => {
@@ -333,11 +349,11 @@ nodes:
           bash: 'echo -n "\${{ scopes.retry.iterations }}" > "$HEIMDALL_OUTPUT"'
 `;
 
-      const run = await runWorkflow(yaml);
+      const brokenRun = await runWorkflow(yaml);
 
-      expect(run.result.success).toBe(false);
-      expect(failureTextFor(run, 'work')).toContain('CEL evaluation failed');
-      expect(resultsOf(run, 'work')).toHaveLength(0);
+      expect(brokenRun.result.success).toBe(false);
+      expect(failureTextFor(brokenRun, 'work')).toContain('CEL evaluation failed');
+      expect(resultsOf(brokenRun, 'work')).toHaveLength(0);
     });
   });
 
@@ -447,8 +463,8 @@ nodes:
 
       expect(run.result.success).toBe(true);
       expect(resultsOf(run, 'always')).toHaveLength(0);
-      expect(resultsOf(run, 'gated')[0]?.['iterations']).toBe(0);
-      expect(loopOutputsOf(run, 'gated')).toEqual({ count: 0, always_ran: 'never' });
+      expect(resultsOf(run, 'gated')[0]?.['iterations']).toBe(0n);
+      expect(loopOutputsOf(run, 'gated')).toEqual({ count: 0n, always_ran: 'never' });
     });
 
     it('fails the loop when the empty body map is read unguarded', async () => {
@@ -487,9 +503,9 @@ nodes:
       expect(run.result.success).toBe(true);
       expect(outputsOf(run, 'always')).toHaveLength(2);
       expect(outputsOf(run, 'after')).toEqual(['after']);
-      expect(resultsOf(run, 'gated')[0]?.['iterations']).toBe(2);
+      expect(resultsOf(run, 'gated')[0]?.['iterations']).toBe(2n);
       expect(loopOutputsOf(run, 'gated')).toEqual({
-        count: 2,
+        count: 2n,
         always_ran: 'ran',
         after_seen: false,
       });

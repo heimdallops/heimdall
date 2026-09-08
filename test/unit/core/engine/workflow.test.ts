@@ -430,6 +430,69 @@ nodes:
   });
 
   // -------------------------------------------------------------------------
+  // workflow.run — integer input binding
+  // -------------------------------------------------------------------------
+
+  describe('workflow.run — integer inputs evaluate as a CEL int', () => {
+    // '\x24{{ }}' avoids the JS template-literal parser treating ${ as an interpolation opener.
+    const celMinusOne = '\x24{{ inputs.count - 1 }}';
+    const celDivided = '\x24{{ inputs.count / 2 }}';
+
+    const integerInputWorkflow = (expr: string, supplied: boolean): string => `
+name: int-input
+inputs:
+  count:
+    type: integer
+${supplied ? '' : '    default: 6'}
+nodes:
+  - id: math
+    bash: 'echo -n "${expr}" > "$HEIMDALL_OUTPUT"'
+`;
+
+    it.each([
+      ['subtraction against an int literal', celMinusOne, '5'],
+      ['integer division against an int literal', celDivided, '3'],
+    ])('resolves %s on a supplied integer input', async (_label, expr, expected) => {
+      const workflow = await Workflow.from(integerInputWorkflow(expr, true));
+      const emitter = createEngineEmitter();
+      const completed = collectEvents(emitter, 'node_completed');
+
+      const result = await workflow.run({ inputs: { count: 6 }, emitter });
+
+      expect(result.success).toBe(true);
+      expect(completed[0]?.result['output']).toBe(expected);
+    });
+
+    it('resolves arithmetic on an integer input taken from its declared default', async () => {
+      const workflow = await Workflow.from(integerInputWorkflow(celMinusOne, false));
+      const emitter = createEngineEmitter();
+      const completed = collectEvents(emitter, 'node_completed');
+
+      const result = await workflow.run({ inputs: {}, emitter });
+
+      expect(result.success).toBe(true);
+      expect(completed[0]?.result['output']).toBe('5');
+    });
+
+    it('leaves a number-typed input as a double, so int-literal arithmetic fails', async () => {
+      const numberInputWorkflow = `
+name: num-input
+inputs:
+  ratio:
+    type: number
+nodes:
+  - id: math
+    bash: 'echo -n "\x24{{ inputs.ratio - 1 }}" > "$HEIMDALL_OUTPUT"'
+`;
+      const workflow = await Workflow.from(numberInputWorkflow);
+
+      const result = await workflow.run({ inputs: { ratio: 6 } });
+
+      expect(result.success).toBe(false);
+    });
+  });
+
+  // -------------------------------------------------------------------------
   // workflow.run — single-run guard
   // -------------------------------------------------------------------------
 

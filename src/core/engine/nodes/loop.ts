@@ -101,7 +101,7 @@ export class LoopNode extends BaseNode<NodeRunCompleted | NodeRunExited | NodeRu
     const loopNeeds = selectNeeds(ctx.needs, this.getDependencies());
 
     let lastIterationNodes: ReadonlyMap<string, NodeResult> = new Map<string, NodeResult>();
-    let completedIterations = 0;
+    let completedIterations = 0n;
 
     for (;;) {
       if (signal.aborted) {
@@ -156,7 +156,7 @@ export class LoopNode extends BaseNode<NodeRunCompleted | NodeRunExited | NodeRu
       // the loop's checkpoints and as `scopes.<id>.prev` inside the next body execution.
       lastIterationNodes = res.nodeResults;
 
-      completedIterations += 1;
+      completedIterations += 1n;
 
       if (res.outcome === 'broke') {
         break;
@@ -183,7 +183,7 @@ export class LoopNode extends BaseNode<NodeRunCompleted | NodeRunExited | NodeRu
   private evaluateUntil(
     ctx: ExecutionContext,
     nodes: ReadonlyMap<string, NodeResult>,
-    completedIterations: number
+    completedIterations: bigint
   ): boolean {
     if (!this.until) {
       return false;
@@ -220,7 +220,7 @@ export class LoopNode extends BaseNode<NodeRunCompleted | NodeRunExited | NodeRu
   private evaluateWhile(
     ctx: ExecutionContext,
     nodes: ReadonlyMap<string, NodeResult>,
-    completedIterations: number
+    completedIterations: bigint
   ): boolean {
     if (!this.while) {
       return true;
@@ -255,7 +255,7 @@ export class LoopNode extends BaseNode<NodeRunCompleted | NodeRunExited | NodeRu
   private evaluateOutputs(
     ctx: ExecutionContext,
     nodes: ReadonlyMap<string, NodeResult>,
-    completedIterations: number
+    completedIterations: bigint
   ): Record<string, unknown> {
     if (this.outputs === undefined) {
       return {};

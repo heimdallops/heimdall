@@ -84,7 +84,11 @@ export const interpolate = (template: string, ctx: Record<string, unknown>): str
     }
 
     if (typeof result === 'object') {
-      return JSON.stringify(result);
+      // JSON.stringify throws on a BigInt, and integer bindings are BigInt so CEL reads them
+      // as int rather than double.
+      return JSON.stringify(result, (_key, value: unknown) =>
+        typeof value === 'bigint' ? Number(value) : value
+      );
     }
 
     throw new EngineError(

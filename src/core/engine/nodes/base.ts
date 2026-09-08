@@ -85,7 +85,8 @@ export interface ScopeEntryBase {
 }
 
 export interface LoopScopeEntry extends ScopeEntryBase {
-  readonly index: number;
+  // BigInt so CEL reads the index as an int rather than a double.
+  readonly index: bigint;
   readonly prev: ReadonlyMap<string, NodeResult>;
 }
 
