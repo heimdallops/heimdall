@@ -1,0 +1,87 @@
+/* =========================================
+   NAVBAR LOGO
+   ========================================= */
+
+.logo .big,
+.logo-icon .big {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.logo-name {
+    font-family: Inter, system-ui, sans-serif;
+    font-size: 22px;
+    font-weight: 700;
+}
+
+/* =========================================
+   LANDING PAGE SPACING
+   ========================================= */
+
+/* Hero: more vertical breathing room above and below content */
+.hero {
+    padding-top: 100px;
+    padding-bottom: 80px;
+}
+
+/* Feature grid: more internal padding inside each card */
+#featureGrid .d-flex.features {
+    padding: 1.5rem !important;
+}
+
+/* Feature grid: vertical gap between card rows */
+#featureGrid .row > .col-md-4 {
+    margin-bottom: 1.5rem;
+}
+
+/* Feature card description: breathing room before the CTA link */
+#featureGrid .features .flex-1 .para {
+    margin-bottom: 0.5rem;
+}
+
+/* =========================================
+   DOCS PAGE SPACING
+   ========================================= */
+
+/* Space between the page h1 and the content that follows */
+.docs-content > div.mb-0.d-flex {
+    margin-bottom: 2rem !important;
+}
+
+/* Major section headings: space above to separate from preceding content */
+.docs-content .main-content h2 {
+    margin-top: 2.5rem;
+    margin-bottom: 1rem;
+}
+
+.docs-content .main-content h3 {
+    margin-top: 2rem;
+    margin-bottom: 0.75rem;
+}
+
+.docs-content .main-content h4 {
+    margin-top: 1.5rem;
+    margin-bottom: 0.5rem;
+}
+
+/* Paragraphs: slightly more space after each */
+.docs-content .main-content p {
+    margin-bottom: 1rem;
+}
+
+/* List item vertical rhythm (theme has this commented out) */
+.docs-content .main-content ul > li,
+.docs-content .main-content ol > li {
+    margin-bottom: 0.5rem;
+}
+
+/* Code blocks: more vertical margin */
+.docs-content .main-content div.highlight {
+    margin: 1.5rem 0;
+}
+
+/* Prev/next doc nav: more space above to separate from content */
+.doc-hr {
+    margin-top: 3rem !important;
+}
