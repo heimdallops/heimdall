@@ -140,6 +140,8 @@ ${indentBlock(retryOutputs, 14)}
 //
 // Body nodes write to $HEIMDALL_OUTPUT rather than stdout because BashNode inherits stdout:
 // the node result is the observable form of the values a node prints.
+// Every test here runs a real workflow, and a nested loop spawns a bash process per body
+// node per iteration, so the 5s default is too tight under parallel load.
 describe('workflow.run — expression context (integration)', () => {
   let xdgRoot: string;
 
@@ -525,4 +527,4 @@ nodes:
       expect(resultsOf(run, 'peeker')).toHaveLength(0);
     });
   });
-});
+}, 30_000);
