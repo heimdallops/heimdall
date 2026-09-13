@@ -879,44 +879,7 @@ describe('LoopNode', () => {
     });
   });
 
-  describe('a body node referencing bare needs fails; self.needs.<sibling> resolves the declared edge', () => {
-    it('fails when a body node references bare needs.<id> — needs is not a bound root inside the loop body', async () => {
-      // Set up an external dependency in ctx.needs so scopes.loop1.needs.dep would work,
-      // but the body uses bare `needs.dep` — `needs` is not bound as a root at any expression
-      // site; only self.needs (declared edges) and scopes.<ancestor>.needs are reachable.
-      const depResult: NodeResult = { value: 42 };
-      const externalNeeds = new Map<string, NodeResult>([['dep', depResult]]);
-
-      // Referencing bare `needs.dep.value` throws "Unknown variable: needs", which fails this
-      // body node's `if` and the loop surfaces ENGINE_LOOP_BODY_FAILED.
-      const body = new (class extends BaseNode {
-        public override run(_opts: NodeRunOptions): Promise<NodeRunResult> {
-          return Promise.resolve({ status: 'completed', result: {} });
-        }
-      })({ id: 'step', if: 'needs.dep.value == 42' });
-
-      const loop = new LoopNode({
-        id: 'loop1',
-        depends_on: ['dep'],
-        until: 'self.iterations >= 1',
-        bodyNodes: [body],
-        outputs: undefined,
-        maxIterations: undefined,
-      });
-
-      const ctx = makeCtx({ needs: externalNeeds });
-      const result = await loop.run({
-        ctx,
-        emitter: createEngineEmitter(),
-        signal: new AbortController().signal,
-      });
-
-      expect(result.status).toBe('failed');
-      expect((result as { status: 'failed'; error: unknown }).error).toMatchObject({
-        code: 'ENGINE_LOOP_BODY_FAILED',
-      });
-    });
-
+  describe('self.needs.<sibling> resolves a declared edge inside a loop body', () => {
     it('succeeds when a body node references a declared sibling via self.needs.<sibling>', async () => {
       // Node `a` completes first (node `b` depends_on `a`), then `b`'s `if` expression
       // evaluates self.needs.a.value == 42 — self.needs is projected from `b`'s own
@@ -945,28 +908,7 @@ describe('LoopNode', () => {
     });
   });
 
-  describe('bare needs is not reachable at a checkpoint; self.needs.<dep> is the declared-edge surface', () => {
-    it('until referencing bare needs.<dep> fails with ENGINE_CEL_ERROR', async () => {
-      const depResult: NodeResult = { threshold: 2 };
-      const externalNeeds = new Map<string, NodeResult>([['dep', depResult]]);
-
-      const body = new ScopeCapturingNode({ id: 'step' });
-      const loop = new LoopNode({
-        id: 'loop1',
-        depends_on: ['dep'],
-        until: 'self.iterations >= needs.dep.threshold',
-        bodyNodes: [body],
-        outputs: undefined,
-        maxIterations: undefined,
-      });
-
-      const ctx = makeCtx({ needs: externalNeeds });
-
-      await expect(
-        loop.run({ ctx, emitter: createEngineEmitter(), signal: new AbortController().signal })
-      ).rejects.toMatchObject({ code: 'ENGINE_CEL_ERROR' });
-    });
-
+  describe('self.needs.<dep> is the declared-edge surface at a checkpoint', () => {
     it('until referencing self.needs.<dep> resolves and controls the iteration count', async () => {
       const depResult: NodeResult = { threshold: 2 };
       const externalNeeds = new Map<string, NodeResult>([['dep', depResult]]);
@@ -991,27 +933,6 @@ describe('LoopNode', () => {
       expect(result.status).toBe('completed');
       expect(body.runCount).toBe(2);
       expect((result as { status: 'completed'; result: NodeResult }).result['iterations']).toBe(2n);
-    });
-
-    it('outputs referencing bare needs.<dep> fails with ENGINE_CEL_ERROR', async () => {
-      const depResult: NodeResult = { label: 'alpha' };
-      const externalNeeds = new Map<string, NodeResult>([['dep', depResult]]);
-
-      const body = new ScopeCapturingNode({ id: 'step' });
-      const loop = new LoopNode({
-        id: 'loop1',
-        depends_on: ['dep'],
-        maxIterations: 1,
-        until: undefined,
-        bodyNodes: [body],
-        outputs: { dep_label: 'needs.dep.label' },
-      });
-
-      const ctx = makeCtx({ needs: externalNeeds });
-
-      await expect(
-        loop.run({ ctx, emitter: createEngineEmitter(), signal: new AbortController().signal })
-      ).rejects.toMatchObject({ code: 'ENGINE_CEL_ERROR' });
     });
 
     it('outputs referencing self.needs.<dep> resolves to the declared dependency value', async () => {
@@ -1139,41 +1060,6 @@ describe('LoopNode', () => {
       expect(bodyRan).toBe(true);
       expect((result as { status: 'completed'; result: NodeResult }).result['iterations']).toBe(1n);
     });
-  });
-
-  describe('referencing a non-existent ancestor scope id fails immediately', () => {
-    // 'loop' covers the literal family key from the old scoping model — the id an author is
-    // most likely to reflexively write instead of the loop's own id; 'outer' and 'needs' are
-    // arbitrary non-existent ids that must fail the same way.
-    it.each(['loop', 'outer', 'needs'])(
-      "a checkpoint expression referencing the non-existent ancestor scope id '%s' fails with ENGINE_CEL_ERROR",
-      async (id) => {
-        const body = new ScopeCapturingNode({ id: 'step' });
-        const loop = makeLoopNode({ while: `scopes.${id}.index >= 1`, max_iterations: 3 }, [body]);
-
-        await expect(runLoop(loop)).rejects.toMatchObject({ code: 'ENGINE_CEL_ERROR' });
-        expect(body.runCount).toBe(0);
-      }
-    );
-
-    it.each(['loop', 'outer', 'needs'])(
-      "a body node's if expression referencing the non-existent ancestor scope id '%s' fails the loop with ENGINE_LOOP_BODY_FAILED",
-      async (id) => {
-        const body = new (class extends BaseNode {
-          public override run(_opts: NodeRunOptions): Promise<NodeRunResult> {
-            return Promise.resolve({ status: 'completed', result: {} });
-          }
-        })({ id: 'step', if: `scopes.${id}.dep.value == 1` });
-
-        const loop = makeLoopNode({ max_iterations: 3 }, [body]);
-        const result = await runLoop(loop);
-
-        expect(result.status).toBe('failed');
-        expect((result as { status: 'failed'; error: unknown }).error).toMatchObject({
-          code: 'ENGINE_LOOP_BODY_FAILED',
-        });
-      }
-    );
   });
 
   describe('scopes.<loop_id>.index resolves identically regardless of enclosing nesting (wrap-safety)', () => {

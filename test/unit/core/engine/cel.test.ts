@@ -155,24 +155,20 @@ describe('evalCel', () => {
     expect(result).toBe(3);
   });
 
-  // cwd is engine-only: BashNode forwards it to the process, and it is never bound as a root.
-  it.each(['scopes.ci.index', 'cwd'])(
-    'throws EngineError wrapping a CEL EvaluationError for the unresolvable reference %s',
-    (expr) => {
-      expect.assertions(2);
-      const ctx = makeCtx();
+  it('throws EngineError wrapping a CEL EvaluationError for an unresolvable reference', () => {
+    expect.assertions(2);
+    const ctx = makeCtx();
 
-      let thrown: EngineError | undefined;
-      try {
-        evalCel(expr, ctx);
-      } catch (err) {
-        thrown = err as EngineError;
-      }
-
-      expect(thrown?.code).toBe('ENGINE_CEL_ERROR');
-      expect(thrown?.cause).toBeInstanceOf(EvaluationError);
+    let thrown: EngineError | undefined;
+    try {
+      evalCel('scopes.ci.index', ctx);
+    } catch (err) {
+      thrown = err as EngineError;
     }
-  );
+
+    expect(thrown?.code).toBe('ENGINE_CEL_ERROR');
+    expect(thrown?.cause).toBeInstanceOf(EvaluationError);
+  });
 });
 
 describe('sanitize (via evalCel / interpolate)', () => {

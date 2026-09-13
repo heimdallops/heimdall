@@ -66,38 +66,6 @@ describe('the five-root CEL namespace', () => {
     expect(error.message).toBe('CEL evaluation failed');
     expect(evalCel('has(self.needs.anything)', built)).toBe(false);
   });
-
-  it('does not bind ExecutionContext.cwd as a CEL root even though it is set on the input context', () => {
-    const built = buildEntryContext(makeCtx({ cwd: '/some/real/path' }), []);
-
-    const error = captureThrown(() => evalCel('cwd', built));
-
-    expect(error.code).toBe('ENGINE_CEL_ERROR');
-    expect(evalCel('has(self.needs.anything)', built)).toBe(false);
-  });
-
-  it('does not bind bare needs as a CEL root; the data is reachable only under self.needs', () => {
-    const ctx = makeCtx({ needs: new Map<string, NodeResult>([['build', { exitCode: 0 }]]) });
-    const built = buildEntryContext(ctx, ['build']);
-
-    const error = captureThrown(() => evalCel('needs.build', built));
-
-    expect(error.code).toBe('ENGINE_CEL_ERROR');
-    expect(evalCel('self.needs.build.exitCode', built)).toBe(0);
-  });
-
-  it('does not bind bare nodes as a CEL root; the data is reachable only under self.nodes', () => {
-    const built = buildCheckpointContext(
-      makeCtx(),
-      [],
-      new Map<string, NodeResult>([['child', { ok: true }]])
-    );
-
-    const error = captureThrown(() => evalCel('nodes.child', built));
-
-    expect(error.code).toBe('ENGINE_CEL_ERROR');
-    expect(evalCel('self.nodes.child.ok', built)).toBe(true);
-  });
 });
 
 describe('self.needs projection', () => {

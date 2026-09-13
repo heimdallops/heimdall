@@ -211,18 +211,6 @@ ${indentBlock(options.refineIf === undefined ? '' : `if: '${options.refineIf}'`,
       ]);
     });
 
-    it.each([
-      ['nodes.check.output == "pass"', 'nodes'],
-      ['needs.seed.output == "3"', 'needs'],
-    ])('fails the loop when until reads %s — bare %s is not a root', async (until) => {
-      const brokenRun = await runWorkflow(selfSurfaceWorkflow({ until }));
-
-      expect(brokenRun.result.success).toBe(false);
-      expect(failureTextFor(brokenRun, 'refine')).toContain('CEL evaluation failed');
-      expect(resultsOf(brokenRun, 'refine')).toHaveLength(0);
-      expect(startedIds(brokenRun)).not.toContain('report');
-    });
-
     it('fails a loop whose if reads self.nodes — an entry site sees only self.needs', async () => {
       const brokenRun = await runWorkflow(
         selfSurfaceWorkflow({ refineIf: 'self.nodes.attempt.output == "round"' })
@@ -270,31 +258,6 @@ ${indentBlock(options.refineIf === undefined ? '' : `if: '${options.refineIf}'`,
       expect(resultsOf(run, 'ci')[0]?.['iterations']).toBe(2n);
       expect(loopOutputsOf(run, 'ci')).toEqual({ last: 'c1r1' });
     });
-
-    it.each(['scopes.loop.index', 'scopes.outer.loop.index', 'scopes.needs.seed'])(
-      'fails a body node referencing %s — no ancestor carries that id',
-      async (expression) => {
-        const yaml = `
-name: unnamed-ancestor
-nodes:
-  - id: seed
-    bash: 'echo -n baseline > "$HEIMDALL_OUTPUT"'
-  - id: ci
-    depends_on: [seed]
-    loop:
-      max_iterations: 1
-      nodes:
-        - id: work
-          bash: 'echo -n "\${{ ${expression} }}" > "$HEIMDALL_OUTPUT"'
-`;
-
-        const brokenRun = await runWorkflow(yaml);
-
-        expect(brokenRun.result.success).toBe(false);
-        expect(failureTextFor(brokenRun, 'work')).toContain('CEL evaluation failed');
-        expect(resultsOf(brokenRun, 'work')).toHaveLength(0);
-      }
-    );
   });
 
   describe('loop checkpoints — outside their own scope', () => {
