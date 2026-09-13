@@ -7,12 +7,13 @@ import {
 } from '../dag-utils.ts';
 import type { NodeResult } from '../emitter.ts';
 import { NodeError } from '../errors.ts';
-import { buildCheckpointContext, extendScope, selectNeeds } from '../expression-context.ts';
+import { buildCheckpointContext, extendScope, selectDeclaredNeeds } from '../expression-context.ts';
 import { runScheduler } from '../scheduler.ts';
 import { LoopNodeSchema } from '../schema.ts';
 import type {
   BaseNodeData,
   ExecutionContext,
+  LoopScopeEntry,
   NodeRunCompleted,
   NodeRunExited,
   NodeRunFailed,
@@ -98,7 +99,7 @@ export class LoopNode extends BaseNode<NodeRunCompleted | NodeRunExited | NodeRu
   ): Promise<NodeRunCompleted | NodeRunExited | NodeRunFailed> {
     const { ctx, platform, emitter, signal } = options;
 
-    const loopNeeds = selectNeeds(ctx.needs, this.getDependencies());
+    const loopNeeds = selectDeclaredNeeds(ctx.needs, this.getDependencies());
 
     let lastIterationNodes: ReadonlyMap<string, NodeResult> = new Map<string, NodeResult>();
     let completedIterations = 0n;
@@ -118,12 +119,11 @@ export class LoopNode extends BaseNode<NodeRunCompleted | NodeRunExited | NodeRu
         needs: new Map(),
         cwd: ctx.cwd,
         heimdall: ctx.heimdall,
-        scopes: extendScope(
-          ctx.scopes,
-          this.id,
-          { needs: loopNeeds, prev: lastIterationNodes },
-          { index: completedIterations }
-        ),
+        scopes: extendScope(ctx.scopes, this.id, {
+          needs: loopNeeds,
+          prev: lastIterationNodes,
+          index: completedIterations,
+        } satisfies LoopScopeEntry),
       };
 
       const res = await runScheduler(this.bodyNodes, innerCtx, {

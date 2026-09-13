@@ -12,6 +12,7 @@ import { EngineConfigError } from '../../../../../src/core/engine/errors.ts';
 import type {
   BaseNodeData,
   ExecutionContext,
+  LoopScopeEntry,
   NodeRunOptions,
   NodeRunResult,
 } from '../../../../../src/core/engine/nodes/base.ts';
@@ -38,19 +39,25 @@ const runLoop = (node: LoopNode, ctx: ExecutionContext = makeCtx()): Promise<Nod
     signal: new AbortController().signal,
   });
 
-// Reads a scope entry's `index` attribute. ScopeEntry is a union (LoopScopeEntry |
-// WorktreeScopeEntry | ScopeEntryBase), so the access resolves to `unknown`, hence the cast.
+// ScopeEntry is a union over the scoped node types; `index` is what distinguishes a loop's.
+const loopScopeOf = (
+  scopes: ExecutionContext['scopes'] | undefined,
+  id: string
+): LoopScopeEntry | undefined => {
+  const entry = scopes?.get(id);
+
+  return entry !== undefined && 'index' in entry ? entry : undefined;
+};
+
 const scopeIndexOf = (
   scopes: ExecutionContext['scopes'] | undefined,
   id: string
-): bigint | undefined => scopes?.get(id)?.index as bigint | undefined;
+): bigint | undefined => loopScopeOf(scopes, id)?.index;
 
-// Reads a scope entry's `prev` attribute — the previous body execution's result snapshot.
 const scopePrevOf = (
   scopes: ExecutionContext['scopes'] | undefined,
   id: string
-): ReadonlyMap<string, NodeResult> | undefined =>
-  scopes?.get(id)?.prev as ReadonlyMap<string, NodeResult> | undefined;
+): ReadonlyMap<string, NodeResult> | undefined => loopScopeOf(scopes, id)?.prev;
 
 // Stub body node — records the scope chain it received each time it runs.
 class ScopeCapturingNode extends BaseNode {

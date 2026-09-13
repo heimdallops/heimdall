@@ -1,5 +1,4 @@
 import type { NodeResult } from './emitter.ts';
-import { EngineConfigError } from './errors.ts';
 import type { ExecutionContext, HeimdallContext, ScopeChain, ScopeEntry } from './nodes/base.ts';
 
 // The expression namespace is closed at these five roots at every expression site.
@@ -11,50 +10,24 @@ export interface CelContext extends Record<string, unknown> {
   readonly scopes: ScopeChain;
 }
 
-// Owned by the lifecycle phases and by scope entries, so a node type may not bind them itself.
-const RESERVED_SURFACE_KEYS: ReadonlySet<string> = new Set(['needs', 'nodes', 'prev', 'iteration']);
+// Names the engine owns on every surface. `needs`, `nodes` and `prev` carry node results; the
+// retired `iteration` stays blocked so nothing rebinds it to mean something other than `index`.
+type ReservedKey = 'needs' | 'nodes' | 'prev' | 'iteration';
 
-type SurfaceExtension = Readonly<Record<string, unknown>>;
+// A node type's own attributes, rejected at compile time when they collide with a reserved name.
+type Attributes<A> = A & Readonly<Record<Extract<keyof A, ReservedKey>, never>>;
 
-type SystemSurface = Readonly<{
-  needs: ReadonlyMap<string, NodeResult>;
-  nodes?: ReadonlyMap<string, NodeResult>;
-  prev?: ReadonlyMap<string, NodeResult>;
-}>;
-
-// Collisions are rejected as the surface is built, before any expression is evaluated.
-const mergeSurfaceExtensions = (
-  system: SystemSurface,
-  groups: readonly SurfaceExtension[]
-): Record<string, unknown> => {
-  const merged = new Map<string, unknown>(Object.entries(system));
-
-  for (const group of groups) {
-    for (const [key, value] of Object.entries(group)) {
-      if (RESERVED_SURFACE_KEYS.has(key)) {
-        throw new EngineConfigError(`Reserved node-surface key: ${key}`);
-      }
-
-      if (merged.has(key)) {
-        throw new EngineConfigError(`Duplicate node-surface key: ${key}`);
-      }
-
-      merged.set(key, value);
-    }
-  }
-
-  return Object.fromEntries(merged);
-};
-
-// A declared dependency that produced no result (it was skipped) is absent, not undefined.
-export const selectNeeds = (
-  needs: ReadonlyMap<string, NodeResult>,
+// Narrows the scheduler's map of every completed node to the ones this node declared in
+// depends_on. A declared dependency that produced no result (it was skipped) is absent, not
+// undefined.
+export const selectDeclaredNeeds = (
+  completed: ReadonlyMap<string, NodeResult>,
   dependencies: readonly string[]
 ): Map<string, NodeResult> => {
   const selected = new Map<string, NodeResult>();
 
   for (const id of dependencies) {
-    const result = needs.get(id);
+    const result = completed.get(id);
     if (result !== undefined) {
       selected.set(id, result);
     }
@@ -63,10 +36,7 @@ export const selectNeeds = (
   return selected;
 };
 
-const buildContext = (
-  ctx: ExecutionContext,
-  self: Readonly<Record<string, unknown>>
-): CelContext => ({
+const withSelf = (ctx: ExecutionContext, self: Readonly<Record<string, unknown>>): CelContext => ({
   inputs: ctx.inputs,
   vars: ctx.vars,
   heimdall: ctx.heimdall,
@@ -74,36 +44,38 @@ const buildContext = (
   scopes: ctx.scopes,
 });
 
+// The three builders below differ only in `self`, because the phase an expression runs in decides
+// what is knowable about the node by then.
+
+// Before the node runs: its own `if` and the interpolation of its own fields. Nothing it owns has
+// produced anything yet, so `needs` is all it can see.
 export const buildEntryContext = (
   ctx: ExecutionContext,
   dependencies: readonly string[]
-): CelContext => buildContext(ctx, { needs: selectNeeds(ctx.needs, dependencies) });
+): CelContext => withSelf(ctx, { needs: selectDeclaredNeeds(ctx.needs, dependencies) });
 
-export const buildActiveContext = (
+// While the node is running, once it has provisioned what it owns — a worktree's failure cleanup
+// reads the path it just created. Still no body results.
+export const buildActiveContext = <A extends object>(
   ctx: ExecutionContext,
   dependencies: readonly string[],
-  ...extensions: SurfaceExtension[]
+  attributes?: Attributes<A>
 ): CelContext =>
-  buildContext(
-    ctx,
-    mergeSurfaceExtensions({ needs: selectNeeds(ctx.needs, dependencies) }, extensions)
-  );
+  withSelf(ctx, { needs: selectDeclaredNeeds(ctx.needs, dependencies), ...attributes });
 
-export const buildCheckpointContext = (
+// A pause where a body execution has finished, so `nodes` holds that latest snapshot: a loop's
+// `while`, `until` and `outputs`. Repeatable — a loop reaches one before its first iteration, with
+// an empty `nodes`, and again after each one.
+export const buildCheckpointContext = <A extends object>(
   ctx: ExecutionContext,
   dependencies: readonly string[],
   nodes: ReadonlyMap<string, NodeResult>,
-  ...extensions: SurfaceExtension[]
+  attributes?: Attributes<A>
 ): CelContext =>
-  buildContext(
-    ctx,
-    mergeSurfaceExtensions({ needs: selectNeeds(ctx.needs, dependencies), nodes }, extensions)
-  );
+  withSelf(ctx, { needs: selectDeclaredNeeds(ctx.needs, dependencies), nodes, ...attributes });
 
 // The entry is keyed by the scoped node's own id, so it is visible to its body but never to itself.
-export const extendScope = (
-  parent: ScopeChain,
-  id: string,
-  system: SystemSurface,
-  ...extensions: SurfaceExtension[]
-): ScopeChain => new Map(parent).set(id, mergeSurfaceExtensions(system, extensions) as ScopeEntry);
+// The node type states its own entry shape, so what a scope carries stays with the node that opens
+// it rather than being described here.
+export const extendScope = (parent: ScopeChain, id: string, entry: ScopeEntry): ScopeChain =>
+  new Map(parent).set(id, entry);

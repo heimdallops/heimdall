@@ -8,9 +8,14 @@ import {
   buildCheckpointContext,
   buildEntryContext,
   extendScope,
-  selectNeeds,
+  selectDeclaredNeeds,
 } from '../../../../src/core/engine/expression-context.ts';
-import type { ExecutionContext, ScopeChain } from '../../../../src/core/engine/nodes/base.ts';
+import type {
+  ExecutionContext,
+  LoopScopeEntry,
+  ScopeChain,
+  WorktreeScopeEntry,
+} from '../../../../src/core/engine/nodes/base.ts';
 
 const makeCtx = (overrides: Partial<ExecutionContext> = {}): ExecutionContext => ({
   inputs: {},
@@ -182,79 +187,29 @@ describe('loop counters are vantage-specific', () => {
   });
 
   it('exposes index and prev on a scope entry built for a loop body node', () => {
-    const scopes = extendScope(
-      new Map(),
-      'loop1',
-      { needs: new Map(), prev: new Map<string, NodeResult>([['prevBody', { ok: true }]]) },
-      { index: 2 }
-    );
+    const scopes = extendScope(new Map(), 'loop1', {
+      needs: new Map(),
+      prev: new Map<string, NodeResult>([['prevBody', { ok: true }]]),
+      index: 2n,
+    } satisfies LoopScopeEntry);
     const built = buildEntryContext(makeCtx({ scopes }), []);
 
-    expect(evalCel('scopes.loop1.index', built)).toBe(2);
+    expect(evalCel('scopes.loop1.index', built)).toBe(2n);
     expect(evalCel('scopes.loop1.prev.prevBody.ok', built)).toBe(true);
   });
 
   it('does not bind iterations on a loop scope entry; that counter belongs to self at the checkpoint', () => {
-    const scopes = extendScope(
-      new Map(),
-      'loop1',
-      { needs: new Map(), prev: new Map() },
-      { index: 2 }
-    );
+    const scopes = extendScope(new Map(), 'loop1', {
+      needs: new Map(),
+      prev: new Map(),
+      index: 2n,
+    } satisfies LoopScopeEntry);
     const built = buildEntryContext(makeCtx({ scopes }), []);
 
     const error = captureThrown(() => evalCel('scopes.loop1.iterations', built));
 
     expect(error.code).toBe('ENGINE_CEL_ERROR');
-    expect(evalCel('scopes.loop1.index', built)).toBe(2);
-  });
-});
-
-describe('reserved node-surface keys and cross-group collisions', () => {
-  it.each(['needs', 'nodes', 'prev', 'iteration'] as const)(
-    'rejects %s as a type-attribute key when building an active context',
-    (key) => {
-      const error = captureThrown(() => buildActiveContext(makeCtx(), [], { [key]: 'x' }));
-
-      expect(error.code).toBe('ENGINE_CONFIG_ERROR');
-      expect(error.message).toContain(key);
-    }
-  );
-
-  it('rejects a reserved type-attribute key when building a checkpoint context', () => {
-    const error = captureThrown(() =>
-      buildCheckpointContext(makeCtx(), [], new Map(), { prev: new Map() })
-    );
-
-    expect(error.code).toBe('ENGINE_CONFIG_ERROR');
-    expect(error.message).toContain('prev');
-  });
-
-  it('rejects a reserved type-attribute key when extending a scope', () => {
-    const error = captureThrown(() =>
-      extendScope(new Map(), 'loop1', { needs: new Map() }, { iteration: 1 })
-    );
-
-    expect(error.code).toBe('ENGINE_CONFIG_ERROR');
-    expect(error.message).toContain('iteration');
-  });
-
-  it('rejects a key bound by two extension groups on an active context', () => {
-    const error = captureThrown(() =>
-      buildActiveContext(makeCtx(), [], { path: '/a' }, { path: '/b' })
-    );
-
-    expect(error.code).toBe('ENGINE_CONFIG_ERROR');
-    expect(error.message).toContain('path');
-  });
-
-  it('rejects a key bound by two extension groups when extending a scope', () => {
-    const error = captureThrown(() =>
-      extendScope(new Map(), 'wt1', { needs: new Map() }, { branch: 'main' }, { branch: 'dev' })
-    );
-
-    expect(error.code).toBe('ENGINE_CONFIG_ERROR');
-    expect(error.message).toContain('branch');
+    expect(evalCel('scopes.loop1.index', built)).toBe(2n);
   });
 });
 
@@ -322,14 +277,14 @@ describe('scopes pass-through', () => {
   });
 });
 
-describe('selectNeeds', () => {
+describe('selectDeclaredNeeds', () => {
   it('returns only the declared dependency ids that have results', () => {
     const needs = new Map<string, NodeResult>([
       ['build', { exitCode: 0 }],
       ['lint', { passed: true }],
     ]);
 
-    const selected = selectNeeds(needs, ['build']);
+    const selected = selectDeclaredNeeds(needs, ['build']);
 
     expect(Array.from(selected.entries())).toEqual([['build', { exitCode: 0 }]]);
   });
@@ -337,7 +292,7 @@ describe('selectNeeds', () => {
   it('drops a declared id that produced no result', () => {
     const needs = new Map<string, NodeResult>([['build', { exitCode: 0 }]]);
 
-    const selected = selectNeeds(needs, ['build', 'lint']);
+    const selected = selectDeclaredNeeds(needs, ['build', 'lint']);
 
     expect(selected.has('lint')).toBe(false);
     expect(selected.get('build')).toEqual({ exitCode: 0 });
@@ -349,7 +304,7 @@ describe('selectNeeds', () => {
       ['lint', { passed: true }],
     ]);
 
-    const selected = selectNeeds(needs, ['build']);
+    const selected = selectDeclaredNeeds(needs, ['build']);
 
     expect(selected.size).toBe(1);
     expect(selected.has('lint')).toBe(false);
@@ -358,7 +313,7 @@ describe('selectNeeds', () => {
   it('returns an empty map for an empty dependency list', () => {
     const needs = new Map<string, NodeResult>([['build', { exitCode: 0 }]]);
 
-    const selected = selectNeeds(needs, []);
+    const selected = selectDeclaredNeeds(needs, []);
 
     expect(selected.size).toBe(0);
   });
@@ -369,7 +324,11 @@ describe('extendScope', () => {
     const parentEntry = { needs: new Map() };
     const parent: ScopeChain = new Map([['outer', parentEntry]]);
 
-    const next = extendScope(parent, 'inner', { needs: new Map() }, { path: '/work' });
+    const next = extendScope(parent, 'inner', {
+      needs: new Map(),
+      path: '/work',
+      base_commit: 'abc123',
+    } satisfies WorktreeScopeEntry);
 
     expect(parent.size).toBe(1);
     expect(parent.has('inner')).toBe(false);
@@ -378,17 +337,20 @@ describe('extendScope', () => {
   });
 
   it('accumulates a flat scope chain across nested extension calls', () => {
-    const outerScopes = extendScope(new Map(), 'outer', { needs: new Map() }, { path: '/outer' });
-    const innerScopes = extendScope(
-      outerScopes,
-      'inner',
-      { needs: new Map(), prev: new Map() },
-      { index: 0 }
-    );
+    const outerScopes = extendScope(new Map(), 'outer', {
+      needs: new Map(),
+      path: '/outer',
+      base_commit: 'abc123',
+    } satisfies WorktreeScopeEntry);
+    const innerScopes = extendScope(outerScopes, 'inner', {
+      needs: new Map(),
+      prev: new Map(),
+      index: 0n,
+    } satisfies LoopScopeEntry);
 
     const built = buildEntryContext(makeCtx({ scopes: innerScopes }), []);
 
     expect(evalCel('scopes.outer.path', built)).toBe('/outer');
-    expect(evalCel('scopes.inner.index', built)).toBe(0);
+    expect(evalCel('scopes.inner.index', built)).toBe(0n);
   });
 });

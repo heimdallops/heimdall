@@ -81,7 +81,6 @@ export interface PlatformRuntime {
 // ids are unique across the whole workflow.
 export interface ScopeEntryBase {
   readonly needs: ReadonlyMap<string, NodeResult>;
-  readonly [attribute: string]: unknown;
 }
 
 export interface LoopScopeEntry extends ScopeEntryBase {
