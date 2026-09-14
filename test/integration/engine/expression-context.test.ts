@@ -322,7 +322,7 @@ nodes:
     });
   });
 
-  describe('refactor safety — wrapping and renaming', () => {
+  describe('refactor safety — wrapping a node list preserves its references', () => {
     it('preserves every reference in a node list wrapped in a new enclosing loop', async () => {
       const wrapped = `
 name: named-ancestors-wrapped
@@ -345,20 +345,6 @@ ${indentBlock(NAMED_ANCESTOR_NODES, 8)}
         'prev=c1r0',
       ]);
       expect(loopOutputsOf(run, 'ci')).toEqual({ last: 'c1r1' });
-    });
-
-    it('fails every reference to a renamed ancestor rather than retargeting them', async () => {
-      const renamed = `
-name: named-ancestors-renamed
-nodes:
-${indentBlock(NAMED_ANCESTOR_NODES.replace('- id: ci\n', '- id: ci_pipeline\n'), 2)}
-`;
-
-      const run = await runWorkflow(renamed);
-
-      expect(run.result.success).toBe(false);
-      expect(failureTextFor(run, 'work')).toContain('CEL evaluation failed');
-      expect(resultsOf(run, 'work')).toHaveLength(0);
     });
   });
 

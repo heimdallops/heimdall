@@ -236,6 +236,20 @@ describe('scopes pass-through', () => {
     expect(evalCel('scopes.loop1.index', built)).toBe(4);
   });
 
+  it('fails a read of an id no ancestor carries, rather than resolving it to an enclosing scope', () => {
+    const scopeEntry = {
+      needs: new Map(),
+      index: 0n,
+      prev: new Map(),
+    } satisfies LoopScopeEntry;
+    const built = buildEntryContext(makeCtx({ scopes: new Map([['ci', scopeEntry]]) }), []);
+
+    expect(evalCel('has(scopes.typo)', built)).toBe(false);
+    const error = captureThrown(() => evalCel('scopes.typo.index', built));
+    expect(error.code).toBe('ENGINE_CEL_ERROR');
+    expect(evalCel('scopes.ci.index', built)).toBe(0n);
+  });
+
   it('binds scopes empty at a top-level node so has() answers false but a direct read throws', () => {
     const built = buildEntryContext(makeCtx(), []);
 
