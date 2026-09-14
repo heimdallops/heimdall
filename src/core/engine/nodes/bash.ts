@@ -8,6 +8,7 @@ import { execa } from 'execa';
 
 import { interpolate } from '../cel.ts';
 import { NodeError } from '../errors.ts';
+import { buildEntryContext } from '../expression-context.ts';
 import { BashNodeSchema } from '../schema.ts';
 import type { BaseNodeData, NodeRunCompleted, NodeRunFailed, NodeRunOptions } from './base.ts';
 import { BaseNode } from './base.ts';
@@ -79,7 +80,7 @@ export class BashNode extends BaseNode<NodeRunCompleted | NodeRunFailed> {
 
   public override async run(options: NodeRunOptions): Promise<NodeRunCompleted | NodeRunFailed> {
     const { ctx, signal } = options;
-    const celContext = ctx as unknown as Record<string, unknown>;
+    const celContext = buildEntryContext(ctx, this.getDependencies());
 
     let interpolatedBash: string;
     try {

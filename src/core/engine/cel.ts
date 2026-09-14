@@ -55,6 +55,19 @@ const sanitizeValue = (value: unknown, ancestors = new WeakSet<object>()): unkno
 const sanitize = (ctx: Record<string, unknown>): Record<string, unknown> =>
   sanitizeValue(ctx) as Record<string, unknown>;
 
+// JSON.stringify throws on a BigInt, and integer bindings are BigInt so CEL reads them as int.
+// A JSON number is a double, so values outside its exact range become decimal strings rather than
+// silently rounding.
+const bigintReplacer = (_key: string, value: unknown): unknown => {
+  if (typeof value !== 'bigint') {
+    return value;
+  }
+
+  return value >= BigInt(Number.MIN_SAFE_INTEGER) && value <= BigInt(Number.MAX_SAFE_INTEGER)
+    ? Number(value)
+    : value.toString();
+};
+
 const evalCelWithContext = (expr: string, celContext: Record<string, unknown>): unknown => {
   try {
     return evaluate(expr, celContext) as unknown;
@@ -84,7 +97,7 @@ export const interpolate = (template: string, ctx: Record<string, unknown>): str
     }
 
     if (typeof result === 'object') {
-      return JSON.stringify(result);
+      return JSON.stringify(result, bigintReplacer);
     }
 
     throw new EngineError(

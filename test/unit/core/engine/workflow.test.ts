@@ -68,7 +68,7 @@ nodes:
     bash: "true"
 `;
 
-/** A workflow whose single bash node writes its needs.A output to HEIMDALL_OUTPUT.
+/** A workflow whose single bash node writes its self.needs.A output to HEIMDALL_OUTPUT.
  *  Used for the three-node chain test.  All three are bash nodes so the workflow
  *  parses them without needing stub injection. */
 const threeNodeChainWorkflow = `
@@ -430,6 +430,79 @@ nodes:
   });
 
   // -------------------------------------------------------------------------
+  // workflow.run — integer input binding
+  // -------------------------------------------------------------------------
+
+  describe('workflow.run — integer inputs evaluate as a CEL int', () => {
+    // '\x24{{ }}' avoids the JS template-literal parser treating ${ as an interpolation opener.
+    const celMinusOne = '\x24{{ inputs.count - 1 }}';
+    const celDivided = '\x24{{ inputs.count / 2 }}';
+
+    const integerInputWorkflow = (expr: string, supplied: boolean): string => `
+name: int-input
+inputs:
+  count:
+    type: integer
+${supplied ? '' : '    default: 6'}
+nodes:
+  - id: math
+    bash: 'echo -n "${expr}" > "$HEIMDALL_OUTPUT"'
+`;
+
+    it.each([
+      ['subtraction against an int literal', celMinusOne, '5'],
+      ['integer division against an int literal', celDivided, '3'],
+    ])('resolves %s on a supplied integer input', async (_label, expr, expected) => {
+      const workflow = await Workflow.from(integerInputWorkflow(expr, true));
+      const emitter = createEngineEmitter();
+      const completed = collectEvents(emitter, 'node_completed');
+
+      const result = await workflow.run({ inputs: { count: 6 }, emitter });
+
+      expect(result.success).toBe(true);
+      expect(completed[0]?.result['output']).toBe(expected);
+    });
+
+    it('resolves arithmetic on an integer input taken from its declared default', async () => {
+      const workflow = await Workflow.from(integerInputWorkflow(celMinusOne, false));
+      const emitter = createEngineEmitter();
+      const completed = collectEvents(emitter, 'node_completed');
+
+      const result = await workflow.run({ inputs: {}, emitter });
+
+      expect(result.success).toBe(true);
+      expect(completed[0]?.result['output']).toBe('5');
+    });
+
+    it('rejects a non-integer supplied for an integer input with EngineConfigError, naming the input', async () => {
+      const workflow = await Workflow.from(integerInputWorkflow(celMinusOne, true));
+
+      const err = await workflow.run({ inputs: { count: 1.5 } }).catch((e: unknown) => e);
+
+      expect(err).toBeInstanceOf(EngineConfigError);
+      expect((err as Error).message).toContain('count');
+      expect((err as Error).message).toContain('1.5');
+    });
+
+    it('leaves a number-typed input as a double, so int-literal arithmetic fails', async () => {
+      const numberInputWorkflow = `
+name: num-input
+inputs:
+  ratio:
+    type: number
+nodes:
+  - id: math
+    bash: 'echo -n "\x24{{ inputs.ratio - 1 }}" > "$HEIMDALL_OUTPUT"'
+`;
+      const workflow = await Workflow.from(numberInputWorkflow);
+
+      const result = await workflow.run({ inputs: { ratio: 6 } });
+
+      expect(result.success).toBe(false);
+    });
+  });
+
+  // -------------------------------------------------------------------------
   // workflow.run — single-run guard
   // -------------------------------------------------------------------------
 
@@ -712,20 +785,9 @@ nodes:
     });
 
     it('gives nodeC access to nodeB output via needs (chained context)', async () => {
-      // nodeA writes "value_a", nodeB reads it via ${{ needs.nodeA.output }} and appends "-b",
-      // nodeC reads nodeB's output via ${{ needs.nodeB.output }} and appends "-c".
-      // The final output on nodeC proves the needs chain flowed A→B→C through CEL interpolation.
-      //
-      // CEL interpolation syntax: ${{ needs.<id>.output }} — verified against:
-      //   - bash.ts: passes ctx (including ctx.needs Map) through interpolate()
-      //   - cel.ts: sanitize() converts Maps to plain objects via mapToObj(), so
-      //     needs.nodeB.output accesses needs['nodeB']['output'] after conversion
-      //   - bash.test.ts: confirms ${{ inputs.name }} pattern works (same interpolate path)
-      //
-      // Note: the ${{ }} tokens below are written using '\x24{{ }}' to prevent the JS
-      // template-literal parser from treating ${ as an interpolation opener.
-      const celNodeA = '\x24{{ needs.nodeA.output }}';
-      const celNodeB = '\x24{{ needs.nodeB.output }}';
+      // '\x24{{ }}' avoids the JS template-literal parser treating ${ as an interpolation opener.
+      const celNodeA = '\x24{{ self.needs.nodeA.output }}';
+      const celNodeB = '\x24{{ self.needs.nodeB.output }}';
       const yaml = `
 name: chain-needs
 nodes:

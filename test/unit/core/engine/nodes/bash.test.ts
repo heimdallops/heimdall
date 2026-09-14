@@ -22,6 +22,7 @@ const makeCtx = (overrides: Partial<ExecutionContext> = {}): ExecutionContext =>
   // so a placeholder path like '/tmp/work' fails every script invocation with ENOENT.
   cwd: tmpdir(),
   heimdall: { run_cwd: tmpdir(), session_dir: '/tmp' },
+  scopes: new Map(),
   ...overrides,
 });
 
