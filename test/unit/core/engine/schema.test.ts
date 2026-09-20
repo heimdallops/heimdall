@@ -118,7 +118,7 @@ describe('WorkflowDefinitionSchema', () => {
       ],
       [
         'loop with until',
-        { loop: { until: 'scope.iteration == 3', nodes: [{ id: 'inner', bash: 'echo loop' }] } },
+        { loop: { until: 'self.iterations == 3', nodes: [{ id: 'inner', bash: 'echo loop' }] } },
       ],
     ])('accepts a %s node', (_label, nodeFields) => {
       const result = WorkflowDefinitionSchema.safeParse(workflow(nodeFields));
@@ -376,7 +376,7 @@ describe('LoopNodeSchema', () => {
   it('accepts a loop node with until and at least one inner node', () => {
     const result = LoopNodeSchema.safeParse(
       baseLoop({
-        until: 'scope.iteration == 3',
+        until: 'self.iterations == 3',
         nodes: [{ id: 'inner', bash: 'echo loop' }],
       })
     );
@@ -387,7 +387,7 @@ describe('LoopNodeSchema', () => {
   it('accepts a loop node with only while and at least one inner node', () => {
     const result = LoopNodeSchema.safeParse(
       baseLoop({
-        while: 'scope.iteration < 3',
+        while: 'self.iterations < 3',
         nodes: [{ id: 'inner', bash: 'echo loop' }],
       })
     );
@@ -398,8 +398,8 @@ describe('LoopNodeSchema', () => {
   it('rejects a loop node that specifies both until and while', () => {
     const result = LoopNodeSchema.safeParse(
       baseLoop({
-        until: 'scope.iteration >= 3',
-        while: 'scope.iteration < 3',
+        until: 'self.iterations >= 3',
+        while: 'self.iterations < 3',
         nodes: [{ id: 'inner', bash: 'echo loop' }],
       })
     );

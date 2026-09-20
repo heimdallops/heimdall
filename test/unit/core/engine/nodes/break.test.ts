@@ -11,6 +11,7 @@ const makeCtx = (): ExecutionContext => ({
   needs: new Map(),
   cwd: '/tmp/work',
   heimdall: { run_cwd: '/tmp/work', session_dir: '/tmp/session' },
+  scopes: new Map(),
 });
 
 describe('BreakNode', () => {
