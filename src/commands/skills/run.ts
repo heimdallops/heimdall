@@ -6,7 +6,7 @@ import {
   listSkills,
   type SkillScope,
 } from '../../core/skills/index.ts';
-import { writeSkillFiles } from '../../services/skill-writer.ts';
+import { findOrphanedFiles, writeSkillFiles } from '../../services/skill-writer.ts';
 
 export interface SkillsInstallInput {
   readonly platform: Platform;
@@ -20,6 +20,8 @@ export interface SkillsInstallResult {
   readonly scope: SkillScope;
   readonly skills: string[];
   readonly files: string[];
+  /** Files a previous install wrote that this version no longer ships. */
+  readonly removed: string[];
   readonly dryRun: boolean;
 }
 
@@ -32,8 +34,12 @@ export const run = async (
   const root = target.resolveRoot(input.scope, ctx.cwd);
   const files = skills.flatMap((skill) => target.render(skill));
 
-  const written = input.dryRun
-    ? files.map((file) => `${root}/${file.relativePath}`)
+  // A dry run reports the same two lists a real one would, so it stays a faithful preview.
+  const { written, removed } = input.dryRun
+    ? {
+        written: files.map((file) => `${root}/${file.relativePath}`),
+        removed: await findOrphanedFiles(root, files),
+      }
     : await writeSkillFiles(root, files, input.force);
 
   const result: SkillsInstallResult = {
@@ -41,6 +47,7 @@ export const run = async (
     scope: input.scope,
     skills: skills.map((skill) => skill.name),
     files: written,
+    removed,
     dryRun: input.dryRun,
   };
 
@@ -56,6 +63,20 @@ export const run = async (
 
   for (const path of written) {
     ctx.printer.out(path);
+  }
+
+  // Stale files are reported rather than removed silently: the user is being told that a file
+  // their agent may have been reading is gone.
+  if (removed.length > 0) {
+    ctx.printer.info(
+      input.dryRun
+        ? `Would remove ${removed.length} file(s) this version no longer ships:`
+        : `Removed ${removed.length} file(s) this version no longer ships:`
+    );
+
+    for (const path of removed) {
+      ctx.printer.info(`  ${path}`);
+    }
   }
 
   return result;

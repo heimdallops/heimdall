@@ -19,6 +19,14 @@ const referenceYaml = join(
 
 const workdir = async (): Promise<string> => mkdtemp(join(tmpdir(), 'heimdall-skills-'));
 
+const staleReference = join(
+  '.claude',
+  'skills',
+  'heimdall-workflows',
+  'references',
+  'retired_node.yaml'
+);
+
 describe('heimdall skills install', () => {
   it('installs the skill into the project scope', async () => {
     const cwd = await workdir();
@@ -165,5 +173,68 @@ describe('heimdall skills install', () => {
 
     expect(result.exitCode).toBe(0);
     expect(result.stderr).toBe('');
+  });
+
+  // A version that drops or renames a reference would otherwise leave the old file behind
+  // carrying the generated marker, where the skill body presents references/ as authoritative.
+  it('removes a stale file a previous version installed', async () => {
+    const cwd = await workdir();
+    await execa('node', [cliPath, ...install], { cwd });
+    await writeFile(
+      join(cwd, staleReference),
+      '# heimdall-generated: v0.0.1 — installed by `heimdall skills install`.\nretired',
+      'utf8'
+    );
+
+    const result = await execa('node', [cliPath, ...install], { cwd, reject: false });
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stderr).toContain('retired_node.yaml');
+    await expect(readFile(join(cwd, staleReference), 'utf8')).rejects.toThrow();
+  });
+
+  it('leaves a file it did not write alone', async () => {
+    const cwd = await workdir();
+    await execa('node', [cliPath, ...install], { cwd });
+    const mine = join(cwd, '.claude', 'skills', 'heimdall-workflows', 'references', 'mine.md');
+    await writeFile(mine, 'my own notes', 'utf8');
+
+    const result = await execa('node', [cliPath, ...install], { cwd, reject: false });
+
+    expect(result.exitCode).toBe(0);
+    expect(await readFile(mine, 'utf8')).toBe('my own notes');
+  });
+
+  it('reports a stale file on --dry-run without removing it', async () => {
+    const cwd = await workdir();
+    await execa('node', [cliPath, ...install], { cwd });
+    await writeFile(
+      join(cwd, staleReference),
+      '# heimdall-generated: v0.0.1 — installed by `heimdall skills install`.\nretired',
+      'utf8'
+    );
+
+    const result = await execa('node', [cliPath, ...install, '--dry-run'], { cwd, reject: false });
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stderr).toContain('Would remove');
+    expect(await readFile(join(cwd, staleReference), 'utf8')).toContain('retired');
+  });
+
+  it('lists removals in the JSON result', async () => {
+    const cwd = await workdir();
+    await execa('node', [cliPath, ...install], { cwd });
+    await writeFile(
+      join(cwd, staleReference),
+      '# heimdall-generated: v0.0.1 — installed by `heimdall skills install`.\nretired',
+      'utf8'
+    );
+
+    const result = await execa('node', [cliPath, ...install, '--json'], { cwd, reject: false });
+    const parsed = JSON.parse(result.stdout) as { removed: string[] };
+
+    expect(result.exitCode).toBe(0);
+    expect(parsed.removed).toHaveLength(1);
+    expect(parsed.removed[0]).toContain('retired_node.yaml');
   });
 });

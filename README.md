@@ -199,3 +199,8 @@ Code is the only supported platform today.
 
 Installed files are stamped with a marker. A reinstall replaces its own previous output,
 but refuses to overwrite a file you edited by hand unless you pass `--force`.
+
+A reinstall also removes marked files the current version no longer ships, so upgrading
+converges on exactly the current content rather than leaving a renamed or dropped
+reference behind for your agent to read. Removals are listed, and a file without the
+marker is never removed — if you added it to the skill directory, it stays.
