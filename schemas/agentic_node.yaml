@@ -24,5 +24,9 @@ allOf:
       output_format:
         type: object
         description: >-
-          JSON Schema object defining the structure for this node's output.
+          JSON Schema object describing the structure this node's output should
+          take. Accepted and forwarded to the platform, but the Claude platform
+          does not currently act on it and the engine never parses the result:
+          an agentic node's output is always a string. To branch on structured
+          data, pass that string through a bash_node with output_format: json.
           Must be a valid JSON Schema.

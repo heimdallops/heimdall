@@ -107,3 +107,32 @@ describe('skill content — examples', () => {
     }
   });
 });
+
+// Vocabulary checks cannot catch a claim that is well-spelled and wrong. These pin the
+// specific result shapes and option names an audit found the content had misstated — each
+// one would have produced a workflow that fails at runtime.
+describe('skill content — result shapes and option names', () => {
+  it('reads approval results off the top level, never under output', () => {
+    // ApprovalNode returns { approved, feedback } with no wrapper (nodes/approval.ts).
+    expect(shippedText()).not.toMatch(/needs\.[\w<>.]*\.output\.approved/);
+    expect(shippedText()).not.toMatch(/needs\.[\w<>.]*\.output\.feedback/);
+    expect(skill().body).toContain('self.needs.<id>.approved');
+  });
+
+  it('does not promise that an agentic node yields a structured object', () => {
+    // AgenticNode always resolves { output: buffer } — nothing parses it (nodes/agentic.ts).
+    const claimsParsing =
+      /output_format[^.]{0,120}(structured object|parsed as JSON|accessible directly)/i;
+
+    for (const site of [skill().body, ...skill().references.map((ref) => ref.contents)]) {
+      expect(site).not.toMatch(claimsParsing);
+    }
+  });
+
+  it('names no platform option the Claude adapter would discard', () => {
+    // claudeOptionsSchema is .strip()ped, so an undeclared key vanishes silently.
+    for (const retired of ['disable_tool_search', 'mcps:', 'hooks:']) {
+      expect(shippedText()).not.toContain(retired);
+    }
+  });
+});

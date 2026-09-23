@@ -7,9 +7,10 @@ properties:
   iterations:
     type: integer
     description: >-
-      Number of fully-completed iterations when the loop exited. A loop that
-      completed one iteration has iterations: 1; a loop whose body hit a
-      break_node before completing any iteration has iterations: 0.
+      Number of body executions that terminated before the loop exited. A loop
+      that ran its body once has iterations: 1. An execution cut short by a
+      break_node still counts, so a loop whose first body execution breaks
+      immediately also reports iterations: 1, not 0.
       Accessible to downstream nodes via self.needs.<loop_id>.iterations.
     minimum: 0
   output:

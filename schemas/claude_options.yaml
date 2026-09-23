@@ -11,13 +11,8 @@ allOf:
           - low
           - medium
           - high
+          - xhigh
           - max
-      disable_tool_search:
-        type: boolean
-        description: >-
-          Recommended. Disable autodiscovery of tools (agents, skills, MCPs) so
-          only tools explicitly provided in the config are available. Defaults to
-          false to avoid unexpected behavior.
       allowed_tools:
         type: array
         description: >-
@@ -30,24 +25,9 @@ allOf:
         description: Tools Claude cannot use, applied after allowed_tools.
         items:
           type: string
-      hooks:
-        type: object
-        description: SDK hook callbacks.
-      mcps:
-        description: >-
-          MCP server config. If a string, a path to a JSON config file
-          for MCP servers.
-        oneOf:
-          - type: string
-          - type: object
       skills:
         type: array
         description: Skills to preload.
-        items:
-          type: string
-      agents:
-        type: array
-        description: List of paths to subagent definitions.
         items:
           type: string
       max_budget_usd:

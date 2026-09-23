@@ -17,15 +17,12 @@ description: Fix a reported issue and open a PR.
 platform: claude # default platform for agentic nodes
 platform_options: # default options for agentic nodes
   model: claude-sonnet-5
-  disable_tool_search: true
 inputs: # supplied at run time
   issue_number:
     type: integer
     description: The GitHub issue to fix.
 vars: # static, available everywhere
   base_branch: main
-workspace:
-  worktree: true # run in an isolated git worktree (default true)
 nodes: # required, at least one
   - id: read_issue
     bash: gh issue view ${{ inputs.issue_number }} --json title,body > "$HEIMDALL_OUTPUT"
@@ -127,7 +124,7 @@ not an empty value.
 cannot read `self.nodes` — at that point the node has produced nothing.
 
 `heimdall.session_dir` is a per-run temp directory for passing files between nodes;
-`heimdall.run_cwd` is the directory the run started in, constant even inside a worktree.
+`heimdall.run_cwd` is the directory the run started in, constant for the whole run.
 
 Guard anything that may not have run with `has()`:
 
@@ -152,26 +149,30 @@ from other commands does not contaminate it. Write nothing and the output is emp
 With `output_format: json`, the file contents are parsed and fields become accessible
 as `self.needs.<id>.output.<field>`. Invalid JSON fails the node immediately.
 
-**agentic** → `self.needs.<id>.output`, a string. Define `output_format` (a JSON Schema
-object) to get a structured object instead, addressable field by field:
+**agentic** → `self.needs.<id>.output`, **always a string**. The engine does not parse it,
+so you cannot address fields on it. To branch on a model's answer, have the model write
+JSON and put a bash node with `output_format: json` between it and the branch:
 
 ```yaml
 - id: triage
-  prompt: Classify this issue. ${{ self.needs.read_issue.output }}
-  output_format:
-    type: object
-    properties:
-      severity: { type: string, enum: [low, high] }
-    required: [severity]
+  prompt: |
+    Classify this issue and reply with only a JSON object {"severity":"low"|"high"}.
+    ${{ self.needs.read_issue.output }}
+
+- id: parse_triage
+  depends_on: [triage]
+  bash: printf '%s' '${{ self.needs.triage.output }}' > "$HEIMDALL_OUTPUT"
+  output_format: json
 
 - id: page_oncall
-  depends_on: [triage]
-  if: self.needs.triage.output.severity == "high"
+  depends_on: [parse_triage]
+  if: self.needs.parse_triage.output.severity == "high"
   bash: ./notify.sh
 ```
 
-**approval** → `self.needs.<id>.output.approved` (boolean) and, with
-`enable_feedback: true`, `self.needs.<id>.output.feedback`.
+**approval** → `self.needs.<id>.approved` (boolean) and, with `enable_feedback: true`,
+`self.needs.<id>.feedback`. Note these sit at the top level: unlike every other node type,
+an approval result has **no** `output` wrapper.
 
 **loop** → `self.needs.<id>.iterations` and `self.needs.<id>.output.<key>` for each key
 declared in the loop's `outputs` map.
@@ -260,21 +261,26 @@ Use a `break` node with an `if` guard to exit from inside an iteration. A `break
 `exit` ends the whole workflow immediately, stopping in-flight parallel nodes. Set
 `failure: true` for a non-zero exit status.
 
-`approval` pauses for the user. With `exit_on_no: true` a decline ends the run; with the
-default `false` the workflow continues and downstream nodes route on
-`self.needs.<id>.output.approved`.
+`approval` pauses for the user. With the default `exit_on_no: false` the workflow continues
+and downstream nodes route on `self.needs.<id>.approved`.
+
+`exit_on_no: true` ends the run on a decline — **except** when `enable_feedback: true` and
+the user actually supplied feedback. That combination completes the node instead, so the
+feedback can be acted on, and the run continues. If you need a hard gate, do not enable
+feedback on it.
 
 ## Agentic node guidance
 
 - **`context: clean` (default) starts a fresh session.** `context: shared` continues from
-  the immediately preceding agentic node, and is only valid with a single agentic
-  predecessor — it will not work in fan-in. Prefer passing data explicitly through node
+  the immediately preceding agentic node, and is rejected if a node has more than one
+  agentic predecessor. Prefer passing data explicitly through node
   outputs or files in `heimdall.session_dir`; shared context hides the data flow.
-- Set `disable_tool_search: true` in `platform_options` so only explicitly configured
-  tools are available. Autodiscovery makes runs non-deterministic, which is the thing
-  Heimdall exists to prevent.
-- Use `output_format` whenever a downstream node branches on the result. Branching on
-  substrings of free-form prose is fragile.
+- Constrain tools with `allowed_tools` / `disallowed_tools` in `platform_options`. The
+  fewer tools a node can reach for, the more repeatable the run — which is the thing
+  Heimdall exists to provide.
+- When a downstream node branches on a model's answer, have the model emit JSON and parse
+  it through a bash node with `output_format: json`. Branching on substrings of free-form
+  prose is fragile, and an agentic node's own output is always an unparsed string.
 - `max_budget_usd` caps spend per node. Worth setting on loop bodies.
 
 See `references/claude_options.yaml` for the full option list.
@@ -290,5 +296,6 @@ See `references/claude_options.yaml` for the full option list.
 5. Are `if` / `until` / `while` / `outputs` written as **bare CEL**, with no `${{ }}`?
 6. Do bash nodes write to `$HEIMDALL_OUTPUT` rather than relying on stdout?
 7. Does every loop have a `max_iterations` bound?
-8. Does any node branching on agent output use `output_format` instead of prose matching?
+8. Does any branch on a model's answer go through a bash node with `output_format: json`,
+   rather than matching prose or addressing fields on an agentic node's output?
 9. Are optional or conditional references guarded with `has()`?

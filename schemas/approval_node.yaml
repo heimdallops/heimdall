@@ -8,8 +8,9 @@ allOf:
         type: object
         description: >-
           Request human approval before continuing. The result is available to
-          downstream nodes via self.needs.<id>.output. Use exit_on_no: true to
-          exit the workflow immediately when the user declines.
+          downstream nodes at the top level of self.needs.<id> — an approval
+          result has no "output" wrapper, unlike every other node type. Use
+          exit_on_no: true to exit the workflow when the user declines.
         properties:
           message:
             type: string
@@ -20,9 +21,11 @@ allOf:
             type: boolean
             default: false
             description: >-
-              When true, a "no" response immediately exits the workflow.
-              When false (default), the workflow continues and downstream
-              nodes can route on self.needs.<id>.output.approved.
+              When true, a "no" response exits the workflow — except when
+              enable_feedback is true and the user supplied feedback, which
+              completes the node instead so the feedback can be acted on, and
+              the run continues. When false (default), the workflow always
+              continues and downstream nodes route on self.needs.<id>.approved.
           enable_feedback:
             type: boolean
             default: false
