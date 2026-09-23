@@ -75,15 +75,12 @@ properties:
     required:
       - iteration
       - nodes
-  heimdall:
-    type: object
-    description: Workflow-scoped runtime variables provided by Heimdall.
-    properties:
-      session_dir:
-        type: string
-        description: >-
-          Absolute path to a temporary directory scoped to this workflow run.
-          Persists for the lifetime of the run. Use it to share files between
-          nodes (e.g. spec.md, progress.txt) without polluting the workspace.
-    required:
-      - session_dir
+  sessionDir:
+    type: string
+    description: >-
+      Absolute path to a temporary directory scoped to this workflow run.
+      Persists for the lifetime of the run. Use it to share files between
+      nodes (e.g. spec.md, progress.txt) without polluting the workspace.
+  cwd:
+    type: string
+    description: Absolute path to the working directory the workflow is running in.

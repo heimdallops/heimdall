@@ -16,4 +16,31 @@ Each run executes in an isolated git worktree, so teams can run fixes and implem
 - **PR-ready workflows** - Teams can model paths from ticket or issue intake through implementation, validation, review, and PR creation.
 - **Complex process modeling** - Heimdall is built for workflows with branching, iteration, and explicit handoffs, not just linear agent prompts.
 
-User-facing commands and installation instructions are not documented here yet.
+## Commands
+
+### `heimdall skills install <platform>`
+
+Installs Heimdall's workflow-authoring skill into a coding agent, so it can write valid
+workflow YAML without being handed the docs. The skill ships with the workflow JSON
+schemas as reference material.
+
+```bash
+heimdall skills install claude              # into ./.claude/skills
+heimdall skills install claude --scope user # into ~/.claude/skills
+heimdall skills install claude --dry-run    # print the files, write nothing
+```
+
+The platform is required — nothing is installed into an agent you did not name. Claude
+Code is the only supported platform today.
+
+| Option        | Description                            |
+| ------------- | -------------------------------------- |
+| `-s, --scope` | `project` (default) or `user`          |
+| `-f, --force` | Overwrite files Heimdall did not write |
+| `--dry-run`   | Print the files that would be written  |
+| `--json`      | Print the result as JSON               |
+
+Installed files are stamped with a marker. A reinstall replaces its own previous output,
+but refuses to overwrite a file you edited by hand unless you pass `--force`.
+
+Other user-facing commands and installation instructions are not documented here yet.

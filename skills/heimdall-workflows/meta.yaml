@@ -1,0 +1,30 @@
+name: heimdall-workflows
+description: >-
+  Write, review, or debug a Heimdall workflow YAML file. Use this skill whenever
+  authoring a .heimdall workflow, adding or changing nodes, writing CEL expressions
+  or ${{ }} interpolation, wiring node dependencies, or diagnosing a workflow that
+  fails validation. Trigger even for partial tasks like "add a bash step" or "make
+  this node conditional".
+references:
+  - schemas/workflow.yaml
+  - schemas/node.yaml
+  - schemas/node_union.yaml
+  - schemas/bash_node.yaml
+  - schemas/agentic_node.yaml
+  - schemas/agent_node.yaml
+  - schemas/prompt_node.yaml
+  - schemas/prompt_file_node.yaml
+  - schemas/approval_node.yaml
+  - schemas/loop_node.yaml
+  - schemas/exit_node.yaml
+  - schemas/break_node.yaml
+  - schemas/platform.yaml
+  - schemas/platform_options.yaml
+  - schemas/platform_options_union.yaml
+  - schemas/claude_options.yaml
+  - schemas/workspace.yaml
+  - schemas/results/builtins.yaml
+  - schemas/results/bash_node_result.yaml
+  - schemas/results/agentic_node_result.yaml
+  - schemas/results/approval_node_result.yaml
+  - schemas/results/loop_node_result.yaml

@@ -4,11 +4,22 @@ import { createProgram } from '../../../src/cli/program.ts';
 import { registerCommands } from '../../../src/cli/register-commands.ts';
 
 describe('program registration', () => {
-  it('starts without concrete commands registered', () => {
+  it('registers the skills command group', () => {
     const program = createProgram();
     registerCommands(program);
 
     const commandNames = program.commands.map((command) => command.name());
-    expect(commandNames).toEqual([]);
+    expect(commandNames).toEqual(['skills']);
+  });
+
+  it('registers install under skills with a required platform argument', () => {
+    const program = createProgram();
+    registerCommands(program);
+
+    const skills = program.commands.find((command) => command.name() === 'skills');
+    const install = skills?.commands.find((command) => command.name() === 'install');
+
+    expect(install).toBeDefined();
+    expect(install?.usage()).toContain('<platform>');
   });
 });
