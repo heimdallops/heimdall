@@ -178,6 +178,33 @@ describe('heimdall skills list', () => {
     expect(result.stdout).toMatch(/v\d+\.\d+\.\d+/);
   });
 
+  it.each(['opencode', 'codex'] as const)('lists what %s has installed', async (platform) => {
+    const cwd = await workdir();
+    await execa('node', [cliPath, 'skills', 'install', platform], { cwd });
+
+    const result = await execa('node', [cliPath, 'skills', 'list', platform], {
+      cwd,
+      reject: false,
+    });
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toContain('heimdall-workflows');
+  });
+
+  it('reports nothing for a platform that has no install', async () => {
+    const cwd = await workdir();
+    await execa('node', [cliPath, 'skills', 'install', 'claude'], { cwd });
+
+    const result = await execa('node', [cliPath, 'skills', 'list', 'codex'], {
+      cwd,
+      reject: false,
+    });
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toBe('');
+    expect(result.stderr).toContain('No Heimdall skills installed');
+  });
+
   it('lists a skill this build no longer ships', async () => {
     const cwd = await workdir();
     await plantRetired(cwd);
@@ -222,5 +249,33 @@ describe('heimdall skills list', () => {
     await execa('node', [cliPath, ...list], { cwd });
 
     expect(await readdir(join(cwd, skillDir))).toEqual(before);
+  });
+
+  it.each(['opencode', 'codex'] as const)(
+    'uninstalls from .agents/skills for %s',
+    async (platform) => {
+      const cwd = await workdir();
+      await execa('node', [cliPath, 'skills', 'install', platform], { cwd });
+
+      const result = await execa('node', [cliPath, 'skills', 'uninstall', platform, '--yes'], {
+        cwd,
+        reject: false,
+      });
+
+      expect(result.exitCode).toBe(0);
+      await expect(readdir(join(cwd, '.agents', 'skills', 'heimdall-workflows'))).rejects.toThrow();
+    }
+  );
+
+  // Each platform owns its own root, so acting on one must leave the others alone.
+  it("never removes another platform's install", async () => {
+    const cwd = await workdir();
+    await execa('node', [cliPath, 'skills', 'install', 'claude'], { cwd });
+    await execa('node', [cliPath, 'skills', 'install', 'codex'], { cwd });
+
+    await execa('node', [cliPath, 'skills', 'uninstall', 'codex', '--yes'], { cwd });
+
+    expect(await readFile(join(cwd, skillDir, 'SKILL.md'), 'utf8')).toContain('Heimdall');
+    await expect(readdir(join(cwd, '.agents', 'skills', 'heimdall-workflows'))).rejects.toThrow();
   });
 });

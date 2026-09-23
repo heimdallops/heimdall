@@ -1,11 +1,11 @@
 import { confirm } from '@inquirer/prompts';
 
 import type { CliContext } from '../../cli/context.ts';
-import type { Platform } from '../../core/platform/platform.ts';
 import {
   CLI_VERSION,
   createSkillTarget,
   type InstalledSkill,
+  type SkillPlatform,
   type SkillScope,
 } from '../../core/skills/index.ts';
 import { CliError, EXIT_CODE } from '../../errors/cli-error.ts';
@@ -13,7 +13,7 @@ import { discoverInstalledSkills } from '../../services/skill-discovery.ts';
 import { removeSkillFiles } from '../../services/skill-writer.ts';
 
 export interface SkillsUninstallInput {
-  readonly platform: Platform;
+  readonly platform: SkillPlatform;
   readonly scope: SkillScope;
   readonly force: boolean;
   readonly dryRun: boolean;
@@ -21,7 +21,7 @@ export interface SkillsUninstallInput {
 }
 
 export interface SkillsUninstallResult {
-  readonly platform: Platform;
+  readonly platform: SkillPlatform;
   readonly scope: SkillScope;
   readonly skills: string[];
   readonly removed: string[];

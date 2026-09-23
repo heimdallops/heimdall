@@ -1,23 +1,23 @@
 import type { CliContext } from '../../cli/context.ts';
-import type { Platform } from '../../core/platform/platform.ts';
 import {
   CLI_VERSION,
   createSkillTarget,
   listSkills,
+  type SkillPlatform,
   type SkillScope,
 } from '../../core/skills/index.ts';
 import { discoverInstalledSkills } from '../../services/skill-discovery.ts';
 import { plannedRemovals, writeSkillFiles } from '../../services/skill-writer.ts';
 
 export interface SkillsInstallInput {
-  readonly platform: Platform;
+  readonly platform: SkillPlatform;
   readonly scope: SkillScope;
   readonly force: boolean;
   readonly dryRun: boolean;
 }
 
 export interface SkillsInstallResult {
-  readonly platform: Platform;
+  readonly platform: SkillPlatform;
   readonly scope: SkillScope;
   readonly skills: string[];
   readonly files: string[];

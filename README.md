@@ -183,12 +183,25 @@ schemas as reference material.
 
 ```bash
 heimdall skills install claude              # into ./.claude/skills
+heimdall skills install codex               # into ./.agents/skills
 heimdall skills install claude --scope user # into ~/.claude/skills
 heimdall skills install claude --dry-run    # print the files, write nothing
 ```
 
-The platform is required — nothing is installed into an agent you did not name. Claude
-Code is the only supported platform today.
+The platform is required — nothing is installed into an agent you did not name.
+
+| Platform   | Project scope      | User scope         |
+| ---------- | ------------------ | ------------------ |
+| `claude`   | `./.claude/skills` | `~/.claude/skills` |
+| `opencode` | `./.agents/skills` | `~/.agents/skills` |
+| `codex`    | `./.agents/skills` | `~/.agents/skills` |
+
+The content is identical for all three — [Agent Skills](https://agentskills.io) is one open
+format, and only the directory differs. `opencode` and `codex` share `.agents/skills`, the
+standard's tool-neutral location that both agents read. OpenCode also scans `.claude/skills`,
+so a `claude` install is already visible to it.
+
+Each platform owns its own root: installing or uninstalling for one never touches another.
 
 | Option        | Description                            |
 | ------------- | -------------------------------------- |

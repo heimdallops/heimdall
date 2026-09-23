@@ -1,11 +1,14 @@
-import type { Platform } from '../platform/platform.ts';
-import { createClaudeSkillTarget } from './targets/claude.ts';
+import type { SkillPlatform } from './platform.ts';
+import { createAgentsDirSkillTarget, createClaudeSkillTarget } from './targets/agent-skills.ts';
 import type { SkillTarget } from './types.ts';
 
-export const createSkillTarget = (platform: Platform, version: string): SkillTarget => {
+export const createSkillTarget = (platform: SkillPlatform, version: string): SkillTarget => {
   switch (platform) {
     case 'claude':
       return createClaudeSkillTarget(version);
+    case 'opencode':
+    case 'codex':
+      return createAgentsDirSkillTarget(platform, version);
     default: {
       // Compile-time exhaustiveness: a new platform enum member fails to assign to never,
       // forcing a matching case above.

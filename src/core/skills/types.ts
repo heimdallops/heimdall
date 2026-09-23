@@ -1,4 +1,4 @@
-import type { Platform } from '../platform/platform.ts';
+import type { SkillPlatform } from './platform.ts';
 
 /** A supporting file installed alongside the skill body, e.g. a JSON Schema. */
 export interface SkillReference {
@@ -30,7 +30,7 @@ export interface SkillFile {
  * is about running prompts, and installing files is an unrelated concern.
  */
 export interface SkillTarget {
-  readonly platform: Platform;
+  readonly platform: SkillPlatform;
   /** Absolute directory that rendered `relativePath`s are resolved against. */
   resolveRoot(scope: SkillScope, cwd: string): string;
   /** Pure — performs no I/O, so `--dry-run` is the same code path as a real install. */

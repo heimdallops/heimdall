@@ -2,9 +2,9 @@ import type { Command } from 'commander';
 import { z } from 'zod';
 
 import { type CliContext, createContext } from '../../cli/context.ts';
-// Imported from platform.ts rather than the platform barrel: the barrel re-exports
-// ClaudeCodeAdapter, which would pull the Claude Agent SDK into CLI startup.
-import { platformSchema } from '../../core/platform/platform.ts';
+// The skills enum, not the engine's `platformSchema`: installing a skill and running a
+// prompt are different capabilities, and only Claude can do the latter.
+import { skillPlatformSchema } from '../../core/skills/platform.ts';
 import { CliError, EXIT_CODE } from '../../errors/cli-error.ts';
 import { run as runList } from './list.ts';
 import { run as runInstall } from './run.ts';
@@ -21,8 +21,8 @@ const unsupported =
 
 // Every skills subcommand takes the same target: which agent, and which scope of it.
 const targetSchema = z.object({
-  platform: z.enum(platformSchema.options, {
-    error: unsupported('platform', platformSchema.options),
+  platform: z.enum(skillPlatformSchema.options, {
+    error: unsupported('platform', skillPlatformSchema.options),
   }),
   scope: z.enum(SCOPES, { error: unsupported('scope', SCOPES) }),
 });
@@ -57,7 +57,7 @@ const contextFor = async (program: Command): Promise<CliContext> =>
     flags: program.opts(),
   });
 
-const platformArgument = `Coding agent to target (${platformSchema.options.join(', ')})`;
+const platformArgument = `Coding agent to target (${skillPlatformSchema.options.join(', ')})`;
 const scopeOption = `Scope to act on (${SCOPES.join(', ')})`;
 
 export const buildCommand = (program: Command): void => {

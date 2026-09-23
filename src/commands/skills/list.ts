@@ -1,10 +1,14 @@
 import type { CliContext } from '../../cli/context.ts';
-import type { Platform } from '../../core/platform/platform.ts';
-import { CLI_VERSION, createSkillTarget, type SkillScope } from '../../core/skills/index.ts';
+import {
+  CLI_VERSION,
+  createSkillTarget,
+  type SkillPlatform,
+  type SkillScope,
+} from '../../core/skills/index.ts';
 import { discoverInstalledSkills } from '../../services/skill-discovery.ts';
 
 export interface SkillsListInput {
-  readonly platform: Platform;
+  readonly platform: SkillPlatform;
   readonly scope: SkillScope;
 }
 
@@ -19,7 +23,7 @@ export interface SkillsListEntry {
 }
 
 export interface SkillsListResult {
-  readonly platform: Platform;
+  readonly platform: SkillPlatform;
   readonly scope: SkillScope;
   readonly root: string;
   readonly skills: SkillsListEntry[];

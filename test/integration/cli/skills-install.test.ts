@@ -117,15 +117,65 @@ describe('heimdall skills install', () => {
   });
 
   it('rejects an unsupported platform and names the supported ones', async () => {
-    const result = await execa('node', [cliPath, 'skills', 'install', 'opencode'], {
+    const result = await execa('node', [cliPath, 'skills', 'install', 'cursor'], {
       cwd: await workdir(),
       reject: false,
     });
 
     expect(result.exitCode).toBe(2);
     expect(result.stdout).toBe('');
-    expect(result.stderr).toContain('Unsupported platform "opencode"');
-    expect(result.stderr).toContain('claude');
+    expect(result.stderr).toContain('Unsupported platform "cursor"');
+    expect(result.stderr).toContain('claude, opencode, codex');
+  });
+
+  it.each(['opencode', 'codex'] as const)(
+    'installs into .agents/skills for %s',
+    async (platform) => {
+      const cwd = await workdir();
+
+      const result = await execa('node', [cliPath, 'skills', 'install', platform], {
+        cwd,
+        reject: false,
+      });
+
+      expect(result.exitCode).toBe(0);
+      expect(
+        await readFile(join(cwd, '.agents/skills/heimdall-workflows/SKILL.md'), 'utf8')
+      ).toContain('name: heimdall-workflows');
+      // The agent that reads .agents/skills must not have its skill land in Claude's root.
+      await expect(readFile(join(cwd, skillMd), 'utf8')).rejects.toThrow();
+    }
+  );
+
+  it('writes byte-identical content for every platform', async () => {
+    // Agent Skills is one open format; only the directory differs between agents.
+    const read = async (platform: string, dir: string): Promise<string> => {
+      const cwd = await workdir();
+      await execa('node', [cliPath, 'skills', 'install', platform], { cwd });
+
+      return readFile(join(cwd, dir, 'skills/heimdall-workflows/SKILL.md'), 'utf8');
+    };
+
+    const [claude, opencode, codex] = await Promise.all([
+      read('claude', '.claude'),
+      read('opencode', '.agents'),
+      read('codex', '.agents'),
+    ]);
+
+    expect(opencode).toBe(claude);
+    expect(codex).toBe(claude);
+  });
+
+  it("keeps each platform's install independent", async () => {
+    const cwd = await workdir();
+    await execa('node', [cliPath, 'skills', 'install', 'claude'], { cwd });
+    await execa('node', [cliPath, 'skills', 'install', 'codex'], { cwd });
+
+    // Installing for one agent must not sweep another agent's root.
+    expect(await readFile(join(cwd, skillMd), 'utf8')).toContain('Heimdall');
+    expect(
+      await readFile(join(cwd, '.agents/skills/heimdall-workflows/SKILL.md'), 'utf8')
+    ).toContain('Heimdall');
   });
 
   it('rejects a missing platform argument', async () => {
