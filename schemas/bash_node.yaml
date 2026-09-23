@@ -1,6 +1,6 @@
 $schema: 'https://json-schema.org/draft/2020-12/schema'
 description: >-
-  Executes a bash script and exposes its output to downstream nodes via needs.<id>.output.
+  Executes a bash script and exposes its output to downstream nodes via self.needs.<id>.output.
   The engine injects a HEIMDALL_OUTPUT environment variable containing the path to a
   temporary file. Write to that file to control exactly what is exposed as output —
   only its contents are read, so incidental stdout from commands like apt or curl does
@@ -31,9 +31,9 @@ allOf:
         default: text
         description: >-
           Controls how the contents of HEIMDALL_OUTPUT are parsed. "text" (default)
-          exposes the contents as a plain string on needs.<id>.output. "json" parses
-          the contents as JSON and exposes the parsed structure on needs.<id>.output,
-          making fields accessible as needs.<id>.output.<field>. If "json" is set and
+          exposes the contents as a plain string on self.needs.<id>.output. "json" parses
+          the contents as JSON and exposes the parsed structure on self.needs.<id>.output,
+          making fields accessible as self.needs.<id>.output.<field>. If "json" is set and
           the contents are not valid JSON, the node fails immediately.
     required:
       - bash
