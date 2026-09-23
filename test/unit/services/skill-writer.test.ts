@@ -4,10 +4,10 @@ import { dirname, join } from 'node:path';
 
 import { afterEach, describe, expect, it } from 'vitest';
 
-import type { SkillFile } from '../../../src/core/skills/index.ts';
+import type { InstalledSkill, SkillFile } from '../../../src/core/skills/index.ts';
 import { markerText } from '../../../src/core/skills/marker.ts';
 import { CliError } from '../../../src/errors/cli-error.ts';
-import { findOrphanedFiles, writeSkillFiles } from '../../../src/services/skill-writer.ts';
+import { plannedRemovals, writeSkillFiles } from '../../../src/services/skill-writer.ts';
 
 const files: SkillFile[] = [
   { relativePath: 'demo/SKILL.md', contents: `<!-- ${markerText('1.0.0')} -->\nfresh` },
@@ -30,6 +30,22 @@ const seed = async (root: string, relativePath: string, contents: string): Promi
 
   return path;
 };
+
+// Stands in for what discoverInstalledSkills returns, so the writer's rules are tested
+// without dragging the filesystem scan into every case.
+const installed = (
+  root: string,
+  name: string,
+  marked: string[],
+  kept: string[] = []
+): InstalledSkill => ({
+  name,
+  directory: join(root, name),
+  files: marked.map((path) => join(root, path)),
+  kept: kept.map((path) => join(root, path)),
+  version: '0.0.1',
+  partial: false,
+});
 
 afterEach(() => {
   roots.length = 0;
@@ -105,15 +121,14 @@ describe('writeSkillFiles', () => {
   });
 });
 
-describe('writeSkillFiles — stale files from an earlier version', () => {
-  // The case this exists for: a reference dropped or renamed between versions. It carries the
-  // marker from the install that wrote it, so nothing else would ever flag it, while the skill
-  // body presents references/ as authoritative.
+describe('writeSkillFiles — sweeping what this version no longer ships', () => {
   it('removes a marked file the current render no longer produces', async () => {
     const root = await makeRoot();
     const stale = await seed(root, 'demo/references/gone.yaml', `# ${markerText('0.0.1')}\nold`);
 
-    const { removed } = await writeSkillFiles(root, files, false);
+    const { removed } = await writeSkillFiles(root, files, false, [
+      installed(root, 'demo', ['demo/SKILL.md', 'demo/references/gone.yaml']),
+    ]);
 
     expect(removed).toEqual([stale]);
     await expect(readFile(stale, 'utf8')).rejects.toThrow();
@@ -123,81 +138,84 @@ describe('writeSkillFiles — stale files from an earlier version', () => {
     const root = await makeRoot();
     await seed(root, 'demo/references/a.yaml', `# ${markerText('0.0.1')}\nold`);
 
-    const { removed } = await writeSkillFiles(root, files, false);
+    const { removed } = await writeSkillFiles(root, files, false, [
+      installed(root, 'demo', ['demo/SKILL.md', 'demo/references/a.yaml']),
+    ]);
 
     expect(removed).toEqual([]);
     expect(await readFile(join(root, 'demo/references/a.yaml'), 'utf8')).toContain('fresh');
   });
 
-  it('leaves an unmarked file alone — the user put it there', async () => {
+  // The gap the sweep exists to close: a whole skill dropped from the bundle. Its directory
+  // is not in the render at all, so nothing derived from the render would ever visit it.
+  it('removes a skill directory this version no longer ships at all', async () => {
     const root = await makeRoot();
-    const mine = await seed(root, 'demo/references/notes.md', 'my own notes');
+    await seed(root, 'retired/SKILL.md', `<!-- ${markerText('0.0.1')} -->\nold`);
+    const reference = await seed(root, 'retired/references/b.yaml', `# ${markerText('0.0.1')}\nb`);
 
-    const { removed } = await writeSkillFiles(root, files, false);
+    const { removed } = await writeSkillFiles(root, files, false, [
+      installed(root, 'retired', ['retired/SKILL.md', 'retired/references/b.yaml']),
+    ]);
 
-    expect(removed).toEqual([]);
+    expect(removed).toContain(reference);
+    await expect(readdir(join(root, 'retired'))).rejects.toThrow();
+    // The skill this version does ship is installed as usual.
+    expect(await readFile(join(root, 'demo/SKILL.md'), 'utf8')).toContain('fresh');
+  });
+
+  it('keeps a retired skill directory alive when it holds a file the user added', async () => {
+    const root = await makeRoot();
+    await seed(root, 'retired/SKILL.md', `<!-- ${markerText('0.0.1')} -->\nold`);
+    const mine = await seed(root, 'retired/notes.md', 'my own notes');
+
+    await writeSkillFiles(root, files, false, [
+      installed(root, 'retired', ['retired/SKILL.md'], ['retired/notes.md']),
+    ]);
+
     expect(await readFile(mine, 'utf8')).toBe('my own notes');
   });
 
-  it('leaves an unmarked file alone even when forced', async () => {
+  it('never removes a file outside a swept skill, even when marked', async () => {
     const root = await makeRoot();
-    const mine = await seed(root, 'demo/references/notes.md', 'my own notes');
-
-    // force governs overwriting a user's edits at a path being written; it must not widen into
-    // deleting files elsewhere in the directory.
-    const { removed } = await writeSkillFiles(root, files, true);
-
-    expect(removed).toEqual([]);
-    expect(await readFile(mine, 'utf8')).toBe('my own notes');
-  });
-
-  it('never touches a sibling skill it does not own', async () => {
-    const root = await makeRoot();
-    // The skills root is shared: other tools and the user's own skills live beside this one.
     const other = await seed(root, 'other-skill/SKILL.md', `<!-- ${markerText('0.0.1')} -->\nold`);
 
-    const { removed } = await writeSkillFiles(root, files, false);
+    const { removed } = await writeSkillFiles(root, files, false, [
+      installed(root, 'demo', ['demo/SKILL.md']),
+    ]);
 
     expect(removed).toEqual([]);
     expect(await readFile(other, 'utf8')).toContain('old');
   });
-
-  it('drops a directory left empty by the removal', async () => {
-    const root = await makeRoot();
-    await seed(root, 'demo/references/legacy/old.yaml', `# ${markerText('0.0.1')}\nold`);
-
-    await writeSkillFiles(root, files, false);
-
-    await expect(readdir(join(root, 'demo/references/legacy'))).rejects.toThrow();
-    // The skill's own directory survives even so.
-    expect(await readFile(join(root, 'demo/SKILL.md'), 'utf8')).toContain('fresh');
-  });
-
-  it('converges on the current render when run twice', async () => {
-    const root = await makeRoot();
-    await seed(root, 'demo/references/gone.yaml', `# ${markerText('0.0.1')}\nold`);
-
-    await writeSkillFiles(root, files, false);
-    const second = await writeSkillFiles(root, files, false);
-
-    expect(second.removed).toEqual([]);
-    expect(await readdir(join(root, 'demo/references'))).toEqual(['a.yaml']);
-  });
 });
 
-describe('findOrphanedFiles', () => {
-  it('reports what a real install would remove, without removing it', async () => {
+describe('plannedRemovals', () => {
+  it('reports what a real install would remove, touching nothing', async () => {
     const root = await makeRoot();
     const stale = await seed(root, 'demo/references/gone.yaml', `# ${markerText('0.0.1')}\nold`);
 
     // This is what --dry-run calls, so it must see the orphan and leave it on disk.
-    expect(await findOrphanedFiles(root, files)).toEqual([stale]);
+    const planned = plannedRemovals(root, files, [
+      installed(root, 'demo', ['demo/SKILL.md', 'demo/references/gone.yaml']),
+    ]);
+
+    expect(planned).toEqual([stale]);
     expect(await readFile(stale, 'utf8')).toContain('old');
   });
 
-  it('reports nothing for a fresh install', async () => {
+  it('reports nothing when nothing is installed', async () => {
     const root = await makeRoot();
 
-    expect(await findOrphanedFiles(root, files)).toEqual([]);
+    expect(plannedRemovals(root, files, [])).toEqual([]);
+  });
+
+  it('matches what the write path actually removes', async () => {
+    const root = await makeRoot();
+    await seed(root, 'demo/references/gone.yaml', `# ${markerText('0.0.1')}\nold`);
+    const stale = [installed(root, 'demo', ['demo/SKILL.md', 'demo/references/gone.yaml'])];
+
+    const planned = plannedRemovals(root, files, stale);
+    const { removed } = await writeSkillFiles(root, files, false, stale);
+
+    expect(removed).toEqual(planned);
   });
 });

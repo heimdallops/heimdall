@@ -25,12 +25,18 @@ class ClaudeSkillTarget implements SkillTarget {
     return join(scope === 'user' ? homedir() : cwd, '.claude', 'skills');
   }
 
+  public manifestPath(skillName: string): string {
+    return posix.join(skillName, 'SKILL.md');
+  }
+
   public render(skill: Skill): SkillFile[] {
     const marker = markerText(this.version);
 
     const files: SkillFile[] = [
       {
-        relativePath: posix.join(skill.name, 'SKILL.md'),
+        // Built from manifestPath so what render writes and what discovery looks for
+        // cannot drift apart.
+        relativePath: this.manifestPath(skill.name),
         contents: [
           '---',
           `name: ${skill.name}`,

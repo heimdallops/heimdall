@@ -6,7 +6,8 @@ import {
   listSkills,
   type SkillScope,
 } from '../../core/skills/index.ts';
-import { findOrphanedFiles, writeSkillFiles } from '../../services/skill-writer.ts';
+import { discoverInstalledSkills } from '../../services/skill-discovery.ts';
+import { plannedRemovals, writeSkillFiles } from '../../services/skill-writer.ts';
 
 export interface SkillsInstallInput {
   readonly platform: Platform;
@@ -34,13 +35,22 @@ export const run = async (
   const root = target.resolveRoot(input.scope, ctx.cwd);
   const files = skills.flatMap((skill) => target.render(skill));
 
+  // Install sweeps before it writes, so it converges on exactly what this version ships.
+  // Discovery is disk-driven, which is what lets the sweep reach a skill dropped or renamed
+  // since it was installed — the catalog no longer knows that name, but the marker does.
+  // Partial installs are left for `skills uninstall --force` rather than being swept
+  // silently: install should not destroy a directory it cannot also replace.
+  const installed = await discoverInstalledSkills(root, target);
+  const sweepable = installed.filter((skill) => !skill.partial);
+  const partial = installed.filter((skill) => skill.partial);
+
   // A dry run reports the same two lists a real one would, so it stays a faithful preview.
   const { written, removed } = input.dryRun
     ? {
         written: files.map((file) => `${root}/${file.relativePath}`),
-        removed: await findOrphanedFiles(root, files),
+        removed: plannedRemovals(root, files, sweepable),
       }
-    : await writeSkillFiles(root, files, input.force);
+    : await writeSkillFiles(root, files, input.force, sweepable);
 
   const result: SkillsInstallResult = {
     platform: input.platform,
@@ -77,6 +87,12 @@ export const run = async (
     for (const path of removed) {
       ctx.printer.info(`  ${path}`);
     }
+  }
+
+  for (const skill of partial) {
+    ctx.printer.warn(
+      `${skill.directory} holds files Heimdall wrote but no generated SKILL.md; left in place. Run 'heimdall skills uninstall ${input.platform} --force' to remove it.`
+    );
   }
 
   return result;

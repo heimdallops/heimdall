@@ -35,4 +35,34 @@ export interface SkillTarget {
   resolveRoot(scope: SkillScope, cwd: string): string;
   /** Pure — performs no I/O, so `--dry-run` is the same code path as a real install. */
   render(skill: Skill): SkillFile[];
+  /**
+   * Path, relative to the skills root, of the file whose presence and marker identify
+   * `skillName` as installed by Heimdall. Pure — performs no I/O.
+   *
+   * This is what lets removal work without the catalog: a skill is recognized by what is
+   * on disk, not by whether this build still ships it.
+   */
+  manifestPath(skillName: string): string;
+}
+
+/**
+ * A skill found on disk rather than in the bundle.
+ *
+ * `files` are the marker-bearing paths — the ones Heimdall wrote and may remove. `kept`
+ * are everything else in the directory: files the user added, which are never removed and
+ * whose presence keeps the directory alive.
+ */
+export interface InstalledSkill {
+  readonly name: string;
+  readonly directory: string;
+  readonly files: readonly string[];
+  readonly kept: readonly string[];
+  /** Version recorded in the manifest's marker, when it records one. */
+  readonly version: string | undefined;
+  /**
+   * True when the directory holds marker-bearing files but no marker-bearing manifest —
+   * an interrupted write, or a manifest deleted by hand. The evidence that the directory
+   * is ours is weaker, so removal requires `force`.
+   */
+  readonly partial: boolean;
 }

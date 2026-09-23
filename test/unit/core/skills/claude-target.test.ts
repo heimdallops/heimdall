@@ -79,4 +79,15 @@ describe('claude skill target', () => {
   it('renders identically on repeated calls, so render performs no I/O or mutation', () => {
     expect(target.render(skill)).toEqual(target.render(skill));
   });
+
+  it('names the manifest that identifies an installed skill', () => {
+    expect(target.manifestPath('demo')).toBe('demo/SKILL.md');
+  });
+
+  it('renders its manifest at exactly the path discovery looks for', () => {
+    const rendered = target.render(skill).map((file) => file.relativePath);
+
+    // Drift here would make a skill uninstallable: written to one path, sought at another.
+    expect(rendered).toContain(target.manifestPath(skill.name));
+  });
 });

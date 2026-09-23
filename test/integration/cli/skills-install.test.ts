@@ -1,4 +1,4 @@
-import { mkdtemp, readFile, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 
@@ -236,5 +236,44 @@ describe('heimdall skills install', () => {
     expect(result.exitCode).toBe(0);
     expect(parsed.removed).toHaveLength(1);
     expect(parsed.removed[0]).toContain('retired_node.yaml');
+  });
+
+  // The gap the sweep closes: a whole skill this build no longer ships. Nothing derived from
+  // the current render would ever visit its directory, so only disk-driven discovery finds it.
+  it('removes a skill directory this version no longer ships', async () => {
+    const cwd = await workdir();
+    await execa('node', [cliPath, ...install], { cwd });
+    const retired = join(cwd, '.claude', 'skills', 'heimdall-retired');
+    await mkdir(retired, { recursive: true });
+    await writeFile(
+      join(retired, 'SKILL.md'),
+      '<!-- heimdall-generated: v0.0.1 — installed by `heimdall skills install`. -->\nold',
+      'utf8'
+    );
+
+    const result = await execa('node', [cliPath, ...install], { cwd, reject: false });
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stderr).toContain('heimdall-retired');
+    await expect(readFile(join(retired, 'SKILL.md'), 'utf8')).rejects.toThrow();
+    // The skill this version does ship is installed as usual.
+    expect(await readFile(join(cwd, skillMd), 'utf8')).toContain('Heimdall');
+  });
+
+  it('keeps a retired skill directory that holds a file you added', async () => {
+    const cwd = await workdir();
+    await execa('node', [cliPath, ...install], { cwd });
+    const retired = join(cwd, '.claude', 'skills', 'heimdall-retired');
+    await mkdir(retired, { recursive: true });
+    await writeFile(
+      join(retired, 'SKILL.md'),
+      '<!-- heimdall-generated: v0.0.1 — installed by `heimdall skills install`. -->\nold',
+      'utf8'
+    );
+    await writeFile(join(retired, 'notes.md'), 'my own notes', 'utf8');
+
+    await execa('node', [cliPath, ...install], { cwd });
+
+    expect(await readFile(join(retired, 'notes.md'), 'utf8')).toBe('my own notes');
   });
 });

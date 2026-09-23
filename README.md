@@ -200,7 +200,44 @@ Code is the only supported platform today.
 Installed files are stamped with a marker. A reinstall replaces its own previous output,
 but refuses to overwrite a file you edited by hand unless you pass `--force`.
 
-A reinstall also removes marked files the current version no longer ships, so upgrading
-converges on exactly the current content rather than leaving a renamed or dropped
-reference behind for your agent to read. Removals are listed, and a file without the
-marker is never removed — if you added it to the skill directory, it stays.
+A reinstall sweeps before it writes, so upgrading converges on exactly what the current
+version ships — including removing a whole skill this version no longer has, which your
+agent would otherwise go on loading. Removals are listed, and a file without the marker is
+never removed: if you added it to the skill directory, it stays, and so does the directory.
+
+### `heimdall skills uninstall <platform>`
+
+Removes every skill Heimdall installed, **including skills this version no longer ships** —
+one renamed, retired, or written by an older CLI. Installed skills are found by the marker
+on disk rather than by what this build knows about, which is what makes that possible.
+
+```bash
+heimdall skills uninstall claude            # confirms first
+heimdall skills uninstall claude --yes      # no prompt
+heimdall skills uninstall claude --dry-run  # show what would go
+```
+
+| Option        | Description                                        |
+| ------------- | -------------------------------------------------- |
+| `-s, --scope` | `project` (default) or `user`                      |
+| `-y, --yes`   | Skip the confirmation prompt                       |
+| `-f, --force` | Also remove a directory with no generated SKILL.md |
+| `--dry-run`   | Print what would be removed                        |
+| `--json`      | Print the result as JSON                           |
+
+Files Heimdall did not write are always kept, and keep their directory with them. Without a
+terminal to prompt on, the command refuses unless you pass `--yes`.
+
+### `heimdall skills list <platform>`
+
+Shows what is installed, including skills this version no longer ships, with the CLI
+version that wrote each one.
+
+```bash
+heimdall skills list claude
+heimdall skills list claude --scope user
+heimdall skills list claude --json
+```
+
+It reads only — it is the same discovery `uninstall` uses, so what it lists is exactly what
+`uninstall` would act on.
