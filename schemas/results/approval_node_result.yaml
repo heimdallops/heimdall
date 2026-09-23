@@ -1,9 +1,11 @@
 $schema: 'https://json-schema.org/draft/2020-12/schema'
 description: >-
-  Output produced by an approval_node. Available to downstream nodes via
-  needs.<id>.output. When exit_on_no is true, a "no" response exits the
-  workflow immediately and produces no output; otherwise approved is false
-  and downstream nodes can route accordingly.
+  Result of an approval_node. Its properties sit at the top level of
+  self.needs.<id> — as self.needs.<id>.approved, not under an "output" key,
+  unlike every other node type. When exit_on_no is true, a declining response
+  exits the workflow and produces no result, unless enable_feedback is true
+  and the user supplied feedback, in which case the node completes with
+  approved false and the run continues.
 type: object
 properties:
   approved:

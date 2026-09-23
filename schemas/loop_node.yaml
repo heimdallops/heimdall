@@ -14,23 +14,27 @@ allOf:
               CEL expression that exits the loop when it evaluates to true.
               Evaluated after each iteration (a post-condition, like a
               do-while loop), so the loop body always runs at least once.
-              Mutually exclusive with while. Do not wrap in ${{ }}. Within the
-              expression, scope.loop.iteration and scope.loop.nodes.<id> (this
-              loop's body results) are available, and needs.<id> /
-              scope.needs.<id> refer to this loop node's own depends_on outputs.
-              Use "true" combined with a break_node inside the loop to control
-              exit explicitly from within the iteration.
+              Mutually exclusive with while. Do not wrap in ${{ }}. This is a
+              loop checkpoint, so self.iterations (executions terminated so far)
+              and self.nodes.<id> (the latest body execution's results) are
+              available, and self.needs.<id> refers to this loop node's own
+              depends_on outputs. A checkpoint sits outside its own scope:
+              scopes.<this_loop_id> is not bound, though an enclosing loop's
+              scopes.<outer_id> is. Use "true" combined with a break_node inside
+              the loop to control exit explicitly from within the iteration.
           while:
             type: string
             description: >-
               CEL expression that continues the loop while it evaluates to true.
               Evaluated before each iteration (a pre-condition, like a while
               loop), so the loop body may run zero times if it is false up front.
-              Mutually exclusive with until. Do not wrap in ${{ }}. Within the
-              expression, scope.loop.iteration and scope.loop.nodes.<id> (the
-              previous iteration's body results, empty on the first iteration)
-              are available, and needs.<id> / scope.needs.<id> refer to this
-              loop node's own depends_on outputs.
+              Mutually exclusive with until. Do not wrap in ${{ }}. This is a
+              loop checkpoint, so self.iterations (executions terminated so far,
+              0 on the first check) and self.nodes.<id> (the previous body
+              execution's results, empty on the first check) are available, and
+              self.needs.<id> refers to this loop node's own depends_on outputs.
+              A checkpoint sits outside its own scope: scopes.<this_loop_id> is
+              not bound, though an enclosing loop's scopes.<outer_id> is.
           max_iterations:
             type: integer
             description: >-
@@ -40,7 +44,15 @@ allOf:
             minimum: 1
           nodes:
             type: array
-            description: List of nodes to run on each iteration of the loop.
+            description: >-
+              List of nodes to run on each iteration of the loop. Inside the
+              body, this loop is readable as scopes.<loop_id>: .index is the
+              zero-based index of the running execution, .needs.<id> the loop
+              node's own depends_on outputs, and .prev.<id> the previous
+              execution's body results (empty on the first, so guard with
+              has()). Body nodes cannot declare depends_on against nodes outside
+              the loop; declare that dependency on the loop node itself and read
+              it through scopes.<loop_id>.needs.<id>.
             items:
               $ref: node_union.yaml
             minItems: 1
@@ -48,15 +60,16 @@ allOf:
             type: object
             description: >-
               Declares the values exposed to downstream nodes after the loop exits.
-              Each key becomes a field on needs.<loop_id>.output. Values are CEL
-              expressions evaluated in the loop's final iteration context, where
-              scope.loop.iteration and scope.loop.nodes.<id> (this loop's body
-              results) are available, and needs.<id> / scope.needs.<id> refer to
-              this loop node's own depends_on outputs. Guard a node that may not
-              have run (e.g. a conditional `if` node) with has(), such as
-              "has(scope.loop.nodes.<id>) ? scope.loop.nodes.<id>.output :
-              <default>". On an early break exit, scope.loop.nodes contains only
-              the nodes that completed before the break fired; others are absent.
+              Each key becomes a field on self.needs.<loop_id>.output. Values are
+              CEL expressions evaluated at the loop's final checkpoint, where
+              self.iterations (the total number of terminated executions) and
+              self.nodes.<id> (the final body execution's results) are
+              available, and self.needs.<id> refers to this loop node's own
+              depends_on outputs. Guard a node that may not have run (e.g. a
+              conditional `if` node) with has(), such as
+              "has(self.nodes.<id>) ? self.nodes.<id>.output : <default>". On an
+              early break exit, self.nodes contains only the nodes that
+              completed before the break fired; others are absent.
             additionalProperties:
               type: string
         required:

@@ -4,9 +4,15 @@ type: object
 properties:
   id:
     type: string
-    description: Unique identifier for this node. Must contain only alphanumeric characters and underscores.
+    description: >-
+      Identifier for this node. Must be a valid identifier: a letter or
+      underscore followed by letters, digits, or underscores. Unique across the
+      entire workflow, not merely among siblings, because scopes.<id> names one
+      ancestor by id however deep the nesting. Must not be one of the reserved
+      names the expression language owns: loop, worktree, switch, each, outer,
+      needs, nodes, prev, item, previtem, self, scopes, inputs, vars, heimdall.
     minLength: 1
-    pattern: '^[a-zA-Z0-9_]+$'
+    pattern: '^[A-Za-z_][A-Za-z0-9_]*$'
   name:
     type: string
     description: Human-readable display name for this node. Optional; if omitted, the id is used.

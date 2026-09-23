@@ -1,8 +1,9 @@
 $schema: 'https://json-schema.org/draft/2020-12/schema'
 description: >-
   Exits the innermost enclosing loop immediately. Any in-flight parallel nodes
-  in the current iteration are stopped, and the iteration count is not
-  incremented. Only valid inside a loop_node's nodes list.
+  in the current iteration are stopped. The interrupted execution still counts
+  toward the loop's iterations, so a loop whose first body execution breaks
+  reports iterations: 1. Only valid inside a loop_node's nodes list.
 
   Combined with `if:`, the condition acts as a guard: when it is true the break
   fires and the loop exits; when it is false the node is skipped. A skipped break
