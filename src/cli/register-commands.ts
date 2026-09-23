@@ -1,5 +1,6 @@
 import type { Command } from 'commander';
 
+import { registerRunCommand } from '../commands/run/command.ts';
 import { buildCommand as buildSkillsCommand } from '../commands/skills/command.ts';
 
 /**
@@ -10,5 +11,6 @@ import { buildCommand as buildSkillsCommand } from '../commands/skills/command.t
  * own `command.ts` and `run.ts` files.
  */
 export const registerCommands = (program: Command): void => {
+  registerRunCommand(program);
   buildSkillsCommand(program);
 };

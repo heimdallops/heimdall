@@ -6,7 +6,7 @@ description: >
   Follows project standards (CLAUDE.md), idiomatic TypeScript conventions, and strict quality rules.
   This agent NEVER modifies test files — only production source files under src/.
 tools: Read, Edit, MultiEdit, Write, Bash, Glob, Grep, LS, TodoWrite
-model: sonnet
+model: opus
 hooks:
   PreToolUse:
     - matcher: 'Edit|MultiEdit|Write'

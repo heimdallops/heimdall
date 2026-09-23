@@ -16,6 +16,10 @@ on:
         type: boolean
         required: false
         default: false
+    outputs:
+      checksums_artifact_name:
+        description: Resolved artifact name for the checksums.txt artifact
+        value: ${{ jobs.publish.outputs.checksums_artifact_name }}
 
 permissions:
   contents: read
@@ -31,18 +35,23 @@ jobs:
           - target: linux-x64
             runner: ubuntu-latest
             binary_name: heimdall-linux-x64
+            archive_name: heimdall-linux-x64.tar.gz
           - target: linux-arm64
             runner: ubuntu-24.04-arm
             binary_name: heimdall-linux-arm64
+            archive_name: heimdall-linux-arm64.tar.gz
           - target: macos-x64
             runner: macos-13
             binary_name: heimdall-macos-x64
+            archive_name: heimdall-macos-x64.tar.gz
           - target: macos-arm64
             runner: macos-latest
             binary_name: heimdall-macos-arm64
+            archive_name: heimdall-macos-arm64.tar.gz
           - target: windows-x64
             runner: windows-latest
             binary_name: heimdall-windows-x64.exe
+            archive_name: heimdall-windows-x64.zip
 
     runs-on: ${{ matrix.runner }}
 
@@ -123,11 +132,25 @@ jobs:
         shell: pwsh
         run: .\${{ matrix.binary_name }} --help
 
-      - name: Upload SEA binary artifact
+      - name: Package archive (Unix)
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          mv "${{ matrix.binary_name }}" heimdall
+          tar -czf "${{ matrix.archive_name }}" heimdall
+
+      - name: Package archive (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          Rename-Item "${{ matrix.binary_name }}" heimdall.exe
+          Compress-Archive -Path heimdall.exe -DestinationPath "${{ matrix.archive_name }}"
+
+      - name: Upload SEA archive artifact
         uses: actions/upload-artifact@v5
         with:
           name: sea-binary-${{ matrix.target }}
-          path: ${{ matrix.binary_name }}
+          path: ${{ matrix.archive_name }}
           if-no-files-found: error
 
   publish:
@@ -136,7 +159,9 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
-      actions: read
+      actions: write
+    outputs:
+      checksums_artifact_name: ${{ steps.resolve-checksums-artifact-name.outputs.name }}
     env:
       GH_TOKEN: ${{ github.token }}
     steps:
@@ -145,73 +170,77 @@ jobs:
         with:
           ref: ${{ inputs.ref }}
 
-      - name: Download Linux x64 binary
+      - name: Download Linux x64 archive
         uses: actions/download-artifact@v5
         with:
           name: sea-binary-linux-x64
-          path: ./binaries/linux-x64
+          path: ./archives
 
-      - name: Download Linux arm64 binary
+      - name: Download Linux arm64 archive
         uses: actions/download-artifact@v5
         with:
           name: sea-binary-linux-arm64
-          path: ./binaries/linux-arm64
+          path: ./archives
 
-      - name: Download macOS x64 binary
+      - name: Download macOS x64 archive
         uses: actions/download-artifact@v5
         with:
           name: sea-binary-macos-x64
-          path: ./binaries/macos-x64
+          path: ./archives
 
-      - name: Download macOS arm64 binary
+      - name: Download macOS arm64 archive
         uses: actions/download-artifact@v5
         with:
           name: sea-binary-macos-arm64
-          path: ./binaries/macos-arm64
+          path: ./archives
 
-      - name: Download Windows x64 binary
+      - name: Download Windows x64 archive
         uses: actions/download-artifact@v5
         with:
           name: sea-binary-windows-x64
-          path: ./binaries/windows-x64
-
-      - name: Mark Unix binaries executable
-        run: |
-          chmod +x \
-            binaries/linux-x64/heimdall-linux-x64 \
-            binaries/linux-arm64/heimdall-linux-arm64 \
-            binaries/macos-x64/heimdall-macos-x64 \
-            binaries/macos-arm64/heimdall-macos-arm64
+          path: ./archives
 
       - name: Generate checksums.txt
         run: |
-          cd binaries
+          cd archives
           sha256sum \
-            linux-x64/heimdall-linux-x64 \
-            linux-arm64/heimdall-linux-arm64 \
-            macos-x64/heimdall-macos-x64 \
-            macos-arm64/heimdall-macos-arm64 \
-            windows-x64/heimdall-windows-x64.exe \
-            | sed 's|[^/]*/||' > checksums.txt
+            heimdall-linux-x64.tar.gz \
+            heimdall-linux-arm64.tar.gz \
+            heimdall-macos-x64.tar.gz \
+            heimdall-macos-arm64.tar.gz \
+            heimdall-windows-x64.zip \
+            > checksums.txt
           cat checksums.txt
 
-      - name: Upload binaries to GitHub release (dry run)
+      - name: Resolve checksums artifact name
+        id: resolve-checksums-artifact-name
+        run: echo "name=checksums-${{ inputs.release_tag }}" >> "$GITHUB_OUTPUT"
+
+      - name: Upload checksums artifact
+        uses: actions/upload-artifact@v5
+        with:
+          name: ${{ steps.resolve-checksums-artifact-name.outputs.name }}
+          path: archives/checksums.txt
+          if-no-files-found: error
+
+      - name: Upload archives to GitHub release (dry run)
         if: inputs.dry_run
         run: |
           echo "DRY RUN: would upload these files to release ${{ inputs.release_tag }}:"
-          find binaries -type f | sort
+          find archives -type f | sort
+          echo "scripts/install.sh"
           echo "---"
-          cat binaries/checksums.txt
+          cat archives/checksums.txt
 
-      - name: Upload binaries to GitHub release
+      - name: Upload archives to GitHub release
         if: ${{ !inputs.dry_run }}
         run: |
           gh release upload "${{ inputs.release_tag }}" \
-            binaries/linux-x64/heimdall-linux-x64 \
-            binaries/linux-arm64/heimdall-linux-arm64 \
-            binaries/macos-x64/heimdall-macos-x64 \
-            binaries/macos-arm64/heimdall-macos-arm64 \
-            binaries/windows-x64/heimdall-windows-x64.exe \
-            binaries/checksums.txt \
+            archives/heimdall-linux-x64.tar.gz \
+            archives/heimdall-linux-arm64.tar.gz \
+            archives/heimdall-macos-x64.tar.gz \
+            archives/heimdall-macos-arm64.tar.gz \
+            archives/heimdall-windows-x64.zip \
+            archives/checksums.txt \
             scripts/install.sh \
             --clobber

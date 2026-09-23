@@ -103,13 +103,3 @@ describe('--quiet conflicting-flag validation', () => {
     expect(result.exitCode).toBe(0);
   });
 });
-
-describe('bare invocation', () => {
-  it('prints help and exits non-zero when no command is given', async () => {
-    const result = await execa('node', [cliPath], { cwd: await workdir(), reject: false });
-
-    expect(result.exitCode).toBe(2);
-    expect(result.stderr).toContain('Usage: heimdall');
-    expect(result.stderr).toContain('skills');
-  });
-});

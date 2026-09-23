@@ -14,13 +14,3 @@ export class PlatformCancellationError extends PlatformError {
     this.name = 'PlatformCancellationError';
   }
 }
-
-export class PlatformAgentNotFoundError extends PlatformError {
-  readonly agentName: string;
-
-  constructor(agentName: string) {
-    super('PLATFORM_AGENT_NOT_FOUND', `Agent not found: ${agentName}`);
-    this.name = 'PlatformAgentNotFoundError';
-    this.agentName = agentName;
-  }
-}

@@ -72,27 +72,4 @@ export interface PlatformAdapter<TOptions extends BasePlatformOptions> {
    * @returns A `PlatformStream` that emits `chunk`, `done`, and `error` events.
    */
   run(prompt: string, options: TOptions, sessionId?: string): PlatformStream;
-  /**
-   * Looks up an agent by name and returns its raw file contents. The resolution
-   * strategy — where agents are searched for and how their identity is
-   * determined — is platform-specific.
-   *
-   * @param name - The agent name to search for.
-   * @returns The raw file contents of the agent.
-   * @throws `PlatformAgentNotFoundError` if no agent with the given name exists.
-   */
-  findAgent(name: string): Promise<string>;
-  /**
-   * Parses a raw agent file (as returned by `findAgent`) into a prompt and platform options.
-   *
-   * Frontmatter (between `---` delimiters) is extracted and validated against the platform's
-   * options schema. Unknown or invalid fields are silently dropped. The body below the
-   * frontmatter becomes the prompt (trimmed).
-   *
-   * @param content - Raw agent file contents (frontmatter + body).
-   * @returns An object with:
-   *   - `prompt`: The agent's system/body text.
-   *   - `options`: Validated platform options derived from the frontmatter.
-   */
-  parseAgent(content: string): { prompt: string; options: TOptions };
 }

@@ -5,7 +5,7 @@ import type { AdapterFactory, PlatformAdapter } from './nodes/base.ts';
 export const createAdapter = async (platform: Platform, cwd: string): Promise<PlatformAdapter> => {
   switch (platform) {
     case 'claude':
-      return ClaudeCodeAdapter.create(cwd);
+      return new ClaudeCodeAdapter(cwd);
     default: {
       // Compile-time exhaustiveness: a new platform enum member fails to assign to never,
       // forcing a matching case above.
@@ -22,7 +22,7 @@ export const createAdapter = async (platform: Platform, cwd: string): Promise<Pl
  *
  * The pending promise is cached so concurrent calls under the parallel scheduler
  * dedupe onto a single construction. A rejected promise evicts its key so a
- * transient scan failure does not poison the rest of the run.
+ * transient construction failure does not poison the rest of the run.
  *
  * @param create - construction seam, overridable in tests.
  */

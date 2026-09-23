@@ -35,22 +35,31 @@ properties:
       until expression, and outputs expressions. Not available outside a loop
       (use needs.<loop_id> there instead).
     properties:
-      iteration:
-        type: integer
-        description: >-
-          Number of iterations completed so far. Starts at 0 and increments by 1
-          after each iteration finishes — so it reads 0 while the first iteration
-          is running, 1 while the second is running, and so on.
-        minimum: 0
-      nodes:
+      loop:
         type: object
         description: >-
-          Merged output of child nodes keyed by node id. Reflects the last
-          fully-completed iteration's state overlaid with any child nodes that
-          completed in the current iteration so far. On break, includes all work
-          that completed before the break fired.
-        additionalProperties:
-          description: The output of the child node with the matching id.
+          Loop family of the enclosing loop_node, exposing its iteration count
+          and body results.
+        properties:
+          iteration:
+            type: integer
+            description: >-
+              Number of iterations completed so far. Starts at 0 and increments
+              by 1 after each iteration finishes — so it reads 0 while the first
+              iteration is running, 1 while the second is running, and so on.
+            minimum: 0
+          nodes:
+            type: object
+            description: >-
+              Merged output of child nodes keyed by node id. Reflects the last
+              fully-completed iteration's state overlaid with any child nodes
+              that completed in the current iteration so far. On break, includes
+              all work that completed before the break fired.
+            additionalProperties:
+              description: The output of the child node with the matching id.
+        required:
+          - iteration
+          - nodes
       needs:
         type: object
         description: >-
@@ -69,18 +78,28 @@ properties:
         description: >-
           Context of the immediately enclosing loop, available inside nested
           loops. Chains arbitrarily deep — e.g. scope.outer.outer.needs or
-          scope.outer.outer.iteration — with each .outer stepping one loop
+          scope.outer.outer.loop.iteration — with each .outer stepping one loop
           level outward.
         $ref: '#/properties/scope'
     required:
-      - iteration
-      - nodes
-  sessionDir:
-    type: string
-    description: >-
-      Absolute path to a temporary directory scoped to this workflow run.
-      Persists for the lifetime of the run. Use it to share files between
-      nodes (e.g. spec.md, progress.txt) without polluting the workspace.
-  cwd:
-    type: string
-    description: Absolute path to the working directory the workflow is running in.
+      - loop
+  heimdall:
+    type: object
+    description: Workflow-scoped runtime variables provided by Heimdall.
+    properties:
+      session_dir:
+        type: string
+        description: >-
+          Absolute path to a temporary directory scoped to this workflow run.
+          Persists for the lifetime of the run. Use it to share files between
+          nodes (e.g. spec.md, progress.txt) without polluting the workspace.
+      run_cwd:
+        type: string
+        description: >-
+          Absolute path to the directory the run started in. Constant for the
+          whole run and unaffected by enclosing worktrees. Use it from inside
+          a worktree body to reach paths outside that worktree (e.g. to anchor
+          a dir override).
+    required:
+      - session_dir
+      - run_cwd

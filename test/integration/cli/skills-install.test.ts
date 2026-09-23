@@ -91,7 +91,7 @@ describe('heimdall skills install', () => {
 
     const result = await execa('node', [cliPath, ...install], { cwd, reject: false });
 
-    expect(result.exitCode).toBe(5);
+    expect(result.exitCode).toBe(7);
     expect(result.stdout).toBe('');
     expect(result.stderr).toContain('Refusing to overwrite');
     expect(await readFile(join(cwd, skillMd), 'utf8')).toBe('my own notes');

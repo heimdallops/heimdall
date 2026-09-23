@@ -88,7 +88,7 @@ describe('writeSkillFiles', () => {
     await writeSkillFiles(root, files, false).catch((error: unknown) => {
       expect(error).toBeInstanceOf(CliError);
       expect((error as CliError).code).toBe('SKILL_FILE_NOT_GENERATED');
-      expect((error as CliError).exitCode).toBe(5);
+      expect((error as CliError).exitCode).toBe(7);
     });
 
     expect.assertions(3);

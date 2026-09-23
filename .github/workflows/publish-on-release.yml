@@ -103,12 +103,26 @@ jobs:
       ref: ${{ needs.prepare_release_branch.outputs.branch_name }}
     secrets: inherit
 
+  update_homebrew_formula:
+    name: Update Homebrew formula
+    needs:
+      - prepare_release_branch
+      - publish_binaries
+    uses: ./.github/workflows/publish-homebrew.yml
+    with:
+      ref: ${{ needs.prepare_release_branch.outputs.branch_name }}
+      release_tag: ${{ github.event.release.tag_name }}
+      checksums_artifact_name: ${{ needs.publish_binaries.outputs.checksums_artifact_name }}
+      dry_run: ${{ vars.DRY_RUN == 'true' }}
+    secrets: inherit
+
   cleanup_release_branch:
     name: Delete release branch
     needs:
       - prepare_release_branch
       - publish_binaries
       - publish_to_npm
+      - update_homebrew_formula
     if: always() && needs.prepare_release_branch.result == 'success'
     runs-on: ubuntu-latest
     steps:
@@ -136,6 +150,7 @@ jobs:
       - build
       - publish_binaries
       - publish_to_npm
+      - update_homebrew_formula
       - cleanup_release_branch
     if: always()
     runs-on: ubuntu-latest
@@ -161,6 +176,7 @@ jobs:
           BUILD: ${{ needs.build.result }}
           PUBLISH_BINARIES: ${{ needs.publish_binaries.result }}
           PUBLISH_NPM: ${{ needs.publish_to_npm.result }}
+          UPDATE_HOMEBREW: ${{ needs.update_homebrew_formula.result }}
           CLEANUP: ${{ needs.cleanup_release_branch.result }}
         run: |
           set -euo pipefail
@@ -170,6 +186,7 @@ jobs:
           [ "$BUILD" = "success" ] || FAILED=true
           [ "$PUBLISH_BINARIES" = "success" ] || FAILED=true
           [ "$PUBLISH_NPM" = "success" ] || FAILED=true
+          [ "$UPDATE_HOMEBREW" = "success" ] || FAILED=true
           [ "$CLEANUP" = "success" ] || FAILED=true
 
           if [ "$FAILED" = true ]; then
@@ -191,6 +208,7 @@ jobs:
           R_BUILD: ${{ needs.build.result }}
           R_PUBLISH_BINARIES: ${{ needs.publish_binaries.result }}
           R_PUBLISH_NPM: ${{ needs.publish_to_npm.result }}
+          R_UPDATE_HOMEBREW: ${{ needs.update_homebrew_formula.result }}
           R_CLEANUP: ${{ needs.cleanup_release_branch.result }}
           ERR_TEXT: ${{ steps.publish_err_excerpt.outputs.text }}
         run: |
@@ -214,6 +232,7 @@ jobs:
             printf '%s · Build npm package · **%s**\n' "$(ic "$R_BUILD")" "${R_BUILD}"
             printf '%s · Publish binaries · **%s**\n' "$(ic "$R_PUBLISH_BINARIES")" "${R_PUBLISH_BINARIES}"
             printf '%s · Publish to npm · **%s**\n' "$(ic "$R_PUBLISH_NPM")" "${R_PUBLISH_NPM}"
+            printf '%s · Update Homebrew formula · **%s**\n' "$(ic "$R_UPDATE_HOMEBREW")" "${R_UPDATE_HOMEBREW}"
             printf '%s · Delete release branch · **%s**\n' "$(ic "$R_CLEANUP")" "${R_CLEANUP}"
             if [ -n "${ERR_TEXT:-}" ]; then
               printf '\n**npm output** *(truncated)*\n```text\n%s\n```\n' "${ERR_TEXT}"

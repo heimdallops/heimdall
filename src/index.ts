@@ -1,6 +1,7 @@
 import { withErrorBoundary } from './cli/middleware/with-error-boundary.ts';
 import { createProgram } from './cli/program.ts';
 import { registerCommands } from './cli/register-commands.ts';
+import { loadConfig } from './config/load-config.ts';
 import { createPrinter } from './output/printer.ts';
 
 const run = (): Promise<number> => {
@@ -13,6 +14,10 @@ const run = (): Promise<number> => {
     verbose: false,
     debug: false,
     quiet: false,
+  });
+
+  program.action(async () => {
+    await loadConfig(program.opts(), process.cwd());
   });
 
   return withErrorBoundary(bootstrapPrinter, async (): Promise<void> => {

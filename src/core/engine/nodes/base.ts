@@ -1,10 +1,33 @@
 import type { Platform } from '../../platform/index.ts';
 import { evalCel } from '../cel.ts';
 import type { EngineEmitter, NodeResult } from '../emitter.ts';
-import { NodeError } from '../errors.ts';
+import { EngineConfigError, NodeError } from '../errors.ts';
+import { buildEntryContext } from '../expression-context.ts';
 import type { RetryPolicy } from '../schema.ts';
 
 export type { NodeResult, RetryPolicy };
+
+// These names are part of the expression language's own vocabulary, current or anticipated, so no
+// node may claim one as its id. Reserved for every node, not only the scope-introducing ones that
+// key the scope chain: the narrower rule read as arbitrary to reviewers. Loosening this later is
+// backward-compatible; tightening it would not be.
+export const RESERVED_IDS: ReadonlySet<string> = new Set([
+  'loop',
+  'worktree',
+  'switch',
+  'each',
+  'outer',
+  'needs',
+  'nodes',
+  'prev',
+  'item',
+  'previtem',
+  'self',
+  'scopes',
+  'inputs',
+  'vars',
+  'heimdall',
+]);
 
 export interface NodeRunCompleted {
   status: 'completed';
@@ -44,8 +67,6 @@ export interface PlatformStream {
 // interface via method-parameter bivariance.
 export interface PlatformAdapter {
   run(prompt: string, options: Record<string, unknown>, sessionId?: string): PlatformStream;
-  findAgent(name: string): Promise<string>;
-  parseAgent(content: string): { prompt: string; options: Record<string, unknown> };
 }
 
 export type AdapterFactory = (platform: Platform, cwd: string) => Promise<PlatformAdapter>;
@@ -56,20 +77,46 @@ export interface PlatformRuntime {
   defaultPlatformOptions?: Record<string, unknown> | undefined;
 }
 
-export interface LoopContext {
-  readonly iteration: number;
-  readonly nodes: ReadonlyMap<string, NodeResult>;
+// One entry per enclosing scoped node, keyed by node id. Flat keying is unambiguous because node
+// ids are unique across the whole workflow.
+export interface ScopeEntryBase {
   readonly needs: ReadonlyMap<string, NodeResult>;
-  readonly outer?: LoopContext | undefined;
+}
+
+export interface LoopScopeEntry extends ScopeEntryBase {
+  // BigInt so CEL reads the index as an int rather than a double.
+  readonly index: bigint;
+  readonly prev: ReadonlyMap<string, NodeResult>;
+}
+
+export interface WorktreeScopeEntry extends ScopeEntryBase {
+  readonly path: string;
+  // Absent in detached mode.
+  readonly branch?: string | undefined;
+  readonly base_commit: string;
+}
+
+export type ScopeEntry = LoopScopeEntry | WorktreeScopeEntry | ScopeEntryBase;
+
+export type ScopeChain = ReadonlyMap<string, ScopeEntry>;
+
+// Workflow-scoped runtime values, identical at every scope depth.
+// Author-facing CEL surface, hence snake_case.
+export interface HeimdallContext {
+  readonly run_cwd: string;
+  readonly session_dir: string;
 }
 
 export interface ExecutionContext {
   readonly inputs: Record<string, string | number | bigint | boolean>;
   readonly vars: Record<string, string | number | bigint | boolean>;
+  // Every completed result the scheduler holds; narrowed to declared edges when projected as
+  // self.needs.
   readonly needs: ReadonlyMap<string, NodeResult>;
-  readonly sessionDir: string;
+  // Engine-only working directory; not a CEL binding.
   readonly cwd: string;
-  readonly scope?: LoopContext | undefined;
+  readonly heimdall: HeimdallContext;
+  readonly scopes: ScopeChain;
 }
 
 export interface NodeRunOptions {
@@ -133,12 +180,31 @@ export abstract class BaseNode<R extends NodeRunResult = NodeRunResult> {
     return true;
   }
 
+  // Ids are unique across the whole workflow, not merely among siblings, so `seen` carries every
+  // id already claimed anywhere in the tree. Subclasses that hold child nodes override this to
+  // thread the returned set through them.
+  public validateIds(seen: Set<string>): Set<string> {
+    if (RESERVED_IDS.has(this.id)) {
+      throw new EngineConfigError(
+        `Node id '${this.id}' is reserved: [${[...RESERVED_IDS].map((id) => `'${id}'`).join(', ')}]`
+      );
+    }
+
+    if (seen.has(this.id)) {
+      throw new EngineConfigError(
+        `Duplicate node id: '${this.id}'; node ids must be unique across the entire workflow`
+      );
+    }
+
+    return new Set(seen).add(this.id);
+  }
+
   public evaluateIf(ctx: ExecutionContext): boolean {
     if (this.ifExpr === undefined) {
       return true;
     }
 
-    const result = evalCel(this.ifExpr, ctx as unknown as Record<string, unknown>);
+    const result = evalCel(this.ifExpr, buildEntryContext(ctx, this.depends_on));
 
     if (typeof result !== 'boolean') {
       throw new NodeError(
