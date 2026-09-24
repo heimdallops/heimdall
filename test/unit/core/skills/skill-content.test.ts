@@ -19,8 +19,7 @@ const skill = (): NonNullable<ReturnType<typeof listSkills>[number]> => {
   return found;
 };
 
-const shippedText = (): string =>
-  [skill().body, ...skill().references.map((ref) => ref.contents)].join('\n');
+const shippedText = (): string => skill().body;
 
 const yamlExamples = (): string[] =>
   [...skill().body.matchAll(/```yaml\n([\s\S]*?)```/g)].map((match) => match[1] ?? '');
@@ -29,10 +28,8 @@ const yamlExamples = (): string[] =>
 // schema it treats as authoritative. The body's prose names the retired spellings on purpose — the
 // writing checklist tells an agent which ones not to reach for — so prose is checked separately,
 // for interpolations rather than mentions.
-const usageSites = (): { label: string; text: string }[] => [
-  ...yamlExamples().map((text, index) => ({ label: `example ${index + 1}`, text })),
-  ...skill().references.map((ref) => ({ label: ref.path, text: ref.contents })),
-];
+const usageSites = (): { label: string; text: string }[] =>
+  yamlExamples().map((text, index) => ({ label: `example ${index + 1}`, text }));
 
 describe('skill content — expression namespace', () => {
   // Retired by the five-roots change. Each pattern matches the old spelling in a way the current
@@ -101,9 +98,17 @@ describe('skill content — examples', () => {
     }
   });
 
-  it('parses every bundled reference schema', () => {
-    for (const reference of skill().references) {
-      expect(() => load(reference.contents), reference.path).not.toThrow();
+  it('renders every field-reference table with a complete header row', () => {
+    // A table whose header and separator disagree renders as literal pipes, which is how a
+    // hand-maintained reference quietly becomes unreadable.
+    const rows = skill()
+      .body.split('\n')
+      .filter((line) => line.trim().startsWith('|'));
+
+    expect(rows.length).toBeGreaterThan(0);
+
+    for (const row of rows) {
+      expect(row.trim().endsWith('|'), row).toBe(true);
     }
   });
 });
@@ -124,9 +129,7 @@ describe('skill content — result shapes and option names', () => {
     const claimsParsing =
       /output_format[^.]{0,120}(structured object|parsed as JSON|accessible directly)/i;
 
-    for (const site of [skill().body, ...skill().references.map((ref) => ref.contents)]) {
-      expect(site).not.toMatch(claimsParsing);
-    }
+    expect(skill().body).not.toMatch(claimsParsing);
   });
 
   it('names no platform option the Claude adapter would discard', () => {

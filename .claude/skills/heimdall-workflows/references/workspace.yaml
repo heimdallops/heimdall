@@ -1,0 +1,8 @@
+# heimdall-generated: v0.1.0 — installed by `heimdall skills install`. Edits are overwritten.
+$schema: 'https://json-schema.org/draft/2020-12/schema'
+description: Workspace configuration controlling how Heimdall manages the environment in which the workflow runs.
+type: object
+properties:
+  worktree:
+    type: boolean
+    description: 'Use a git worktree when using this workflow (default: true).'

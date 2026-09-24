@@ -34,29 +34,6 @@ const readMeta = async (name) => {
   return meta;
 };
 
-const readReferences = async (name, references) => {
-  const files = [];
-
-  for (const reference of references ?? []) {
-    if (reference.startsWith('/') || reference.includes('..')) {
-      throw new Error(
-        `skills/${name}/meta.yaml: reference "${reference}" must be a repo-relative path`
-      );
-    }
-
-    files.push({
-      // schemas/results/foo.yaml -> results/foo.yaml. The path stays relative to the skill
-      // so $ref targets between sibling schemas keep resolving; where the block of
-      // references sits inside an installed skill is the target's decision, not the
-      // content's.
-      path: reference.replace(/^schemas\//, ''),
-      contents: await readFile(join(repoRoot, reference), 'utf8'),
-    });
-  }
-
-  return files;
-};
-
 const collect = async () => {
   const entries = await readdir(skillsDir, { withFileTypes: true });
   const skills = [];
@@ -70,7 +47,6 @@ const collect = async () => {
       name: meta.name,
       description: meta.description.trim(),
       body: (await readFile(join(skillsDir, entry.name, 'skill.md'), 'utf8')).trim(),
-      references: await readReferences(entry.name, meta.references),
     });
   }
 

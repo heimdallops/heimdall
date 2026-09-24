@@ -14,10 +14,6 @@ const skill: Skill = {
   name: 'demo-skill',
   description: "A description with an apostrophe: don't break the frontmatter.",
   body: '# Demo\n\nBody text.',
-  references: [
-    { path: 'workflow.yaml', contents: 'name: schema\n' },
-    { path: 'results/loop.yaml', contents: 'name: loop\n' },
-  ],
 };
 
 const target = createSkillTarget('claude', '9.9.9');
@@ -38,14 +34,10 @@ describe('claude skill target', () => {
     expect(target.resolveRoot('user', '/repo')).toBe(join(homedir(), '.claude', 'skills'));
   });
 
-  it('renders SKILL.md and every reference under the skill name', () => {
+  it('renders a single SKILL.md under the skill name', () => {
     const paths = target.render(skill).map((file) => file.relativePath);
 
-    expect(paths).toEqual([
-      'demo-skill/SKILL.md',
-      'demo-skill/references/workflow.yaml',
-      'demo-skill/references/results/loop.yaml',
-    ]);
+    expect(paths).toEqual(['demo-skill/SKILL.md']);
   });
 
   it('writes parseable frontmatter carrying the name and description', () => {
@@ -66,14 +58,6 @@ describe('claude skill target', () => {
     for (const file of target.render(skill)) {
       expect(hasGeneratedMarker(file.contents)).toBe(true);
     }
-  });
-
-  it('keeps references parseable as YAML despite the marker', () => {
-    const reference = target
-      .render(skill)
-      .find((file) => file.relativePath === 'demo-skill/references/workflow.yaml');
-
-    expect(load(reference?.contents ?? '')).toEqual({ name: 'schema' });
   });
 
   it('renders identically on repeated calls, so render performs no I/O or mutation', () => {

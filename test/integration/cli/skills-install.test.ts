@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, readFile, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readdir, readFile, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 
@@ -9,14 +9,6 @@ const cliPath = resolve(process.cwd(), 'dist/index.js');
 
 const install = ['skills', 'install', 'claude'];
 const skillMd = join('.claude', 'skills', 'heimdall-workflows', 'SKILL.md');
-const referenceYaml = join(
-  '.claude',
-  'skills',
-  'heimdall-workflows',
-  'references',
-  'workflow.yaml'
-);
-
 const workdir = async (): Promise<string> => mkdtemp(join(tmpdir(), 'heimdall-skills-'));
 
 const staleReference = join(
@@ -39,14 +31,17 @@ describe('heimdall skills install', () => {
     expect(await readFile(join(cwd, skillMd), 'utf8')).toContain('name: heimdall-workflows');
   });
 
-  it('installs the bundled schema references alongside the skill', async () => {
+  it('installs exactly one file — the skill is self-contained', async () => {
     const cwd = await workdir();
 
     await execa('node', [cliPath, ...install], { cwd, reject: false });
 
-    expect(await readFile(join(cwd, referenceYaml), 'utf8')).toContain(
-      'Root schema for a Heimdall workflow definition'
-    );
+    // The body carries its own field reference, so there is nothing beside it to fall out of
+    // step with the engine.
+    expect(await readdir(join(cwd, '.claude', 'skills', 'heimdall-workflows'))).toEqual([
+      'SKILL.md',
+    ]);
+    expect(await readFile(join(cwd, skillMd), 'utf8')).toContain('## Field reference');
   });
 
   it('installs from a directory with no repo files nearby, proving content is bundled', async () => {
@@ -225,11 +220,17 @@ describe('heimdall skills install', () => {
     expect(result.stderr).toBe('');
   });
 
-  // A version that drops or renames a reference would otherwise leave the old file behind
-  // carrying the generated marker, where the skill body presents references/ as authoritative.
+  // A version that drops or renames a file would otherwise leave the old one behind carrying
+  // the generated marker, where an agent would go on reading it as part of the skill.
   it('removes a stale file a previous version installed', async () => {
     const cwd = await workdir();
     await execa('node', [cliPath, ...install], { cwd });
+    await mkdir(join(cwd, '.claude', 'skills', 'heimdall-workflows', 'references'), {
+      recursive: true,
+    });
+    await mkdir(join(cwd, '.claude', 'skills', 'heimdall-workflows', 'references'), {
+      recursive: true,
+    });
     await writeFile(
       join(cwd, staleReference),
       '# heimdall-generated: v0.0.1 — installed by `heimdall skills install`.\nretired',
@@ -246,6 +247,9 @@ describe('heimdall skills install', () => {
   it('leaves a file it did not write alone', async () => {
     const cwd = await workdir();
     await execa('node', [cliPath, ...install], { cwd });
+    await mkdir(join(cwd, '.claude', 'skills', 'heimdall-workflows', 'references'), {
+      recursive: true,
+    });
     const mine = join(cwd, '.claude', 'skills', 'heimdall-workflows', 'references', 'mine.md');
     await writeFile(mine, 'my own notes', 'utf8');
 
@@ -258,6 +262,12 @@ describe('heimdall skills install', () => {
   it('reports a stale file on --dry-run without removing it', async () => {
     const cwd = await workdir();
     await execa('node', [cliPath, ...install], { cwd });
+    await mkdir(join(cwd, '.claude', 'skills', 'heimdall-workflows', 'references'), {
+      recursive: true,
+    });
+    await mkdir(join(cwd, '.claude', 'skills', 'heimdall-workflows', 'references'), {
+      recursive: true,
+    });
     await writeFile(
       join(cwd, staleReference),
       '# heimdall-generated: v0.0.1 — installed by `heimdall skills install`.\nretired',
@@ -274,6 +284,12 @@ describe('heimdall skills install', () => {
   it('lists removals in the JSON result', async () => {
     const cwd = await workdir();
     await execa('node', [cliPath, ...install], { cwd });
+    await mkdir(join(cwd, '.claude', 'skills', 'heimdall-workflows', 'references'), {
+      recursive: true,
+    });
+    await mkdir(join(cwd, '.claude', 'skills', 'heimdall-workflows', 'references'), {
+      recursive: true,
+    });
     await writeFile(
       join(cwd, staleReference),
       '# heimdall-generated: v0.0.1 — installed by `heimdall skills install`.\nretired',

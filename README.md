@@ -178,8 +178,8 @@ nodes:
 ### `heimdall skills install <platform>`
 
 Installs Heimdall's workflow-authoring skill into a coding agent, so it can write valid
-workflow YAML without being handed the docs. The skill ships with the workflow JSON
-schemas as reference material.
+workflow YAML without being handed the docs. The skill is a single self-contained
+`SKILL.md`, including a field reference for every node type.
 
 ```bash
 heimdall skills install claude              # into ./.claude/skills

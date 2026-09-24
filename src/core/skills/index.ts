@@ -3,11 +3,4 @@ export { hasGeneratedMarker, markerVersion } from './marker.ts';
 export type { SkillPlatform } from './platform.ts';
 export { skillPlatformSchema } from './platform.ts';
 export { createSkillTarget } from './target-factory.ts';
-export type {
-  InstalledSkill,
-  Skill,
-  SkillFile,
-  SkillReference,
-  SkillScope,
-  SkillTarget,
-} from './types.ts';
+export type { InstalledSkill, Skill, SkillFile, SkillScope, SkillTarget } from './types.ts';

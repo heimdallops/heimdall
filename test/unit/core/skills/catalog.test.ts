@@ -11,20 +11,20 @@ describe('skill catalog', () => {
     expect(skills.length).toBeGreaterThan(0);
   });
 
-  it('includes the workflow-authoring skill with body and references', () => {
+  it('includes the workflow-authoring skill with a body', () => {
     const skill = listSkills().find((candidate) => candidate.name === 'heimdall-workflows');
 
     expect(skill).toBeDefined();
     expect(skill?.description).not.toBe('');
     expect(skill?.body).toContain('Heimdall Workflows');
-    expect(skill?.references.length).toBeGreaterThan(0);
   });
 
-  it('bundles the workflow schema as a reference', () => {
+  it('carries its own field reference rather than pointing at files beside it', () => {
+    // The skill installs as a single SKILL.md, so everything an agent needs is in the body.
     const skill = listSkills().find((candidate) => candidate.name === 'heimdall-workflows');
-    const workflowSchema = skill?.references.find((ref) => ref.path === 'workflow.yaml');
 
-    expect(workflowSchema?.contents).toContain('Root schema for a Heimdall workflow definition');
+    expect(skill?.body).toContain('## Field reference');
+    expect(skill?.body).not.toContain('references/');
   });
 
   it('exposes a non-empty CLI version for stamping installed files', () => {

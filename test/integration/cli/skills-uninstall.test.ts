@@ -62,6 +62,7 @@ describe('heimdall skills uninstall', () => {
     const cwd = await workdir();
     await execa('node', [cliPath, ...install], { cwd });
     const mine = join(cwd, skillDir, 'references', 'mine.md');
+    await mkdir(join(cwd, skillDir, 'references'), { recursive: true });
     await writeFile(mine, 'my own notes', 'utf8');
 
     const result = await execa('node', [cliPath, ...uninstall, '--yes'], { cwd, reject: false });
@@ -132,6 +133,7 @@ describe('heimdall skills uninstall', () => {
   it('reports removals and kept files as JSON on stdout only', async () => {
     const cwd = await workdir();
     await execa('node', [cliPath, ...install], { cwd });
+    await mkdir(join(cwd, skillDir, 'references'), { recursive: true });
     await writeFile(join(cwd, skillDir, 'references', 'mine.md'), 'mine', 'utf8');
 
     const result = await execa('node', [cliPath, ...uninstall, '--yes', '--json'], {
@@ -148,7 +150,15 @@ describe('heimdall skills uninstall', () => {
   it('refuses a partial install without --force and removes it with one', async () => {
     const cwd = await workdir();
     await execa('node', [cliPath, ...install], { cwd });
-    // Simulates an interrupted write, or a manifest the user deleted by hand.
+    // A skill is one file now, so this state only arises upgrading from an older version that
+    // installed reference files beside SKILL.md: its leftovers are still marked, but the
+    // manifest that identified them as ours is gone.
+    await mkdir(join(cwd, skillDir, 'references'), { recursive: true });
+    await writeFile(
+      join(cwd, skillDir, 'references', 'old.yaml'),
+      '# heimdall-generated: v0.0.1\nold\n',
+      'utf8'
+    );
     await execa('rm', [join(cwd, skillDir, 'SKILL.md')]);
 
     const refused = await execa('node', [cliPath, ...uninstall, '--yes'], { cwd, reject: false });

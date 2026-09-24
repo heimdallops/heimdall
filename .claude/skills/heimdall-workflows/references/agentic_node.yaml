@@ -1,3 +1,4 @@
+# heimdall-generated: v0.1.0 — installed by `heimdall skills install`. Edits are overwritten.
 $schema: 'https://json-schema.org/draft/2020-12/schema'
 description: Base properties shared by all AI-executed node types (agent, prompt, prompt_file). Extends node.yaml.
 allOf:

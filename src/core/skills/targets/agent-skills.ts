@@ -46,7 +46,7 @@ class AgentSkillsTarget implements SkillTarget {
   public render(skill: Skill): SkillFile[] {
     const marker = markerText(this.version);
 
-    const files: SkillFile[] = [
+    return [
       {
         // Built from manifestPath so what render writes and what discovery looks for
         // cannot drift apart.
@@ -64,17 +64,6 @@ class AgentSkillsTarget implements SkillTarget {
         ].join('\n'),
       },
     ];
-
-    for (const reference of skill.references) {
-      files.push({
-        relativePath: posix.join(skill.name, 'references', reference.path),
-        // A leading `#` comment is valid YAML, so the marker rides along without changing
-        // how the schema parses.
-        contents: `# ${marker}\n${reference.contents}`,
-      });
-    }
-
-    return files;
   }
 }
 

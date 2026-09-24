@@ -1,3 +1,4 @@
+# heimdall-generated: v0.1.0 — installed by `heimdall skills install`. Edits are overwritten.
 $schema: 'https://json-schema.org/draft/2020-12/schema'
 description: Pauses the workflow and prompts the user for approval before continuing.
 allOf:
@@ -8,7 +9,7 @@ allOf:
         type: object
         description: >-
           Request human approval before continuing. The result is available to
-          downstream nodes via needs.<id>.output. Use exit_on_no: true to
+          downstream nodes via self.needs.<id>.output. Use exit_on_no: true to
           exit the workflow immediately when the user declines.
         properties:
           message:
@@ -22,7 +23,7 @@ allOf:
             description: >-
               When true, a "no" response immediately exits the workflow.
               When false (default), the workflow continues and downstream
-              nodes can route on needs.<id>.output.approved.
+              nodes can route on self.needs.<id>.output.approved.
           enable_feedback:
             type: boolean
             default: false

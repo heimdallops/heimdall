@@ -1,12 +1,19 @@
+---
+name: heimdall-workflows
+description: 'Write, review, or debug a Heimdall workflow YAML file. Use this skill whenever authoring a .heimdall workflow, adding or changing nodes, writing CEL expressions or ${{ }} interpolation, wiring node dependencies, or diagnosing a workflow that fails validation. Trigger even for partial tasks like "add a bash step" or "make this node conditional".'
+---
+
+<!-- heimdall-generated: v0.1.0 — installed by `heimdall skills install`. Edits are overwritten. -->
+
 # Heimdall Workflows
 
 Heimdall runs deterministic agentic workflows defined in YAML. A workflow is a named
 graph of nodes executed in dependency order. Agents supply the intelligence; the
 workflow owns the structure.
 
-Every field below is stated as the engine validates it. Where this document and a
-workflow disagree, the engine wins — it validates with Zod, and the tables here are
-written against that.
+The `references/` directory beside this file holds the authoritative JSON Schemas.
+**Read the relevant schema before writing a node** — this document teaches the model,
+the schemas define what is valid.
 
 ## Workflow anatomy
 
@@ -17,19 +24,22 @@ description: Fix a reported issue and open a PR.
 platform: claude # default platform for agentic nodes
 platform_options: # default options for agentic nodes
   model: claude-sonnet-5
+  disable_tool_search: true
 inputs: # supplied at run time
   issue_number:
     type: integer
     description: The GitHub issue to fix.
 vars: # static, available everywhere
   base_branch: main
+workspace:
+  worktree: true # run in an isolated git worktree (default true)
 nodes: # required, at least one
   - id: read_issue
     bash: gh issue view ${{ inputs.issue_number }} --json title,body > "$HEIMDALL_OUTPUT"
     output_format: json
 ```
 
-Only `name` and `nodes` are required.
+Only `name` and `nodes` are required. See `references/workflow.yaml`.
 
 ## Nodes
 
@@ -40,8 +50,8 @@ the loop. Fifteen names are reserved and rejected outright: `loop`, `worktree`,
 `switch`, `each`, `outer`, `needs`, `nodes`, `prev`, `item`, `previtem`, `self`,
 `scopes`, `inputs`, `vars`, `heimdall`.
 
-All nodes also accept `name`, `depends_on`, `if`, `timeout`, and `retries` — see the
-field reference at the end.
+All nodes also accept `name`, `depends_on`, `if`, `timeout` (ms), and `retries` — see
+`references/node.yaml`.
 
 A node's _type_ is inferred from which type-specific key is present. There is no
 `type:` field. Exactly one of these keys determines the node type:
@@ -58,7 +68,8 @@ A node's _type_ is inferred from which type-specific key is present. There is no
 | `break`       | break       | Exit the innermost enclosing loop            |
 
 `agent`, `prompt`, and `prompt_file` are the _agentic_ nodes. They additionally accept
-`platform`, `platform_options`, and `context`.
+`platform`, `platform_options`, `context`, and `output_format`
+(`references/agentic_node.yaml`).
 
 ## Dependencies and ordering
 
@@ -123,7 +134,7 @@ not an empty value.
 cannot read `self.nodes` — at that point the node has produced nothing.
 
 `heimdall.session_dir` is a per-run temp directory for passing files between nodes;
-`heimdall.run_cwd` is the directory the run started in, constant for the whole run.
+`heimdall.run_cwd` is the directory the run started in, constant even inside a worktree.
 
 Guard anything that may not have run with `has()`:
 
@@ -133,7 +144,8 @@ if: has(self.needs.review.output) && self.needs.review.output.status == "failed"
 
 ## Node results
 
-Each node type exposes a fixed result shape under `self.needs.<id>`.
+Each node type exposes a fixed result shape under `self.needs.<id>` — see
+`references/results/`.
 
 **bash** → `self.needs.<id>.output`. The engine injects `$HEIMDALL_OUTPUT`, a path to a
 temp file. **Only what you write to that file becomes the output** — incidental stdout
@@ -147,30 +159,26 @@ from other commands does not contaminate it. Write nothing and the output is emp
 With `output_format: json`, the file contents are parsed and fields become accessible
 as `self.needs.<id>.output.<field>`. Invalid JSON fails the node immediately.
 
-**agentic** → `self.needs.<id>.output`, **always a string**. The engine does not parse it,
-so you cannot address fields on it. To branch on a model's answer, have the model write
-JSON and put a bash node with `output_format: json` between it and the branch:
+**agentic** → `self.needs.<id>.output`, a string. Define `output_format` (a JSON Schema
+object) to get a structured object instead, addressable field by field:
 
 ```yaml
 - id: triage
-  prompt: |
-    Classify this issue and reply with only a JSON object {"severity":"low"|"high"}.
-    ${{ self.needs.read_issue.output }}
-
-- id: parse_triage
-  depends_on: [triage]
-  bash: printf '%s' '${{ self.needs.triage.output }}' > "$HEIMDALL_OUTPUT"
-  output_format: json
+  prompt: Classify this issue. ${{ self.needs.read_issue.output }}
+  output_format:
+    type: object
+    properties:
+      severity: { type: string, enum: [low, high] }
+    required: [severity]
 
 - id: page_oncall
-  depends_on: [parse_triage]
-  if: self.needs.parse_triage.output.severity == "high"
+  depends_on: [triage]
+  if: self.needs.triage.output.severity == "high"
   bash: ./notify.sh
 ```
 
-**approval** → `self.needs.<id>.approved` (boolean) and, with `enable_feedback: true`,
-`self.needs.<id>.feedback`. Note these sit at the top level: unlike every other node type,
-an approval result has **no** `output` wrapper.
+**approval** → `self.needs.<id>.output.approved` (boolean) and, with
+`enable_feedback: true`, `self.needs.<id>.output.feedback`.
 
 **loop** → `self.needs.<id>.iterations` and `self.needs.<id>.output.<key>` for each key
 declared in the loop's `outputs` map.
@@ -259,96 +267,24 @@ Use a `break` node with an `if` guard to exit from inside an iteration. A `break
 `exit` ends the whole workflow immediately, stopping in-flight parallel nodes. Set
 `failure: true` for a non-zero exit status.
 
-`approval` pauses for the user. With the default `exit_on_no: false` the workflow continues
-and downstream nodes route on `self.needs.<id>.approved`.
-
-`exit_on_no: true` ends the run on a decline — **except** when `enable_feedback: true` and
-the user actually supplied feedback. That combination completes the node instead, so the
-feedback can be acted on, and the run continues. If you need a hard gate, do not enable
-feedback on it.
+`approval` pauses for the user. With `exit_on_no: true` a decline ends the run; with the
+default `false` the workflow continues and downstream nodes route on
+`self.needs.<id>.output.approved`.
 
 ## Agentic node guidance
 
 - **`context: clean` (default) starts a fresh session.** `context: shared` continues from
-  the immediately preceding agentic node, and is rejected if a node has more than one
-  agentic predecessor. Prefer passing data explicitly through node
+  the immediately preceding agentic node, and is only valid with a single agentic
+  predecessor — it will not work in fan-in. Prefer passing data explicitly through node
   outputs or files in `heimdall.session_dir`; shared context hides the data flow.
-- Constrain tools with `allowed_tools` / `disallowed_tools` in `platform_options`. The
-  fewer tools a node can reach for, the more repeatable the run — which is the thing
-  Heimdall exists to provide.
-- When a downstream node branches on a model's answer, have the model emit JSON and parse
-  it through a bash node with `output_format: json`. Branching on substrings of free-form
-  prose is fragile, and an agentic node's own output is always an unparsed string.
+- Set `disable_tool_search: true` in `platform_options` so only explicitly configured
+  tools are available. Autodiscovery makes runs non-deterministic, which is the thing
+  Heimdall exists to prevent.
+- Use `output_format` whenever a downstream node branches on the result. Branching on
+  substrings of free-form prose is fragile.
 - `max_budget_usd` caps spend per node. Worth setting on loop bodies.
 
-## Field reference
-
-Every field the engine accepts. **Required** in bold; everything else is optional.
-Unknown keys on a node are not rejected — the node type is inferred from which
-type-specific key is present, so a typo in a field name is silently ignored rather than
-reported. Check spelling against these tables.
-
-### Workflow (top level)
-
-| Field              | Type                                     | Notes                                       |
-| ------------------ | ---------------------------------------- | ------------------------------------------- |
-| **`name`**         | string, non-empty                        |                                             |
-| **`nodes`**        | list, at least one                       |                                             |
-| `version`          | string                                   | Free-form; the engine does not interpret it |
-| `description`      | string                                   |                                             |
-| `platform`         | `claude`                                 | Default platform for agentic nodes          |
-| `platform_options` | map                                      | Defaults for agentic nodes; see below       |
-| `inputs`           | map of name → input declaration          | Supplied at run time                        |
-| `vars`             | map of name → string, number, or boolean | Static                                      |
-| `workspace`        | `{ worktree: boolean }`                  | Parsed, but currently has no effect         |
-
-**Input declaration:** **`type`** is one of `string`, `number`, `integer`, `boolean`.
-`description` is a string. `default` must match the declared `type` — an `integer` input
-with a fractional default is rejected at parse time.
-
-### Every node
-
-| Field        | Type                                               | Notes                                                          |
-| ------------ | -------------------------------------------------- | -------------------------------------------------------------- |
-| **`id`**     | string                                             | `^[A-Za-z_][A-Za-z0-9_]*$`, unique workflow-wide, not reserved |
-| `name`       | string                                             | Display name; defaults to the id                               |
-| `depends_on` | list of node ids                                   | Ordering _and_ the only way to read another node's result      |
-| `if`         | bare CEL, must yield a boolean                     | Not wrapped in `${{ }}`                                        |
-| `timeout`    | number ≥ 0                                         | Milliseconds                                                   |
-| `retries`    | `{ max_attempts, initial_delay_ms, max_delay_ms }` | All numbers ≥ 0; exponential backoff with jitter               |
-
-### Per node type
-
-| Type          | Fields                                                                                                                                          |
-| ------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
-| `bash`        | **`bash`** (string), `env` (map of string → string), `output_format` (`text` \| `json`)                                                         |
-| `agent`       | **`agent`** (non-empty string), `instructions` (string)                                                                                         |
-| `prompt`      | **`prompt`** (string)                                                                                                                           |
-| `prompt_file` | **`prompt_file`** (string)                                                                                                                      |
-| `approval`    | **`approval.message`** (string), `approval.exit_on_no` (bool, default `false`), `approval.enable_feedback` (bool, default `false`)              |
-| `exit`        | `exit.reason` (string), `exit.failure` (bool)                                                                                                   |
-| `break`       | **`break`** — the value is ignored; only its presence matters                                                                                   |
-| `loop`        | **`loop.nodes`** (list, at least one), `loop.until`, `loop.while`, `loop.max_iterations` (integer ≥ 1), `loop.outputs` (map of name → bare CEL) |
-
-Agentic nodes (`agent`, `prompt`, `prompt_file`) also take `platform`,
-`platform_options`, and `context` (`clean` \| `shared`).
-
-### `platform_options` for Claude
-
-| Option             | Type                                            |
-| ------------------ | ----------------------------------------------- |
-| `model`            | string                                          |
-| `agent`            | string                                          |
-| `reasoning_effort` | `low` \| `medium` \| `high` \| `xhigh` \| `max` |
-| `allowed_tools`    | list of strings                                 |
-| `disallowed_tools` | list of strings                                 |
-| `skills`           | list of strings                                 |
-| `max_budget_usd`   | number ≥ 0                                      |
-| `system_prompt`    | string                                          |
-| `sandbox`          | map                                             |
-
-**Any other key is silently discarded**, so a misspelled or invented option fails quietly
-rather than erroring. Only these nine reach the platform.
+See `references/claude_options.yaml` for the full option list.
 
 ## Writing checklist
 
@@ -361,6 +297,5 @@ rather than erroring. Only these nine reach the platform.
 5. Are `if` / `until` / `while` / `outputs` written as **bare CEL**, with no `${{ }}`?
 6. Do bash nodes write to `$HEIMDALL_OUTPUT` rather than relying on stdout?
 7. Does every loop have a `max_iterations` bound?
-8. Does any branch on a model's answer go through a bash node with `output_format: json`,
-   rather than matching prose or addressing fields on an agentic node's output?
+8. Does any node branching on agent output use `output_format` instead of prose matching?
 9. Are optional or conditional references guarded with `has()`?

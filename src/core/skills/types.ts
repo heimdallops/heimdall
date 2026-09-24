@@ -1,18 +1,10 @@
 import type { SkillPlatform } from './platform.ts';
 
-/** A supporting file installed alongside the skill body, e.g. a JSON Schema. */
-export interface SkillReference {
-  /** Path relative to the installed skill's own directory. */
-  readonly path: string;
-  readonly contents: string;
-}
-
 /** A skill as authored under `skills/`, independent of any platform's file layout. */
 export interface Skill {
   readonly name: string;
   readonly description: string;
   readonly body: string;
-  readonly references: readonly SkillReference[];
 }
 
 /** Where a skill is installed: alongside a project, or for the user across all projects. */
