@@ -1,6 +1,0 @@
-# heimdall-generated: v0.1.0 — installed by `heimdall skills install`. Edits are overwritten.
-$schema: 'https://json-schema.org/draft/2020-12/schema'
-type: string
-description: Agentic coding tool to use.
-enum:
-  - claude
