@@ -35,16 +35,12 @@ export const run = async (
   const root = target.resolveRoot(input.scope, ctx.cwd);
   const files = skills.flatMap((skill) => target.render(skill));
 
-  // Install sweeps before it writes, so it converges on exactly what this version ships.
-  // Discovery is disk-driven, which is what lets the sweep reach a skill dropped or renamed
-  // since it was installed — the catalog no longer knows that name, but the marker does.
-  // Partial installs are left for `skills uninstall --force` rather than being swept
-  // silently: install should not destroy a directory it cannot also replace.
+  // Sweep before writing so the result is exactly what this version ships. Partial installs
+  // are left alone: install should not destroy a directory it cannot also replace.
   const installed = await discoverInstalledSkills(root, target);
   const sweepable = installed.filter((skill) => !skill.partial);
   const partial = installed.filter((skill) => skill.partial);
 
-  // A dry run reports the same two lists a real one would, so it stays a faithful preview.
   const { written, removed } = input.dryRun
     ? {
         written: files.map((file) => `${root}/${file.relativePath}`),
@@ -75,8 +71,6 @@ export const run = async (
     ctx.printer.out(path);
   }
 
-  // Stale files are reported rather than removed silently: the user is being told that a file
-  // their agent may have been reading is gone.
   if (removed.length > 0) {
     ctx.printer.info(
       input.dryRun

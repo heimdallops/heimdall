@@ -4,10 +4,9 @@ import { describe, expect, it } from 'vitest';
 import { RESERVED_IDS } from '../../../../src/core/engine/nodes/base.ts';
 import { listSkills } from '../../../../src/core/skills/index.ts';
 
-// The skill ships prose and schemas that teach the expression language. Nothing in the engine
-// fails when that content drifts from what the engine actually binds, so these tests pin the
-// content to the engine instead. They are deliberately about vocabulary, not phrasing: a
-// namespace change should break them, a reworded sentence should not.
+// Nothing in the engine fails when the skill's prose drifts from what the engine binds, so
+// these pin the two together. About vocabulary, not phrasing: a namespace change breaks them,
+// a reworded sentence does not.
 
 const skill = (): NonNullable<ReturnType<typeof listSkills>[number]> => {
   const found = listSkills().find((candidate) => candidate.name === 'heimdall-workflows');
@@ -24,16 +23,12 @@ const shippedText = (): string => skill().body;
 const yamlExamples = (): string[] =>
   [...skill().body.matchAll(/```yaml\n([\s\S]*?)```/g)].map((match) => match[1] ?? '');
 
-// Where a retired spelling would actually mislead: inside an example an agent copies, or inside a
-// schema it treats as authoritative. The body's prose names the retired spellings on purpose — the
-// writing checklist tells an agent which ones not to reach for — so prose is checked separately,
-// for interpolations rather than mentions.
+// Examples only: the prose names retired spellings on purpose, to tell an agent what to avoid.
 const usageSites = (): { label: string; text: string }[] =>
   yamlExamples().map((text, index) => ({ label: `example ${index + 1}`, text }));
 
 describe('skill content — expression namespace', () => {
-  // Retired by the five-roots change. Each pattern matches the old spelling in a way the current
-  // spelling cannot satisfy: `needs.` only when not already reached through self./scopes./prev.
+  // Each pattern matches only the retired spelling, never the current one.
   const retired: [string, RegExp][] = [
     ['scope.loop', /\bscope\.loop\b/],
     ['scope.needs', /\bscope\.needs\b/],
@@ -86,8 +81,7 @@ describe('skill content — expression namespace', () => {
 });
 
 describe('skill content — examples', () => {
-  // A ternary in a bare-CEL value is a YAML parse error unless quoted, which makes a wrong
-  // example fail before Heimdall ever sees it. Parse every block so that cannot ship.
+  // An unquoted ternary in a bare-CEL value fails to parse before Heimdall ever sees it.
   it('parses every YAML example in the skill body', () => {
     const blocks = [...skill().body.matchAll(/```yaml\n([\s\S]*?)```/g)].map((match) => match[1]);
 
@@ -99,8 +93,7 @@ describe('skill content — examples', () => {
   });
 
   it('renders every field-reference table with a complete header row', () => {
-    // A table whose header and separator disagree renders as literal pipes, which is how a
-    // hand-maintained reference quietly becomes unreadable.
+    // A malformed row renders as literal pipes rather than a table.
     const rows = skill()
       .body.split('\n')
       .filter((line) => line.trim().startsWith('|'));
@@ -113,9 +106,8 @@ describe('skill content — examples', () => {
   });
 });
 
-// Vocabulary checks cannot catch a claim that is well-spelled and wrong. These pin the
-// specific result shapes and option names an audit found the content had misstated — each
-// one would have produced a workflow that fails at runtime.
+// Vocabulary checks cannot catch a claim that is well-spelled and wrong. Each of these was
+// misstated once and would have produced a workflow that fails at runtime.
 describe('skill content — result shapes and option names', () => {
   it('reads approval results off the top level, never under output', () => {
     // ApprovalNode returns { approved, feedback } with no wrapper (nodes/approval.ts).

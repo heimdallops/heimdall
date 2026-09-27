@@ -1,11 +1,7 @@
 import { readdir, readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 
-/**
- * Filesystem reads shared by skill discovery and skill writing. Both need to ask "what is
- * there?" without treating an absent path as a failure — a fresh install and an empty
- * skills root are ordinary states, not errors.
- */
+/** Reads shared by discovery and writing, treating an absent path as empty rather than an error. */
 
 const isMissing = (error: unknown): boolean =>
   (error as NodeJS.ErrnoException).code === 'ENOENT' ||

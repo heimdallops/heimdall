@@ -33,8 +33,6 @@ export const run = async (ctx: CliContext, input: SkillsListInput): Promise<Skil
   const target = createSkillTarget(input.platform, CLI_VERSION);
   const root = target.resolveRoot(input.scope, ctx.cwd);
 
-  // The same disk-driven discovery uninstall uses, so what list shows is exactly what
-  // uninstall would act on — including a skill this build no longer ships.
   const installed = await discoverInstalledSkills(root, target);
 
   const result: SkillsListResult = {

@@ -17,8 +17,7 @@ export interface SkillRemoveResult {
   readonly kept: string[];
 }
 
-// Walks up from a removed file's directory, dropping directories left empty by the removal, and
-// stops at the first one that is not — or at `stopAt`, which is never removed.
+/** Drops directories left empty by a removal, stopping at `stopAt`, which always survives. */
 const removeEmptyParents = async (from: string, stopAt: string): Promise<void> => {
   let current = from;
 
@@ -26,7 +25,6 @@ const removeEmptyParents = async (from: string, stopAt: string): Promise<void> =
     try {
       await rmdir(current);
     } catch {
-      // Not empty, or already gone. Either way there is nothing further up to drop.
       return;
     }
 
@@ -35,15 +33,8 @@ const removeEmptyParents = async (from: string, stopAt: string): Promise<void> =
 };
 
 /**
- * Deletes the marker-bearing files of already-discovered skills.
- *
- * Discovery decided what is ours; this only enforces the two rules that bound the damage.
- * Nothing outside a discovered skill's own directory is touched, and only files carrying
- * the marker are deleted — a file the user added survives, and keeps its directory alive
- * with it. A partial install (marked files, no marked manifest) needs `force`, because the
- * evidence that the directory is ours is weaker there.
- *
- * `force` widens what counts as ours. It never widens what may be destroyed.
+ * Deletes the marker-bearing files of already-discovered skills. `force` widens what counts
+ * as ours (a partial install), never what may be destroyed.
  */
 export const removeSkillFiles = async (
   skills: readonly InstalledSkill[],
@@ -72,22 +63,17 @@ export const removeSkillFiles = async (
 
     kept.push(...skill.kept);
 
-    // The skill's own directory goes too, but only once nothing of the user's is left in it.
     try {
       await rmdir(skill.directory);
     } catch {
-      // Still holds files the user added. Leaving it is the point.
+      // Still holds files the user added, which is why it survives.
     }
   }
 
   return { removed, kept };
 };
 
-/**
- * What a real install would remove: every marked file of a discovered skill that this
- * render does not write back. Reads no disk of its own, so `--dry-run` previews removals
- * through the same reasoning the write path applies.
- */
+/** What `writeSkillFiles` would remove, without touching disk, for `--dry-run`. */
 export const plannedRemovals = (
   root: string,
   files: readonly SkillFile[],
@@ -99,16 +85,8 @@ export const plannedRemovals = (
 };
 
 /**
- * Writes rendered skill files under `root`, returning the absolute paths written and removed.
- *
- * A file that already exists and does not carry the generated marker was written or edited
- * by hand, so overwriting it needs `force`. The check runs across every file before
- * anything is written, so a refusal leaves the install untouched rather than half-applied.
- *
- * `staleSkills` are skills discovered on disk that this render does not produce — a skill
- * dropped or renamed between versions. Their marked files are removed so an install
- * converges on exactly what the current version ships, rather than leaving content the
- * agent would go on loading as authoritative.
+ * Writes the rendered files, then removes anything in `staleSkills` this render does not
+ * write back, so an install converges on exactly what this version ships.
  */
 export const writeSkillFiles = async (
   root: string,
@@ -152,13 +130,12 @@ export const writeSkillFiles = async (
       await removeEmptyParents(dirname(path), skill.directory);
     }
 
-    // Only a skill this render does not produce at all can lose its directory; one being
-    // reinstalled has just had its files written back.
+    // A skill being reinstalled has just had its files written back, so it keeps its directory.
     if (!skill.files.some((path) => rendered.has(path))) {
       try {
         await rmdir(skill.directory);
       } catch {
-        // Still holds files the user added, or files just written. Either way it stays.
+        // Still holds files, so it stays.
       }
     }
   }

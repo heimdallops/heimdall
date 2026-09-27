@@ -1,9 +1,8 @@
 #!/usr/bin/env node
 // Generates src/core/skills/generated/bundle.ts from the authored skills under skills/.
 //
-// Skill content must live inside the JS bundle: `files: ["dist"]` keeps loose markdown out
-// of the npm package, and a SEA binary has no adjacent files at all. Emitting a TS module
-// means the ESM build, the SEA cjs build, and `npm run dev` all read content the same way.
+// The content must end up inside the JS bundle: npm publishes only dist/, and a SEA binary
+// has no adjacent files at all.
 
 import { readdir, readFile, mkdir, writeFile } from 'node:fs/promises';
 import { dirname, join, resolve } from 'node:path';

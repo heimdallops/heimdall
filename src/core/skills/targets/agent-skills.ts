@@ -8,24 +8,14 @@ import type { Skill, SkillFile, SkillScope, SkillTarget } from '../types.ts';
 const frontmatterValue = (value: string): string => `'${value.replace(/'/g, "''")}'`;
 
 /**
- * A target for the Agent Skills format: a directory per skill holding `SKILL.md` plus
- * `references/`, which every supported agent reads.
- *
- * The format is an open standard (agentskills.io), originally from Anthropic, so Claude
- * Code, OpenCode, and Codex all consume the same files — see `_docs/task-001/formats.md`.
- * The only thing that varies between them is which directory the skills live in, which is
- * why that is the sole constructor parameter.
- *
- * Frontmatter carries `name` and `description` and nothing else. That is the portable
- * subset: the spec requires both, OpenCode and Codex require both, and Claude Code's
- * extra fields (`allowed-tools`, `model`, `context`, …) sit outside the spec's allowlist,
- * so emitting any of them would make the skill less portable, not more capable.
+ * The Agent Skills format (agentskills.io), which every supported agent reads identically —
+ * only the root directory varies, hence `rootSegments`. Frontmatter stays at `name` and
+ * `description`: the portable subset every agent accepts.
  */
 class AgentSkillsTarget implements SkillTarget {
   public readonly platform: SkillPlatform;
 
-  // Parameter properties emit code, which `node --experimental-strip-types` (used by
-  // `npm run dev`) rejects. Declare and assign instead.
+  // Not parameter properties: those emit code, which `npm run dev`'s type stripping rejects.
   private readonly version: string;
   private readonly rootSegments: readonly string[];
 
@@ -48,8 +38,7 @@ class AgentSkillsTarget implements SkillTarget {
 
     return [
       {
-        // Built from manifestPath so what render writes and what discovery looks for
-        // cannot drift apart.
+        // Shared with discovery, so what is written and what is looked for cannot diverge.
         relativePath: this.manifestPath(skill.name),
         contents: [
           '---',
@@ -71,11 +60,6 @@ class AgentSkillsTarget implements SkillTarget {
 export const createClaudeSkillTarget = (version: string): SkillTarget =>
   new AgentSkillsTarget('claude', version, ['.claude', 'skills']);
 
-/**
- * OpenCode and Codex both read `.agents/skills` — the standard's tool-neutral location.
- * Codex reads only this one; OpenCode also scans `.claude/skills`, so a Claude install is
- * already visible to it. They are separate platform values because the user picks the agent
- * they are installing for, not the directory convention behind it.
- */
+/** OpenCode and Codex both read `.agents/skills`, the standard's tool-neutral location. */
 export const createAgentsDirSkillTarget = (platform: SkillPlatform, version: string): SkillTarget =>
   new AgentSkillsTarget(platform, version, ['.agents', 'skills']);

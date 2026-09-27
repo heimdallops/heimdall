@@ -9,16 +9,9 @@ import {
 import { listDirectoryNames, listFilesRecursively, readIfPresent } from './skill-fs.ts';
 
 /**
- * Finds the skills Heimdall has installed under `root`, by reading the filesystem.
- *
- * **The catalog is deliberately not consulted.** A skill that was renamed, retired, or
- * installed by an older CLI is no longer in the bundle, and that is exactly the skill a
- * user needs to be able to remove. Recognition therefore rests on the generated marker,
- * which every installed file carries, rather than on whether this build still ships the
- * name.
- *
- * A directory is skipped entirely unless something in it carries the marker, so the
- * user's own skills and other tools' skills — which share this root — are never claimed.
+ * Finds installed skills by marker, never by catalog lookup — a skill this build no longer
+ * ships is exactly the one a user needs to remove. A directory with no marked file in it is
+ * never claimed, so skills sharing this root are safe.
  */
 export const discoverInstalledSkills = async (
   root: string,
@@ -55,8 +48,6 @@ export const discoverInstalledSkills = async (
       files: files.sort(),
       kept: kept.sort(),
       version: manifestIsOurs ? markerVersion(manifestContents) : undefined,
-      // Marked files but no marked manifest: an interrupted write, or a manifest the user
-      // deleted. Still ours by the evidence, but weakly enough to want confirmation.
       partial: !manifestIsOurs,
     });
   }

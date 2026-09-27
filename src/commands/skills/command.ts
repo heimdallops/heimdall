@@ -2,8 +2,6 @@ import type { Command } from 'commander';
 import { z } from 'zod';
 
 import { type CliContext, createContext } from '../../cli/context.ts';
-// The skills enum, not the engine's `platformSchema`: installing a skill and running a
-// prompt are different capabilities, and only Claude can do the latter.
 import { skillPlatformSchema } from '../../core/skills/platform.ts';
 import { CliError, EXIT_CODE } from '../../errors/cli-error.ts';
 import { run as runList } from './list.ts';
@@ -12,14 +10,12 @@ import { run as runUninstall } from './uninstall.ts';
 
 const SCOPES = ['project', 'user'] as const;
 
-// Zod's default enum message ("expected one of ...") reads as a schema violation rather than
-// a CLI usage error, so both enums carry a message naming the value and the valid options.
+// Zod's default enum message reads as a schema violation rather than a CLI usage error.
 const unsupported =
   (label: string, supported: readonly string[]) =>
   (issue: { input: unknown }): string =>
     `Unsupported ${label} "${String(issue.input)}". Supported: ${supported.join(', ')}.`;
 
-// Every skills subcommand takes the same target: which agent, and which scope of it.
 const targetSchema = z.object({
   platform: z.enum(skillPlatformSchema.options, {
     error: unsupported('platform', skillPlatformSchema.options),

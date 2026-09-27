@@ -53,8 +53,6 @@ export const run = async (
   const target = createSkillTarget(input.platform, CLI_VERSION);
   const root = target.resolveRoot(input.scope, ctx.cwd);
 
-  // Never consults the catalog: a skill renamed or retired since it was installed is absent
-  // from the bundle, and that is exactly the skill that needs removing.
   const installed = await discoverInstalledSkills(root, target);
 
   if (installed.length === 0) {
@@ -98,8 +96,7 @@ export const run = async (
     return result;
   }
 
-  // Uninstall is the only thing this CLI does that destroys files it did not create in the
-  // same run, so it asks first. --json and --dry-run never reach here.
+  // Destroys files this run did not create, so it asks first. --json and --dry-run never reach here.
   if (!input.yes) {
     if (process.stdin.isTTY !== true) {
       throw new CliError(
@@ -142,7 +139,6 @@ export const run = async (
     ctx.printer.out(path);
   }
 
-  // Said plainly rather than left implicit: the directory is still there, and why.
   if (kept.length > 0) {
     ctx.printer.info(`Kept ${kept.length} file(s) Heimdall did not write:`);
 
