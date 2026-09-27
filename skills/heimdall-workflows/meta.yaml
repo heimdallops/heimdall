@@ -1,0 +1,7 @@
+name: heimdall-workflows
+description: >-
+  Write, review, or debug a Heimdall workflow YAML file. Use this skill whenever
+  authoring a .heimdall workflow, adding or changing nodes, writing CEL expressions
+  or ${{ }} interpolation, wiring node dependencies, or diagnosing a workflow that
+  fails validation. Trigger even for partial tasks like "add a bash step" or "make
+  this node conditional".

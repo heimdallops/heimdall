@@ -23,6 +23,7 @@ export const EXIT_CODE = {
   AUTH: 4,
   WORKFLOW_CONFIG: 5,
   WORKFLOW_FAILED: 6,
+  CONFLICT: 7,
   UNKNOWN: 1,
 } as const;
 
