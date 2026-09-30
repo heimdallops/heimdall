@@ -16,4 +16,25 @@ Each run executes in an isolated git worktree, so teams can run fixes and implem
 - **PR-ready workflows** - Teams can model paths from ticket or issue intake through implementation, validation, review, and PR creation.
 - **Complex process modeling** - Heimdall is built for workflows with branching, iteration, and explicit handoffs, not just linear agent prompts.
 
-User-facing commands and installation instructions are not documented here yet.
+## Installation
+
+Requires Node.js 24.
+
+```sh
+npm install -g @heimdallops/heimdall
+heimdall --help
+```
+
+Or run without installing:
+
+```sh
+npx @heimdallops/heimdall --help
+```
+
+Standalone binaries (no Node required):
+
+```sh
+curl -fsSL https://github.com/heimdallops/heimdall/releases/latest/download/install.sh | bash
+```
+
+User-facing commands are not documented here yet.
