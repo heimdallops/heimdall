@@ -107,7 +107,8 @@ jobs:
             echo "error_message=" >> "$GITHUB_OUTPUT"
             exit 0
           fi
-          LOG="$(cat "${RUNNER_TEMP}/npm-publish.log" 2>/dev/null || echo "(no npm log captured)")"
+          LOG="$(cat "${RUNNER_TEMP}/npm-publish.log" 2>/dev/null || true)"
+          [ -n "$LOG" ] || LOG="npm publish ${PUB_OUTCOME} (no npm log captured)"
           {
             echo "error_message<<EOF"
             printf '%s\n' "$LOG"
@@ -115,7 +116,7 @@ jobs:
           } >> "$GITHUB_OUTPUT"
 
       - name: Enforce publish success
-        if: always() && steps.summary.outputs.status == 'failure'
+        if: always() && steps.summary.outputs.error_message != ''
         run: |
           echo "::error::npm publish did not succeed"
           exit 1

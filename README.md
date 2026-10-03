@@ -55,6 +55,20 @@ curl -fsSL https://github.com/heimdallops/heimdall/releases/latest/download/inst
 
 Every release includes a `checksums.txt` if you want to verify the download.
 
+### npm
+
+Requires Node.js 24.
+
+```sh
+npm install -g @heimdallops/heimdall
+```
+
+Or run without installing:
+
+```sh
+npx @heimdallops/heimdall --help
+```
+
 ### Verify the installation
 
 ```sh
