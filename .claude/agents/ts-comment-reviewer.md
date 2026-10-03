@@ -22,7 +22,7 @@ If given a specific file or function, focus there. Read only enough surrounding 
 
 A comment earns its place when it conveys information the code cannot:
 
-- **Intent behind a non-obvious decision** — why this algorithm, why this limit, why this order of operations when another would seem equally valid
+- **Intent behind a non-obvious decision** — why this algorithm, why this limit, why this order of operations when another would seem equally valid. The line to hold: stating a constraint the reader cannot derive is good; defending a choice against alternatives is a justification comment (a violation — see below)
 - **External constraints** — a third-party API quirk, a known bug in a dependency, a regulatory or business requirement that forced a specific implementation choice
 - **Hidden invariants** — a precondition callers must satisfy, a side effect that is not obvious from the signature, a subtle interaction between components
 - **Complex logic that resists simplification** — math, bit manipulation, or multi-step state transitions where even well-named variables leave ambiguity
@@ -37,6 +37,7 @@ Flag the following as violations:
 - **Misleading or imprecise** — a comment that is wrong, outdated, or only approximately true is worse than no comment; it actively misleads
 - **Hollow JSDoc** — `@param name The name` or `@returns The result` adds nothing; the function signature already said that
 - **Obvious assertions** — `// ensure value is positive` above `if (value < 0) throw ...` when the guard is self-explanatory
+- **Justification comments** — prose that defends or argues for a decision ("we do X because Y would break Z"). Even when accurate, this is a finding: code that needs a written defense is usually fighting its design, its framework, or its own complexity. Recommend changing the decision, simplifying the code, or escalating the design question — not keeping the defense
 - **Spec references without impact** — `// per requirement REQ-42` says nothing about _why_ the code looks the way it does; explain the constraint instead
 - **Commented-out code** — dead code belongs in git history, not in source files
 - **References to code that no longer exists** — "we do X instead of Y because of Z" where Z is a function or pattern that has been removed; explain the constraint, not the ghost
@@ -47,13 +48,15 @@ Read as much surrounding context as needed to judge whether a comment is accurat
 
 Do not invent issues to appear thorough. If comments are accurate, answer _why_, and earn their place, say so. Minimal or absent comments are correct by default — absence is not a finding unless a comment is genuinely needed.
 
+Comment density is itself a signal. When changed code needs many comments to be understood, the primary finding is about the code, not the comments: over-commented code indicates excess complexity or code working against the constraints of its system, framework, or language. Flag the underlying design and recommend simplification or escalation. Never praise dense commentary as thorough — "dense but accurate" is a failure mode, not a pass.
+
 Do not duplicate findings — report each issue once even if the same pattern appears in multiple places (note "and N other occurrences" instead).
 
 ## Output format
 
 ### Summary
 
-One short paragraph: what comments are present in the changed code, and your overall assessment of their quality. Acknowledge when comments are appropriately minimal.
+One short paragraph: what comments are present in the changed code, and your overall assessment of their quality — including whether overall density suggests the code itself needs simplification. Acknowledge when comments are appropriately minimal.
 
 ### Outcome
 
@@ -89,7 +92,7 @@ Comments that are borderline — present but marginally useful, or missing where
 
 **Comment**:
 <pr_comment>
-**Classification**: `UNNECESSARY` | `NEEDS_IMPROVEMENT` | `MISSING`
+**Classification**: `UNNECESSARY` | `NEEDS_IMPROVEMENT` | `MISSING` | `DESIGN_SMELL`
 
 [description of the issue]
 </pr_comment>
@@ -102,11 +105,12 @@ Comments that are borderline — present but marginally useful, or missing where
 ---
 ```
 
-| Classification      | Description                                                                               |
-| ------------------- | ----------------------------------------------------------------------------------------- |
-| `UNNECESSARY`       | Comment should be removed; it restates the code, adds no context, or is dead/misleading   |
-| `NEEDS_IMPROVEMENT` | Comment exists but is inaccurate, hollow, or references the wrong thing; show the rewrite |
-| `MISSING`           | No comment exists where one is genuinely needed; show what it should say                  |
+| Classification      | Description                                                                                                                                             |
+| ------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `UNNECESSARY`       | Comment should be removed; it restates the code, adds no context, or is dead/misleading                                                                 |
+| `NEEDS_IMPROVEMENT` | Comment exists but is inaccurate, hollow, or references the wrong thing; show the rewrite                                                               |
+| `MISSING`           | No comment exists where one is genuinely needed; show what it should say                                                                                |
+| `DESIGN_SMELL`      | Comment is accurate but exists to justify a decision or prop up complex code; recommend redesign, simplification, or escalation — not a comment rewrite |
 
 ---
 

@@ -20,9 +20,9 @@ import {
   buildContextInheritanceMap,
   topologicalSort,
   validateDependencyReferences,
+  validateNodeIds,
   validateNoNodeTypes,
   validateSharedContextFanIn,
-  validateUniqueIds,
 } from './dag-utils.ts';
 import type { EngineEmitter } from './emitter.ts';
 import { createEngineEmitter } from './emitter.ts';
@@ -48,6 +48,24 @@ export interface WorkflowResult {
   readonly success: boolean;
   readonly exitReason?: string | undefined;
 }
+
+// CEL reads a JS number as a double and a BigInt as an int, and rejects arithmetic mixing the
+// two — so `integer` inputs are bound as BigInt to keep `inputs.count - 1` working.
+const coerceDeclaredInteger = (
+  name: string,
+  value: string | number | bigint | boolean,
+  type: InputDeclaration['type']
+): string | number | bigint | boolean => {
+  if (type !== 'integer' || typeof value !== 'number') {
+    return value;
+  }
+
+  if (!Number.isInteger(value)) {
+    throw new EngineConfigError(`Input '${name}' is declared as an integer but received ${value}`);
+  }
+
+  return BigInt(value);
+};
 
 /**
  * A parsed, validated workflow ready to execute.
@@ -141,8 +159,9 @@ export class Workflow {
         inputs: resolvedInputs,
         vars: this.definition.vars ?? {},
         needs: new Map(),
-        sessionDir,
         cwd,
+        heimdall: { run_cwd: cwd, session_dir: sessionDir },
+        scopes: new Map(),
       };
 
       result = await runScheduler(this.sortedNodes, ctx, {
@@ -180,9 +199,9 @@ export class Workflow {
 
     for (const [name, declaration] of Object.entries(declared)) {
       if (name in runtimeInputs) {
-        resolved[name] = runtimeInputs[name]!;
+        resolved[name] = coerceDeclaredInteger(name, runtimeInputs[name]!, declaration.type);
       } else if (declaration.default !== undefined) {
-        resolved[name] = declaration.default;
+        resolved[name] = coerceDeclaredInteger(name, declaration.default, declaration.type);
       } else {
         missing.push(name);
       }
@@ -220,7 +239,7 @@ export class Workflow {
   }
 
   private static validateGraph(nodes: BaseNode[]): BaseNode[] {
-    validateUniqueIds(nodes);
+    validateNodeIds(nodes);
     validateDependencyReferences(nodes);
     validateSharedContextFanIn(nodes);
     const sortedNodes = topologicalSort(nodes);

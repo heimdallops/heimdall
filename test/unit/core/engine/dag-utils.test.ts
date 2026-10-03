@@ -4,13 +4,13 @@ import {
   buildContextInheritanceMap,
   topologicalSort,
   validateDependencyReferences,
+  validateNodeIds,
   validateNoNodeTypes,
   validateSharedContextFanIn,
-  validateUniqueIds,
 } from '../../../../src/core/engine/dag-utils.ts';
 import { EngineConfigError } from '../../../../src/core/engine/errors.ts';
 import type { NodeRunOptions, NodeRunResult } from '../../../../src/core/engine/nodes/base.ts';
-import { BaseNode } from '../../../../src/core/engine/nodes/base.ts';
+import { BaseNode, RESERVED_IDS } from '../../../../src/core/engine/nodes/base.ts';
 
 class StubNode extends BaseNode {
   public run(_options: NodeRunOptions): Promise<NodeRunResult> {
@@ -64,66 +64,62 @@ class NonAgenticSharedContextNode extends BaseNode {
   }
 }
 
-describe('validateUniqueIds', () => {
+describe('validateNodeIds', () => {
   it('does not throw when the node list is empty', () => {
     expect(() => {
-      validateUniqueIds([]);
+      validateNodeIds([]);
     }).not.toThrow();
   });
 
-  it('does not throw when all node ids are distinct', () => {
-    const nodes = [
-      new StubNode({ id: 'alpha' }),
-      new StubNode({ id: 'beta' }),
-      new StubNode({ id: 'gamma' }),
-    ];
+  it('does not throw when every id is distinct', () => {
+    const nodes = [new StubNode({ id: 'alpha' }), new StubNode({ id: 'beta' })];
 
     expect(() => {
-      validateUniqueIds(nodes);
+      validateNodeIds(nodes);
     }).not.toThrow();
   });
 
-  it('throws EngineConfigError naming only the duplicated id when a non-duplicated id is also present', () => {
-    const nodes = [
-      new StubNode({ id: 'unique' }),
-      new StubNode({ id: 'dup' }),
-      new StubNode({ id: 'dup' }),
-    ];
+  it('does not throw when ids merely resemble reserved words', () => {
+    const nodes = [new StubNode({ id: 'loop_body' }), new StubNode({ id: 'my_switch' })];
 
-    let thrown: unknown;
-    try {
-      validateUniqueIds(nodes);
-    } catch (e) {
-      thrown = e;
-    }
-
-    expect(thrown).toBeInstanceOf(EngineConfigError);
-    expect((thrown as Error).message).toBe("Duplicate node id(s): ['dup']");
+    expect(() => {
+      validateNodeIds(nodes);
+    }).not.toThrow();
   });
 
-  it('reports all distinct duplicated ids when multiple different ids are each duplicated', () => {
+  it.each([...RESERVED_IDS])(
+    'throws EngineConfigError naming the id when a node uses the reserved word %s',
+    (id) => {
+      let thrown: unknown;
+      try {
+        validateNodeIds([new StubNode({ id })]);
+      } catch (e) {
+        thrown = e;
+      }
+
+      expect(thrown).toBeInstanceOf(EngineConfigError);
+      expect((thrown as Error).message).toContain(`Node id '${id}' is reserved`);
+    }
+  );
+
+  it('throws EngineConfigError naming the id when two nodes in the list share an id', () => {
     const nodes = [
-      new StubNode({ id: 'a' }),
       new StubNode({ id: 'unique' }),
-      new StubNode({ id: 'b' }),
-      new StubNode({ id: 'a' }),
-      new StubNode({ id: 'b' }),
-      new StubNode({ id: 'b' }),
+      new StubNode({ id: 'dup' }),
+      new StubNode({ id: 'dup' }),
     ];
 
     let thrown: unknown;
     try {
-      validateUniqueIds(nodes);
+      validateNodeIds(nodes);
     } catch (e) {
       thrown = e;
     }
 
     expect(thrown).toBeInstanceOf(EngineConfigError);
-    const { message } = thrown as Error;
-    expect(message).toContain("'a'");
-    expect(message).toContain("'b'");
-    expect(message).not.toContain("'unique'");
-    expect(message).toMatch(/^Duplicate node id\(s\):/);
+    expect((thrown as Error).message).toBe(
+      "Duplicate node id: 'dup'; node ids must be unique across the entire workflow"
+    );
   });
 });
 

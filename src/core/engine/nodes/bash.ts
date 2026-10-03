@@ -8,6 +8,7 @@ import { execa } from 'execa';
 
 import { interpolate } from '../cel.ts';
 import { NodeError } from '../errors.ts';
+import { buildEntryContext } from '../expression-context.ts';
 import { BashNodeSchema } from '../schema.ts';
 import type { BaseNodeData, NodeRunCompleted, NodeRunFailed, NodeRunOptions } from './base.ts';
 import { BaseNode } from './base.ts';
@@ -79,7 +80,7 @@ export class BashNode extends BaseNode<NodeRunCompleted | NodeRunFailed> {
 
   public override async run(options: NodeRunOptions): Promise<NodeRunCompleted | NodeRunFailed> {
     const { ctx, signal } = options;
-    const celContext = ctx as unknown as Record<string, unknown>;
+    const celContext = buildEntryContext(ctx, this.getDependencies());
 
     let interpolatedBash: string;
     try {
@@ -114,6 +115,7 @@ export class BashNode extends BaseNode<NodeRunCompleted | NodeRunFailed> {
     await using outputFile = await OutputFile.create();
 
     const execResult = await execa('bash', ['-c', interpolatedBash], {
+      cwd: ctx.cwd,
       env: {
         ...process.env,
         ...interpolatedEnv,
@@ -128,6 +130,14 @@ export class BashNode extends BaseNode<NodeRunCompleted | NodeRunFailed> {
     // Aborted via cancelSignal — surface a failed result rather than a NodeError since the abort, not the exit code, is the cause.
     if (execResult.isCanceled) {
       return { status: 'failed', error: execResult };
+    }
+
+    // execa leaves exitCode undefined in exactly two cases: the process never spawned, or a signal terminated it.
+    if (execResult.exitCode === undefined && !execResult.isTerminated) {
+      throw new NodeError('Bash script failed to start', 'ENGINE_BASH_SPAWN_ERROR', this.id, {
+        nodeName: this.name,
+        cause: execResult,
+      });
     }
 
     if (execResult.exitCode !== 0) {

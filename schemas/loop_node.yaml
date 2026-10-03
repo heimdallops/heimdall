@@ -15,11 +15,11 @@ allOf:
               Evaluated after each iteration (a post-condition, like a
               do-while loop), so the loop body always runs at least once.
               Mutually exclusive with while. Do not wrap in ${{ }}. Within the
-              expression, scope.iteration and scope.nodes.<id> (this loop's body
-              results) are available, and needs.<id> / scope.needs.<id> refer to
-              this loop node's own depends_on outputs. Use "true" combined with a
-              break_node inside the loop to control exit explicitly from within
-              the iteration.
+              expression, scope.loop.iteration and scope.loop.nodes.<id> (this
+              loop's body results) are available, and needs.<id> /
+              scope.needs.<id> refer to this loop node's own depends_on outputs.
+              Use "true" combined with a break_node inside the loop to control
+              exit explicitly from within the iteration.
           while:
             type: string
             description: >-
@@ -27,10 +27,10 @@ allOf:
               Evaluated before each iteration (a pre-condition, like a while
               loop), so the loop body may run zero times if it is false up front.
               Mutually exclusive with until. Do not wrap in ${{ }}. Within the
-              expression, scope.iteration and scope.nodes.<id> (the previous
-              iteration's body results, empty on the first iteration) are
-              available, and needs.<id> / scope.needs.<id> refer to this loop
-              node's own depends_on outputs.
+              expression, scope.loop.iteration and scope.loop.nodes.<id> (the
+              previous iteration's body results, empty on the first iteration)
+              are available, and needs.<id> / scope.needs.<id> refer to this
+              loop node's own depends_on outputs.
           max_iterations:
             type: integer
             description: >-
@@ -50,13 +50,13 @@ allOf:
               Declares the values exposed to downstream nodes after the loop exits.
               Each key becomes a field on needs.<loop_id>.output. Values are CEL
               expressions evaluated in the loop's final iteration context, where
-              scope.iteration and scope.nodes.<id> (this loop's body results) are
-              available, and needs.<id> / scope.needs.<id> refer to this loop
-              node's own depends_on outputs. Guard a node that may not have run
-              (e.g. a conditional `if` node) with has(), such as
-              "has(scope.nodes.<id>) ? scope.nodes.<id>.output : <default>". On an
-              early break exit, scope.nodes contains only the nodes that completed
-              before the break fired; others are absent.
+              scope.loop.iteration and scope.loop.nodes.<id> (this loop's body
+              results) are available, and needs.<id> / scope.needs.<id> refer to
+              this loop node's own depends_on outputs. Guard a node that may not
+              have run (e.g. a conditional `if` node) with has(), such as
+              "has(scope.loop.nodes.<id>) ? scope.loop.nodes.<id>.output :
+              <default>". On an early break exit, scope.loop.nodes contains only
+              the nodes that completed before the break fired; others are absent.
             additionalProperties:
               type: string
         required:
