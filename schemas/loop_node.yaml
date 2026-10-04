@@ -54,8 +54,8 @@ allOf:
               Each key becomes a field read downstream as `self.needs.<loop_id>.output.<key>`.
               Values are CEL expressions evaluated at a checkpoint once the loop has exited — see
               `loop_self_at_checkpoint` below. Here `self.nodes` holds the last iteration to
-              finish; after an early break it holds only the nodes that completed before it
-              fired.
+              finish: empty if the body never ran, and after an early break only the nodes that
+              completed before it fired.
             additionalProperties:
               type: string
               description: A CEL expression. Guard a node that may not have run with has().
