@@ -19,7 +19,7 @@ properties:
     description: >-
       Each value is the runtime value after defaults are applied, typed as the input declared it.
     additionalProperties:
-      oneOf:
+      anyOf:
         - type: string
         - type: number
         - type: integer
@@ -29,7 +29,7 @@ properties:
     title: The workflow's top-level vars map, keyed by variable name
     description: Constant for the whole run.
     additionalProperties:
-      oneOf:
+      anyOf:
         - type: string
         - type: number
         - type: integer
