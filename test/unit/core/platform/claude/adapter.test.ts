@@ -74,6 +74,30 @@ describe('ClaudeCodeAdapter', () => {
       expect(opts['cwd']).toBe('/run/worktree');
     });
 
+    it('passes the executable path to the SDK as pathToClaudeCodeExecutable', async () => {
+      const { query: mockedQuery } = await import('@anthropic-ai/claude-agent-sdk');
+      const queryMock = vi.mocked(mockedQuery);
+      queryMock.mockClear();
+
+      const adapter = new ClaudeCodeAdapter('/run/worktree', '/usr/local/bin/claude');
+      await adapter.run('prompt', {}).sessionId();
+
+      const opts = queryMock.mock.calls[0]![0].options as Record<string, unknown>;
+      expect(opts['pathToClaudeCodeExecutable']).toBe('/usr/local/bin/claude');
+    });
+
+    it('leaves pathToClaudeCodeExecutable unset without an executable path so the SDK uses its own binary', async () => {
+      const { query: mockedQuery } = await import('@anthropic-ai/claude-agent-sdk');
+      const queryMock = vi.mocked(mockedQuery);
+      queryMock.mockClear();
+
+      const adapter = new ClaudeCodeAdapter('/run/worktree');
+      await adapter.run('prompt', {}).sessionId();
+
+      const opts = queryMock.mock.calls[0]![0].options as Record<string, unknown>;
+      expect(opts).not.toHaveProperty('pathToClaudeCodeExecutable');
+    });
+
     it('defaults the system prompt to the claude_code preset for agent runs so the agent prompt applies', async () => {
       const { query: mockedQuery } = await import('@anthropic-ai/claude-agent-sdk');
       const queryMock = vi.mocked(mockedQuery);

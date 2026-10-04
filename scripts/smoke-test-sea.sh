@@ -19,7 +19,7 @@ fail() { echo "smoke test failed: $*" >&2; exit 1; }
 
 work_dir="$(mktemp -d)"
 trap 'rm -rf "$work_dir"' EXIT
-cp "${repo_dir}/test/fixtures/sea/bash.yaml" "$work_dir/"
+cp "${repo_dir}/test/fixtures/sea/bash.yaml" "${repo_dir}/test/fixtures/sea/prompt.yaml" "$work_dir/"
 cd "$work_dir"
 
 # no_sea_warning <stderr-file>
@@ -39,5 +39,14 @@ echo "run bash.yaml"
 output="$("$binary" run bash.yaml 2>stderr.txt)" || { echo "$output"; cat stderr.txt >&2; fail "run bash.yaml exited non-zero"; }
 no_sea_warning stderr.txt
 grep -q 'sea-smoke-ok' <<<"$output" || { echo "$output"; fail "bash node output missing 'sea-smoke-ok'"; }
+
+# Runs without Claude Code credentials: a missing executable must fail the agent node with
+# guidance and a non-zero exit, never exit 0 silently.
+echo "run prompt.yaml (missing Claude Code executable)"
+if output="$(HEIMDALL_CLAUDE_CODE_EXECUTABLE="$work_dir/no-such-claude" "$binary" run prompt.yaml 2>&1)"; then
+  echo "$output"
+  fail "run prompt.yaml exited 0 with a missing Claude Code executable"
+fi
+grep -q 'HEIMDALL_CLAUDE_CODE_EXECUTABLE' <<<"$output" || { echo "$output"; fail "missing-executable error lacks guidance"; }
 
 echo "smoke test passed"

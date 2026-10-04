@@ -4,6 +4,7 @@ import { resolve as resolvePath } from 'node:path';
 import { confirm, input, select } from '@inquirer/prompts';
 
 import type { CliContext } from '../../cli/context.ts';
+import { createAdapter, createAdapterFactory } from '../../core/engine/adapter-factory.ts';
 import type { ApprovalResult } from '../../core/engine/emitter.ts';
 import { createEngineEmitter } from '../../core/engine/emitter.ts';
 import { EngineConfigError, EngineValidationError } from '../../core/engine/errors.ts';
@@ -248,10 +249,14 @@ export const run = async (
       })();
     });
 
+    const adapterSettings = { claudeCodeExecutable: config.claudeCodeExecutable };
     const result = await workflow.run({
       inputs,
       emitter,
       cwd,
+      adapterFactory: createAdapterFactory((platform, adapterCwd) =>
+        createAdapter(platform, adapterCwd, adapterSettings)
+      ),
       signal: runSignal,
     });
 

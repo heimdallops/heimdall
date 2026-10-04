@@ -18,7 +18,9 @@ Each run executes in an isolated git worktree, so teams can run fixes and implem
 
 ## Installation
 
-Heimdall ships as a self-contained binary for macOS (Apple silicon and Intel), Linux (x64 and arm64), and Windows (x64) — no runtime dependencies required.
+Heimdall ships as a self-contained binary for macOS (Apple silicon and Intel), Linux (x64 and arm64), and Windows (x64) — no Node.js required.
+
+Agent nodes run through [Claude Code](https://github.com/anthropics/claude-code), so the binary needs Claude Code installed and `claude` on your `PATH`. To use a `claude` that isn't on `PATH`, set `claudeCodeExecutable` in your heimdall config file or the `HEIMDALL_CLAUDE_CODE_EXECUTABLE` environment variable to its path. The npm package bundles its own Claude Code and doesn't need this.
 
 ### Homebrew (macOS)
 

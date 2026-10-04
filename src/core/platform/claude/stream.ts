@@ -55,8 +55,15 @@ export class ClaudeStream extends EventEmitter implements PlatformStream {
   private readonly options: ClaudeOptions;
   private readonly initialSessionId: string | undefined;
   private readonly cwd: string | undefined;
+  private readonly executablePath: string | undefined;
 
-  constructor(prompt: string, options: ClaudeOptions, sessionId?: string, cwd?: string) {
+  constructor(
+    prompt: string,
+    options: ClaudeOptions,
+    sessionId?: string,
+    cwd?: string,
+    executablePath?: string
+  ) {
     super();
     // Prevent Node from throwing on unhandled 'error' events for callers
     // that only await sessionId() without registering an error listener.
@@ -71,6 +78,7 @@ export class ClaudeStream extends EventEmitter implements PlatformStream {
     this.options = options;
     this.initialSessionId = sessionId;
     this.cwd = cwd;
+    this.executablePath = executablePath;
     // Deferred so callers can attach listeners after construction: query() can throw
     // synchronously (e.g. the native CLI binary isn't installed), and an 'error' emitted from
     // inside the constructor would reach no listener and leave the caller waiting forever.
@@ -177,6 +185,9 @@ export class ClaudeStream extends EventEmitter implements PlatformStream {
       abortController: this.abortController,
       includePartialMessages: true,
       ...(this.cwd !== undefined && { cwd: this.cwd }),
+      ...(this.executablePath !== undefined && {
+        pathToClaudeCodeExecutable: this.executablePath,
+      }),
       ...(model !== undefined && { model }),
       ...(agent !== undefined && { agent }),
       ...(options.reasoning_effort !== undefined && { effort: options.reasoning_effort }),
