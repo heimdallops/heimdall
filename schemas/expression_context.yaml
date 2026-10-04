@@ -61,7 +61,7 @@ properties:
     description: |-
       Holds the shape below for when the expression runs; a scoped node type adds its own members,
       documented in its schema. Referencing a member that isn't available at that point fails the
-      expression; `has()` guards an absent entry within a map, not an absent member.
+      expression; guard it with `has()`.
     anyOf:
       - $ref: '#/$defs/self_at_entry'
       - $ref: '#/$defs/self_at_checkpoint'
