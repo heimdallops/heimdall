@@ -44,7 +44,7 @@ curl -fsSL https://github.com/heimdallops/heimdall/releases/latest/download/inst
 Pin a version or change the install directory with environment variables:
 
 ```sh
-curl -fsSL https://github.com/heimdallops/heimdall/releases/latest/download/install.sh | VERSION=0.1.0 INSTALL_DIR=~/.local/bin bash
+curl -fsSL https://github.com/heimdallops/heimdall/releases/latest/download/install.sh | VERSION=0.0.2 INSTALL_DIR=~/.local/bin bash
 ```
 
 ### Manual download (including Windows)
