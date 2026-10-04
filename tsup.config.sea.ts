@@ -11,4 +11,5 @@ export default defineConfig({
   dts: false,
   splitting: false,
   noExternal: [/.*/],
+  shims: true,
 });
