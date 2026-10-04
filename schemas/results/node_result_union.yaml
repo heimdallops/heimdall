@@ -1,0 +1,10 @@
+$schema: 'https://json-schema.org/draft/2020-12/schema'
+title: Any node's result
+description: >-
+  Every value in an id-keyed result map matches exactly one of these, chosen by the type of the
+  node that produced it.
+oneOf:
+  - $ref: agentic_node_result.yaml
+  - $ref: approval_node_result.yaml
+  - $ref: bash_node_result.yaml
+  - $ref: loop_node_result.yaml
