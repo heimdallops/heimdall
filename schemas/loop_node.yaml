@@ -19,7 +19,8 @@ allOf:
               A checkpoint — see `loop_self_at_checkpoint` below. Here `self.nodes` holds the
               iteration that just finished, and `self.iterations` reads 1 after the first.
 
-              Use "true" with a break_node inside the loop to control exit from within the body.
+              To end the loop only from within the body, set it to "false" and use a break_node;
+              max_iterations still applies.
           while:
             type: string
             title: Pre-condition checked before each iteration

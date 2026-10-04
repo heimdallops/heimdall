@@ -9,7 +9,7 @@ allOf:
         title: Human approval gate
         description: >-
           Requests approval before continuing. A downstream node that declares this one reads the
-          result as `self.needs.<id>.output` — see `schemas/expression_context.yaml`.
+          decision as `self.needs.<id>.approved` — see `schemas/expression_context.yaml`.
         properties:
           message:
             type: string
@@ -22,7 +22,7 @@ allOf:
             description: >-
               When true, a "no" response immediately exits the workflow. When false (default),
               the workflow continues and downstream nodes can route on
-              `self.needs.<id>.output.approved`.
+              `self.needs.<id>.approved`.
           enable_feedback:
             type: boolean
             default: false
