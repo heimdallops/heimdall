@@ -210,7 +210,10 @@ export const run = async (
     });
 
     emitter.on('node_failed', ({ nodeName, error }) => {
-      const message = error instanceof Error ? error.message : String(error);
+      // The engine wraps node failures in a NodeError whose own message only names the node;
+      // the cause says what actually went wrong.
+      const reason = error instanceof Error && error.cause instanceof Error ? error.cause : error;
+      const message = reason instanceof Error ? reason.message : String(reason);
       printer.error(`Node failed: ${nodeName} — ${message}`);
     });
 

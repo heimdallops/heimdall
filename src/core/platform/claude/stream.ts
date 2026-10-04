@@ -71,7 +71,10 @@ export class ClaudeStream extends EventEmitter implements PlatformStream {
     this.options = options;
     this.initialSessionId = sessionId;
     this.cwd = cwd;
-    void this.execute();
+    // Deferred so callers can attach listeners after construction: query() can throw
+    // synchronously (e.g. the native CLI binary isn't installed), and an 'error' emitted from
+    // inside the constructor would reach no listener and leave the caller waiting forever.
+    queueMicrotask(() => void this.execute());
   }
 
   override on<K extends keyof StreamEventMap>(
@@ -141,7 +144,7 @@ export class ClaudeStream extends EventEmitter implements PlatformStream {
       } else {
         const platformErr = new PlatformError(
           'PLATFORM_ERROR',
-          'An unexpected error occurred during stream execution',
+          `An unexpected error occurred during stream execution: ${err instanceof Error ? err.message : String(err)}`,
           { cause: err }
         );
         this.rejectSessionId(platformErr);
