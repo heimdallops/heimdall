@@ -6,10 +6,10 @@ allOf:
     properties:
       approval:
         type: object
+        title: Human approval gate
         description: >-
-          Request human approval before continuing. The result is available to
-          downstream nodes via needs.<id>.output. Use exit_on_no: true to
-          exit the workflow immediately when the user declines.
+          Requests approval before continuing. A downstream node that declares this one reads the
+          result as `self.needs.<id>.output` — see `schemas/expression_context.yaml`.
         properties:
           message:
             type: string
@@ -20,9 +20,9 @@ allOf:
             type: boolean
             default: false
             description: >-
-              When true, a "no" response immediately exits the workflow.
-              When false (default), the workflow continues and downstream
-              nodes can route on needs.<id>.output.approved.
+              When true, a "no" response immediately exits the workflow. When false (default),
+              the workflow continues and downstream nodes can route on
+              `self.needs.<id>.output.approved`.
           enable_feedback:
             type: boolean
             default: false

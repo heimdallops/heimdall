@@ -10,27 +10,27 @@ allOf:
         properties:
           until:
             type: string
-            description: >-
-              CEL expression that exits the loop when it evaluates to true.
-              Evaluated after each iteration (a post-condition, like a
-              do-while loop), so the loop body always runs at least once.
-              Mutually exclusive with while. Do not wrap in ${{ }}. Within the
-              expression, scope.loop.iteration and scope.loop.nodes.<id> (this
-              loop's body results) are available, and needs.<id> /
-              scope.needs.<id> refer to this loop node's own depends_on outputs.
-              Use "true" combined with a break_node inside the loop to control
-              exit explicitly from within the iteration.
+            title: Post-condition checked after each iteration
+            description: |-
+              CEL expression that exits the loop when it evaluates to true. Evaluated after each
+              iteration (like a do-while loop), so the body always runs at least once. Mutually
+              exclusive with while. Do not wrap in ${{ }}.
+
+              A checkpoint — see `loop_self_at_checkpoint` below. Here `self.nodes` holds the
+              iteration that just finished, and `self.iterations` reads 1 after the first.
+
+              Use "true" with a break_node inside the loop to control exit from within the body.
           while:
             type: string
-            description: >-
-              CEL expression that continues the loop while it evaluates to true.
-              Evaluated before each iteration (a pre-condition, like a while
-              loop), so the loop body may run zero times if it is false up front.
-              Mutually exclusive with until. Do not wrap in ${{ }}. Within the
-              expression, scope.loop.iteration and scope.loop.nodes.<id> (the
-              previous iteration's body results, empty on the first iteration)
-              are available, and needs.<id> / scope.needs.<id> refer to this
-              loop node's own depends_on outputs.
+            title: Pre-condition checked before each iteration
+            description: |-
+              CEL expression that continues the loop while it evaluates to true. Evaluated before
+              each iteration (like a while loop), so the body may run zero times. Mutually
+              exclusive with until. Do not wrap in ${{ }}.
+
+              A checkpoint — see `loop_self_at_checkpoint` below. Here `self.nodes` holds the
+              previous iteration, empty before the first, and `self.iterations` reads 0 before
+              the first.
           max_iterations:
             type: integer
             description: >-
@@ -40,25 +40,26 @@ allOf:
             minimum: 1
           nodes:
             type: array
-            description: List of nodes to run on each iteration of the loop.
+            title: Nodes run on each iteration of the loop
+            description: >-
+              A body node reads this loop as `scopes.<loop_id>` — see `loop_scope_entry` below.
             items:
               $ref: node_union.yaml
             minItems: 1
           outputs:
             type: object
-            description: >-
-              Declares the values exposed to downstream nodes after the loop exits.
-              Each key becomes a field on needs.<loop_id>.output. Values are CEL
-              expressions evaluated in the loop's final iteration context, where
-              scope.loop.iteration and scope.loop.nodes.<id> (this loop's body
-              results) are available, and needs.<id> / scope.needs.<id> refer to
-              this loop node's own depends_on outputs. Guard a node that may not
-              have run (e.g. a conditional `if` node) with has(), such as
-              "has(scope.loop.nodes.<id>) ? scope.loop.nodes.<id>.output :
-              <default>". On an early break exit, scope.loop.nodes contains only
-              the nodes that completed before the break fired; others are absent.
+            title: Values exposed to downstream nodes after the loop exits
+            description: |-
+              Each key becomes a field read downstream as `self.needs.<loop_id>.output.<key>`.
+              Values are CEL expressions evaluated at a checkpoint once the loop has exited — see
+              `loop_self_at_checkpoint` below. Here `self.nodes` holds the last iteration to
+              finish; after an early break it holds only the nodes that completed before it
+              fired.
             additionalProperties:
               type: string
+              description: A CEL expression. Guard a node that may not have run with has().
+              examples:
+                - "has(self.nodes.check) ? self.nodes.check.output : 'skipped'"
         required:
           - nodes
         anyOf:
@@ -74,3 +75,52 @@ allOf:
             - while
     required:
       - loop
+$defs:
+  loop_self_at_checkpoint:
+    title: What self carries at this loop's while, until and outputs expressions
+    description: >-
+      Everything a checkpoint binds — see `schemas/expression_context.yaml` — plus this loop's
+      iteration count. Reached before the first iteration, after each one, and again at
+      outputs.
+    allOf:
+      - $ref: 'expression_context.yaml#/$defs/self_at_checkpoint'
+      - type: object
+        properties:
+          iterations:
+            type: integer
+            title: Number of iterations that have finished
+            description: >-
+              Reads 0 before the first iteration, and N+1 once iteration N has finished, whether
+              it ended normally or through a break. The count outputs reads is the count
+              this loop emits as its iterations result.
+            minimum: 0
+        required:
+          - iterations
+  loop_scope_entry:
+    title: What this loop exposes to the nodes inside its body, keyed by its own id
+    description: >-
+      Everything a scope entry carries — see `schemas/expression_context.yaml` — plus this loop's
+      cross-execution channels.
+    allOf:
+      - $ref: 'expression_context.yaml#/$defs/scope_entry'
+      - type: object
+        properties:
+          index:
+            type: integer
+            title: Zero-based index of the iteration now running
+            description: >-
+              0 throughout the first, 1 throughout the second, and so on.
+            minimum: 0
+          prev:
+            type: object
+            title: Results of the previous iteration, keyed by node id
+            description: >-
+              The same map the loop reads at its checkpoints as `self.nodes`, one iteration
+              behind. Empty throughout the first iteration. To read a sibling's result from the
+              iteration now running, list that sibling in depends_on and read `self.needs`
+              instead.
+            additionalProperties:
+              $ref: results/node_result_union.yaml
+        required:
+          - index
+          - prev

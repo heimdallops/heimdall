@@ -14,15 +14,21 @@ properties:
     type: array
     description: >-
       IDs of nodes that must complete before this node runs. A node becomes
-      eligible to run as soon as all its dependencies have completed.
+      eligible to run as soon as all its dependencies have completed. Only these
+      nodes' results are readable from this node, as `self.needs.<id>`.
     items:
       type: string
       minLength: 1
   if:
     type: string
-    description: >-
-      CEL expression that must evaluate to true for this node to run.
-      Do not wrap in ${{ }}.
+    title: Condition gating whether this node runs
+    description: |-
+      CEL expression that must evaluate to true for this node to run. Do not wrap in ${{ }}.
+
+      Evaluated at entry — see `schemas/expression_context.yaml`:
+
+      - `self.needs` — this node's own depends_on outputs.
+      - `scopes` — one entry per enclosing scoped node, keyed by that node's id.
   timeout:
     type: number
     description: Maximum time to wait before timing out, in milliseconds.
