@@ -1,11 +1,12 @@
 $schema: 'https://json-schema.org/draft/2020-12/schema'
-description: >-
-  Executes a bash script and exposes its output to downstream nodes via needs.<id>.output.
-  The engine injects a HEIMDALL_OUTPUT environment variable containing the path to a
-  temporary file. Write to that file to control exactly what is exposed as output —
-  only its contents are read, so incidental stdout from commands like apt or curl does
-  not contaminate the result. If nothing is written to HEIMDALL_OUTPUT, the node's
-  output is empty.
+description: |-
+  Executes a bash script. A downstream node that declares this one reads the result as
+  `self.needs.<id>.output` — see `schemas/expression_context.yaml`.
+
+  The engine injects a `HEIMDALL_OUTPUT` environment variable holding the path to a temporary
+  file. Write to that file to control exactly what is exposed as output: only its contents are
+  read, so incidental stdout from commands like `apt` or `curl` does not contaminate the result.
+  If nothing is written, the output is empty.
 allOf:
   - $ref: node.yaml
   - type: object
@@ -29,11 +30,11 @@ allOf:
           - text
           - json
         default: text
-        description: >-
-          Controls how the contents of HEIMDALL_OUTPUT are parsed. "text" (default)
-          exposes the contents as a plain string on needs.<id>.output. "json" parses
-          the contents as JSON and exposes the parsed structure on needs.<id>.output,
-          making fields accessible as needs.<id>.output.<field>. If "json" is set and
-          the contents are not valid JSON, the node fails immediately.
+        title: How the contents of HEIMDALL_OUTPUT are parsed
+        description: |-
+          - `text` (default) — the contents become a plain string.
+          - `json` — the contents are parsed as JSON, so fields are reachable as
+            `self.needs.<id>.output.<field>`. The node fails immediately if the contents are not
+            valid JSON.
     required:
       - bash
