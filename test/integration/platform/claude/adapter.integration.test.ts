@@ -138,7 +138,9 @@ describe('ClaudeCodeAdapter integration', () => {
       await new Promise<void>((resolve, reject) => {
         stream.on('chunk', (delta) => chunks.push(delta));
         stream.on('error', reject);
-        stream.on('done', resolve);
+        stream.on('done', () => {
+          resolve();
+        });
       });
 
       const output = chunks.join('');
@@ -163,7 +165,9 @@ describe('ClaudeCodeAdapter integration', () => {
       await new Promise<void>((resolve, reject) => {
         stream.on('chunk', (delta) => chunks.push(delta));
         stream.on('error', reject);
-        stream.on('done', resolve);
+        stream.on('done', () => {
+          resolve();
+        });
       });
 
       const output = chunks.join('');
