@@ -55,6 +55,20 @@ curl -fsSL https://github.com/heimdallops/heimdall/releases/latest/download/inst
 
 Every release includes a `checksums.txt` if you want to verify the download.
 
+### npm
+
+Requires Node.js 24.
+
+```sh
+npm install -g @heimdallops/heimdall
+```
+
+Or run without installing:
+
+```sh
+npx @heimdallops/heimdall --help
+```
+
 ### Verify the installation
 
 ```sh
@@ -158,7 +172,7 @@ nodes:
       echo -n "dist/" > "$HEIMDALL_OUTPUT"
   - id: test
     depends_on: [build]
-    bash: echo "Testing output at ${{ needs.build.output }}"
+    bash: echo "Testing output at ${{ self.needs.build.output }}"
 ```
 
 Approval gates pause execution and prompt the user before continuing:

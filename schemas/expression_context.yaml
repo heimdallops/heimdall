@@ -1,0 +1,140 @@
+$schema: 'https://json-schema.org/draft/2020-12/schema'
+description: |-
+  What a `${{ }}` expression, `if` or loop condition can reference. Every value is owned by
+  something — the workflow owns `inputs`, `vars` and `heimdall`; `self` is the node the expression
+  is attached to; `scopes` holds the scoped nodes that node is nested within. A scoped node is one
+  with a body of nodes of its own; today that is loop_node.
+
+  What `self` holds depends on when the expression runs:
+
+  - At entry — a node's own `if` and the `${{ }}` interpolation of its own fields. Nothing the
+    node owns has produced a result yet.
+  - At a checkpoint — expressions a scoped node evaluates around its body: a loop's `while`,
+    `until` and `outputs`.
+type: object
+properties:
+  inputs:
+    type: object
+    title: The workflow's declared inputs, keyed by input name
+    description: >-
+      Each value is the runtime value after defaults are applied, typed as the input declared it.
+    additionalProperties:
+      anyOf:
+        - type: string
+        - type: number
+        - type: integer
+        - type: boolean
+  vars:
+    type: object
+    title: The workflow's top-level vars map, keyed by variable name
+    description: Constant for the whole run.
+    additionalProperties:
+      anyOf:
+        - type: string
+        - type: number
+        - type: integer
+        - type: boolean
+  heimdall:
+    type: object
+    title: Run-scoped values Heimdall provides
+    description: Identical at every node.
+    properties:
+      session_dir:
+        type: string
+        title: Temporary directory scoped to this workflow run
+        description: >-
+          Absolute path. Persists for the lifetime of the run. Use it to share files between nodes
+          (e.g. spec.md, progress.txt) without polluting the workspace.
+      run_cwd:
+        type: string
+        title: Directory the run started in
+        description: >-
+          Absolute path, fixed when the run starts. It reads the same for every node, including
+          one that executes somewhere else, so it is the stable anchor for reaching a path outside
+          wherever a node happens to be running.
+    required:
+      - session_dir
+      - run_cwd
+  self:
+    type: object
+    title: The node the expression is attached to
+    description: |-
+      Holds the shape below for when the expression runs; a scoped node type adds its own members,
+      documented in its schema. Referencing a member that isn't available at that point fails the
+      expression; guard it with `has()`.
+    anyOf:
+      - $ref: '#/$defs/self_at_entry'
+      - $ref: '#/$defs/self_at_checkpoint'
+  scopes:
+    type: object
+    title: The scoped nodes this node is nested within, keyed by their own ids
+    description: |-
+      Read an enclosing scoped node as `scopes.<id>`. Empty on a node nested within nothing. Each
+      entry carries that node's `needs`; a node type may add more.
+    additionalProperties:
+      $ref: '#/$defs/scope_entry'
+required:
+  - inputs
+  - vars
+  - heimdall
+  - self
+  - scopes
+$defs:
+  self_at_entry:
+    type: object
+    title: What self holds at entry
+    description: >-
+      A node's own `if` and the `${{ }}` interpolation of its own fields. Nothing the node owns
+      has produced a result yet, so `needs` is all it can see. For a node that isn't scoped, this
+      is all `self` ever holds.
+    properties:
+      needs:
+        type: object
+        title: Results of the nodes this node lists in depends_on, keyed by node id
+        description: >-
+          One entry per listed dependency that produced a result; a skipped dependency has none.
+          Empty when the node lists no dependencies. An unguarded reference to an absent id fails
+          the node; `has()` guards it.
+        additionalProperties:
+          $ref: results/node_result_union.yaml
+    required:
+      - needs
+  self_at_checkpoint:
+    title: What self holds at a scoped node's checkpoints
+    description: >-
+      Everything available at entry, plus the latest body results. A checkpoint can run more than
+      once and does not mean the node has finished. A node type adds its own members on top of
+      this — see that node type's schema.
+    allOf:
+      - $ref: '#/$defs/self_at_entry'
+      - type: object
+        properties:
+          nodes:
+            type: object
+            title: Results of the most recent run of the body, keyed by node id
+            description: >-
+              One entry per body node that completed in that run. Empty before the body first
+              runs, and each time the scoped node itself starts again. An unguarded reference to
+              an absent id fails the node; `has()` guards it.
+            additionalProperties:
+              $ref: results/node_result_union.yaml
+        required:
+          - nodes
+  scope_entry:
+    type: object
+    title: What an enclosing scoped node exposes to the nodes inside its body
+    description: >-
+      Available to every node inside its body, including the checkpoints of a scoped node nested
+      within it. Every entry carries `needs`; a node type adds its own members on top of that —
+      see that node type's schema.
+    properties:
+      needs:
+        type: object
+        title: Results of the nodes the enclosing node itself lists in depends_on, keyed by id
+        description: >-
+          How a body node reads a result produced outside the body: a body node's own depends_on
+          can only list nodes in the same body.
+        additionalProperties:
+          $ref: results/node_result_union.yaml
+    required:
+      - needs

@@ -17,11 +17,11 @@ nodes:
     name: Confirm
     depends_on: [greet]
     approval:
-      message: '${{ needs.greet.output }} — shout it?'
+      message: '${{ self.needs.greet.output }} — shout it?'
       exit_on_no: true
 
   - id: shout
     name: Shout it
-    depends_on: [confirm]
+    depends_on: [confirm, greet]
     bash: |
-      echo "${{ needs.greet.output }}" | tr '[:lower:]' '[:upper:]'
+      echo "${{ self.needs.greet.output }}" | tr '[:lower:]' '[:upper:]'

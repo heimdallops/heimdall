@@ -1,24 +1,24 @@
 $schema: 'https://json-schema.org/draft/2020-12/schema'
 description: >-
-  Output of a loop_node. Accessible to downstream nodes via needs.<id>.<property>.
+  Output of a loop_node. A downstream node that declares this one reads it as
+  `self.needs.<loop_id>.<property>` — see `schemas/expression_context.yaml`.
 type: object
 properties:
-  total_iterations:
+  iterations:
     type: integer
+    title: Iterations that finished before the loop exited
     description: >-
-      Number of fully-completed iterations when the loop exited. A loop that
-      completed one iteration has total_iterations: 1; a loop whose body hit a
-      break_node before completing any iteration has total_iterations: 0.
-      Accessible to downstream nodes via needs.<loop_id>.total_iterations.
+      An iteration ended by a break_node counts, so a loop whose first iteration hit a break_node
+      reads 1; only a loop that never started an iteration reads 0. Equals the value the loop's own
+      outputs expressions read as `self.iterations`.
     minimum: 0
   output:
     type: object
+    title: Resolved values declared in the loop's outputs map
     description: >-
-      The resolved outputs declared in the loop's outputs map. Each key is a
-      name declared under outputs and its value is the result of evaluating the
-      corresponding CEL expression at the end of the final iteration.
-      Accessible to downstream nodes via needs.<loop_id>.output.<key>.
+      Each key is a name declared under outputs; its value is the result of evaluating the
+      corresponding CEL expression after the loop has exited.
     additionalProperties: true
 required:
-  - total_iterations
+  - iterations
   - output
