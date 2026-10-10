@@ -177,4 +177,40 @@ describe('ClaudeCodeAdapter integration', () => {
     },
     60_000
   );
+
+  it.skipIf(!claudeAvailable)(
+    'output_format yields structured output matching the schema on done',
+    async () => {
+      const adapter = new ClaudeCodeAdapter(tempDir);
+
+      const stream = adapter.run(
+        "Classify this support ticket: 'The app crashes every time I log in.' Label it bug, feature, or question.",
+        {
+          output_format: {
+            type: 'object',
+            properties: {
+              label: { type: 'string', enum: ['bug', 'feature', 'question'] },
+            },
+            required: ['label'],
+            additionalProperties: false,
+          },
+        }
+      );
+
+      const structuredOutput = await new Promise<unknown>((resolve, reject) => {
+        stream.on('error', reject);
+        stream.on('done', (output) => {
+          resolve(output);
+        });
+      });
+
+      // Assert the shape rather than the model's label choice so the test checks the
+      // platform contract, not classification quality.
+      expect(structuredOutput).toEqual({ label: expect.any(String) as unknown });
+      expect(['bug', 'feature', 'question']).toContain(
+        (structuredOutput as { label: string }).label
+      );
+    },
+    60_000
+  );
 });
