@@ -176,7 +176,7 @@ nodes:
       echo -n "dist/" > "$HEIMDALL_OUTPUT"
   - id: test
     depends_on: [build]
-    bash: echo "Testing output at ${{ needs.build.output }}"
+    bash: echo "Testing output at ${{ self.needs.build.output }}"
 ```
 
 Approval gates pause execution and prompt the user before continuing:

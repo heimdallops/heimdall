@@ -3,10 +3,10 @@ description: Base properties shared by all node types. Every node must have a un
 type: object
 properties:
   id:
-    type: string
-    description: Unique identifier for this node. Must contain only alphanumeric characters and underscores.
-    minLength: 1
-    pattern: '^[a-zA-Z0-9_]+$'
+    $ref: '#/$defs/node_id'
+    description: >-
+      Identifier for this node. Another node names it in depends_on and reads its result as
+      `self.needs.<id>`.
   name:
     type: string
     description: Human-readable display name for this node. Optional; if omitted, the id is used.
@@ -14,15 +14,20 @@ properties:
     type: array
     description: >-
       IDs of nodes that must complete before this node runs. A node becomes
-      eligible to run as soon as all its dependencies have completed.
+      eligible to run as soon as all its dependencies have completed. Only these
+      nodes' results are readable from this node, as `self.needs.<id>`.
     items:
-      type: string
-      minLength: 1
+      $ref: '#/$defs/node_id'
   if:
     type: string
-    description: >-
-      CEL expression that must evaluate to true for this node to run.
-      Do not wrap in ${{ }}.
+    title: Condition gating whether this node runs
+    description: |-
+      CEL expression that must evaluate to true for this node to run. Do not wrap in ${{ }}.
+
+      Evaluated at entry — see `schemas/expression_context.yaml`:
+
+      - `self.needs` — this node's own depends_on outputs.
+      - `scopes` — one entry per enclosing scoped node, keyed by that node's id.
   timeout:
     type: number
     description: Maximum time to wait before timing out, in milliseconds.
@@ -44,3 +49,31 @@ properties:
         minimum: 0
 required:
   - id
+$defs:
+  node_id:
+    type: string
+    title: A node identifier
+    description: |-
+      Unique across the whole workflow. The listed names are reserved by the expression
+      language.
+    pattern: '^[A-Za-z_][A-Za-z0-9_]*$'
+    not:
+      enum:
+        - __proto__
+        - constructor
+        - prototype
+        - loop
+        - worktree
+        - switch
+        - each
+        - outer
+        - needs
+        - nodes
+        - prev
+        - item
+        - previtem
+        - self
+        - scopes
+        - inputs
+        - vars
+        - heimdall
