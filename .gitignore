@@ -145,3 +145,17 @@ vite.config.ts.timestamp-*
 # Private Local Resources
 .local/
 backlog/
+
+# Generated skill bundle (see scripts/generate-skills.js)
+src/core/skills/generated/
+
+# Workspace docs symlink (Obsidian vault)
+_docs
+
+# macOS
+.DS_Store
+
+# Heimdall's own skill, installed into this repo by `heimdall skills install` when dogfooding.
+# It is generated output, not source — the authored copy lives in skills/.
+.claude/skills/heimdall-workflows/
+.claude/skills/heimdall-workflows.zip
