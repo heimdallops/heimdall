@@ -11,6 +11,7 @@ export const claudeOptionsSchema = z
     max_budget_usd: z.number().min(0).optional(),
     system_prompt: z.string().optional(),
     sandbox: z.record(z.string(), z.unknown()).optional(),
+    output_format: z.record(z.string(), z.unknown()).optional(),
   })
   .strip();
 

@@ -165,7 +165,11 @@ describe('ClaudeCodeAdapter', () => {
     it('returns a stream that emits done on completion', async () => {
       const adapter = new ClaudeCodeAdapter();
       const stream = adapter.run('hello', {});
-      const donePromise = new Promise<void>((resolve) => stream.on('done', resolve));
+      const donePromise = new Promise<void>((resolve) =>
+        stream.on('done', () => {
+          resolve();
+        })
+      );
       await donePromise;
     });
 

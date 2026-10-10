@@ -20,7 +20,7 @@ import { BaseNode } from './base.ts';
 import { nodeRegistry } from './registry.ts';
 
 interface AgenticNodeResult extends Record<string, unknown> {
-  output: string | Record<string, unknown>;
+  output: unknown;
 }
 
 interface AgenticNodeData extends BaseNodeData {
@@ -154,14 +154,30 @@ export abstract class AgenticNode extends BaseNode<NodeRunCompleted | NodeRunFai
         buffer += String(delta);
       });
 
-      stream.on('done', () => {
+      stream.on('done', (structuredOutput) => {
         // Claim synchronously so a later error or abort can't override this completed run during
         // the sessionId() await below; snapshot the buffer so late chunks can't mutate the output.
         if (!claim()) {
           return;
         }
 
-        const output = buffer;
+        // A declared output_format makes the structured result the node's output; completing
+        // without one is a failure rather than a silent fallback to the raw text.
+        if (this.outputFormat !== undefined && structuredOutput === undefined) {
+          resolvePromise({
+            status: 'failed',
+            error: new NodeError(
+              'Agent completed without structured output matching output_format',
+              'ENGINE_AGENTIC_STRUCTURED_OUTPUT_MISSING',
+              this.id,
+              { nodeName: this.name }
+            ),
+          });
+
+          return;
+        }
+
+        const output = this.outputFormat !== undefined ? structuredOutput : buffer;
         void (async (): Promise<void> => {
           const sessionId = await stream.sessionId().catch(() => undefined);
           const result: AgenticNodeResult = { output };
