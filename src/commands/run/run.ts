@@ -4,6 +4,7 @@ import { resolve as resolvePath } from 'node:path';
 import { confirm, input, select } from '@inquirer/prompts';
 
 import type { CliContext } from '../../cli/context.ts';
+import { createAdapter, createAdapterFactory } from '../../core/engine/adapter-factory.ts';
 import type { ApprovalResult } from '../../core/engine/emitter.ts';
 import { createEngineEmitter } from '../../core/engine/emitter.ts';
 import { EngineConfigError, EngineValidationError } from '../../core/engine/errors.ts';
@@ -210,7 +211,10 @@ export const run = async (
     });
 
     emitter.on('node_failed', ({ nodeName, error }) => {
-      const message = error instanceof Error ? error.message : String(error);
+      // The engine wraps node failures in a NodeError whose own message only names the node;
+      // the cause says what actually went wrong.
+      const reason = error instanceof Error && error.cause instanceof Error ? error.cause : error;
+      const message = reason instanceof Error ? reason.message : String(reason);
       printer.error(`Node failed: ${nodeName} — ${message}`);
     });
 
@@ -245,10 +249,14 @@ export const run = async (
       })();
     });
 
+    const adapterSettings = { claudeCodeExecutable: config.claudeCodeExecutable };
     const result = await workflow.run({
       inputs,
       emitter,
       cwd,
+      adapterFactory: createAdapterFactory((platform, adapterCwd) =>
+        createAdapter(platform, adapterCwd, adapterSettings)
+      ),
       signal: runSignal,
     });
 

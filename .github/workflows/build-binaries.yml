@@ -1,0 +1,139 @@
+name: Build binaries
+
+# Builds and smoke-tests the SEA binary for every target and uploads the archives as run
+# artifacts. Run it manually (workflow_dispatch) to exercise the binary pipeline without
+# cutting a release; publish-binaries.yml calls it and uploads the archives to the release.
+on:
+  workflow_call:
+    inputs:
+      ref:
+        description: Git ref to checkout (branch, tag, or commit SHA)
+        type: string
+        required: true
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: write
+
+jobs:
+  build:
+    name: Build SEA binary (${{ matrix.target }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: linux-x64
+            runner: ubuntu-latest
+            binary_name: heimdall-linux-x64
+            archive_name: heimdall-linux-x64.tar.gz
+          - target: linux-arm64
+            runner: ubuntu-24.04-arm
+            binary_name: heimdall-linux-arm64
+            archive_name: heimdall-linux-arm64.tar.gz
+          - target: macos-x64
+            runner: macos-26-intel
+            binary_name: heimdall-macos-x64
+            archive_name: heimdall-macos-x64.tar.gz
+          - target: macos-arm64
+            runner: macos-latest
+            binary_name: heimdall-macos-arm64
+            archive_name: heimdall-macos-arm64.tar.gz
+          - target: windows-x64
+            runner: windows-latest
+            binary_name: heimdall-windows-x64.exe
+            archive_name: heimdall-windows-x64.zip
+
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6.0.2
+        with:
+          # empty on workflow_dispatch, so checkout uses the dispatched ref
+          ref: ${{ inputs.ref }}
+
+      - name: Setup Node
+        uses: actions/setup-node@v6.4.0
+        with:
+          node-version-file: package.json
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build SEA blob
+        run: npm run build:sea
+
+      - name: Copy node binary (Unix)
+        if: runner.os != 'Windows'
+        shell: bash
+        run: cp "$(which node)" "${{ matrix.binary_name }}"
+
+      - name: Copy node binary (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $nodePath = (Get-Command node).Source
+          Copy-Item $nodePath "${{ matrix.binary_name }}"
+
+      - name: Remove signature (macOS)
+        if: runner.os == 'macOS'
+        shell: bash
+        run: codesign --remove-signature "${{ matrix.binary_name }}"
+
+      # Windows signature removal is optional for SEAs (signtool isn't on PATH on the runner);
+      # postject prints a signature warning that can be ignored.
+
+      - name: Inject blob into binary (Linux)
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          npx postject "${{ matrix.binary_name }}" NODE_SEA_BLOB dist/heimdall.blob \
+            --sentinel-fuse NODE_SEA_FUSE_fce680ab2cc467b6e072b8b5df1996b2
+
+      - name: Inject blob into binary (macOS)
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          npx postject "${{ matrix.binary_name }}" NODE_SEA_BLOB dist/heimdall.blob \
+            --sentinel-fuse NODE_SEA_FUSE_fce680ab2cc467b6e072b8b5df1996b2 \
+            --macho-segment-name NODE_SEA
+
+      - name: Inject blob into binary (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          npx postject "${{ matrix.binary_name }}" NODE_SEA_BLOB dist/heimdall.blob `
+            --sentinel-fuse NODE_SEA_FUSE_fce680ab2cc467b6e072b8b5df1996b2
+
+      - name: Codesign (macOS)
+        if: runner.os == 'macOS'
+        shell: bash
+        run: codesign --sign - "${{ matrix.binary_name }}"
+
+      - name: Smoke test binary
+        shell: bash
+        run: scripts/smoke-test-sea.sh "./${{ matrix.binary_name }}"
+
+      - name: Package archive (Unix)
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          mv "${{ matrix.binary_name }}" heimdall
+          tar -czf "${{ matrix.archive_name }}" heimdall
+
+      - name: Package archive (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          Rename-Item "${{ matrix.binary_name }}" heimdall.exe
+          Compress-Archive -Path heimdall.exe -DestinationPath "${{ matrix.archive_name }}"
+
+      - name: Upload SEA archive artifact
+        uses: actions/upload-artifact@v5
+        with:
+          name: sea-binary-${{ matrix.target }}
+          path: ${{ matrix.archive_name }}
+          if-no-files-found: error

@@ -6,6 +6,7 @@ export const configSchema = z
     verbose: z.boolean().default(false),
     debug: z.boolean().default(false),
     quiet: z.boolean().default(false),
+    claudeCodeExecutable: z.string().optional(),
   })
   .strict();
 
@@ -39,7 +40,7 @@ interface ConfigSource<Key extends keyof Config> {
 }
 
 type ConfigSources = {
-  readonly [Key in keyof Config]: ConfigSource<Key>;
+  readonly [Key in keyof Config]-?: ConfigSource<Key>;
 };
 
 const booleanFlag = (value: CliFlags[keyof CliFlags]): boolean | undefined =>
@@ -61,6 +62,11 @@ export const configSources: ConfigSources = {
   quiet: {
     defaultValue: false,
     flags: [{ key: 'quiet', resolve: booleanFlag }],
+  },
+  claudeCodeExecutable: {
+    defaultValue: undefined,
+    file: { key: 'claudeCodeExecutable', schema: z.string().min(1) },
+    env: { key: 'HEIMDALL_CLAUDE_CODE_EXECUTABLE', schema: z.string().min(1) },
   },
 };
 

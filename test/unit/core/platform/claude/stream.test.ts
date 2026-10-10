@@ -1,4 +1,4 @@
-import { AbortError as SDKAbortError } from '@anthropic-ai/claude-agent-sdk';
+import { AbortError as SDKAbortError, query as sdkQuery } from '@anthropic-ai/claude-agent-sdk';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { ClaudeStream } from '../../../../../src/core/platform/claude/stream.ts';
@@ -419,6 +419,25 @@ describe('ClaudeStream', () => {
         // prevent unhandled error event crash
       });
 
+      await expect(stream.sessionId()).rejects.toBeInstanceOf(PlatformError);
+    });
+
+    it('delivers a synchronous query() throw to listeners attached after construction', async () => {
+      vi.mocked(sdkQuery).mockImplementationOnce(() => {
+        throw new Error('Native CLI binary for darwin-arm64 not found');
+      });
+
+      const stream = new ClaudeStream('test prompt', {});
+      const captured = captureEvents(stream);
+
+      await flushMicrotasks();
+
+      expect(captured.errors).toHaveLength(1);
+      const [startupError] = captured.errors;
+      expect(startupError).toBeInstanceOf(PlatformError);
+      expect(startupError!.code).toBe('PLATFORM_ERROR');
+      expect(startupError!.message).toContain('Native CLI binary for darwin-arm64 not found');
+      expect(captured.done).toBe(false);
       await expect(stream.sessionId()).rejects.toBeInstanceOf(PlatformError);
     });
   });
