@@ -10,7 +10,8 @@ export interface BasePlatformOptions {
  * - `chunk`: Fired for each incremental text delta as the model streams output.
  *   The delta is the raw string fragment; callers concatenate to build the full response.
  * - `done`: Fired once when the stream ends cleanly (the generator exhausted without error
- *   and without being cancelled). Never fires after `error`.
+ *   and without being cancelled). Never fires after `error`. Carries the platform's structured
+ *   output when the run was given an output format and produced one; otherwise undefined.
  * - `error`: Fired at most once when the stream terminates abnormally. The argument is
  *   a `PlatformError` (or `PlatformCancellationError`). After `error`, `done` is not emitted.
  *   Callers must also handle rejections from `sessionId()` — see that method's docs.
@@ -18,7 +19,7 @@ export interface BasePlatformOptions {
 // Map-keyed so `on()` is a single generic overload rather than one overload per event.
 export interface StreamEventMap {
   chunk: [delta: string];
-  done: [];
+  done: [structuredOutput?: unknown];
   error: [err: PlatformError];
 }
 
