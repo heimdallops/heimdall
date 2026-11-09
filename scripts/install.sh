@@ -13,7 +13,7 @@
 #   curl -fsSL .../install.sh | bash
 #
 #   # Install specific version
-#   curl -fsSL .../install.sh | VERSION=0.2.0 bash
+#   curl -fsSL .../install.sh | VERSION=0.0.2 bash
 #
 #   # Install to a custom directory
 #   curl -fsSL .../install.sh | INSTALL_DIR=~/.local/bin bash
@@ -23,7 +23,7 @@ set -euo pipefail
 REPO="heimdallops/heimdall"
 BINARY_NAME="heimdall"
 VERSION="${VERSION:-latest}"
-# Release tags have no v prefix; tolerate callers passing one (VERSION=v0.2.0).
+# Release tags are v<semver>; accept the version with or without the v (VERSION=v0.0.2).
 VERSION="${VERSION#v}"
 INSTALL_DIR="${INSTALL_DIR:-/usr/local/bin}"
 
@@ -114,7 +114,7 @@ main() {
   if [ "$VERSION" = "latest" ]; then
     base_url="https://github.com/${REPO}/releases/latest/download"
   else
-    base_url="https://github.com/${REPO}/releases/download/${VERSION}"
+    base_url="https://github.com/${REPO}/releases/download/v${VERSION}"
   fi
 
   info "Version: $VERSION"

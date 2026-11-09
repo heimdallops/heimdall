@@ -1,4 +1,5 @@
 {
   "main": "./dist/index.sea.cjs",
-  "output": "./dist/heimdall.blob"
+  "output": "./dist/heimdall.blob",
+  "disableExperimentalSEAWarning": true
 }

@@ -1,0 +1,6 @@
+name: sea-smoke-prompt
+description: Smoke test for agent nodes in the standalone binary
+
+nodes:
+  - id: ask
+    prompt: Reply with the single word ok

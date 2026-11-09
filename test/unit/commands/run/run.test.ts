@@ -572,6 +572,28 @@ describe('run command — run()', () => {
 
       expect(ctx.printer.error).toHaveBeenCalledWith(expect.stringContaining('string error'));
     });
+
+    it('prints the cause message when node_failed fires with a wrapped error', async () => {
+      const workflowStub = makeWorkflowWithEvents([
+        (): void => {
+          emitter.emit('node_failed', {
+            nodeId: 'n1',
+            nodeName: 'Ask',
+            error: new Error('Node failed (node: "Ask")', {
+              cause: new Error('Native CLI binary for darwin-arm64 not found'),
+            }),
+          });
+        },
+      ]);
+      workflowFromMock.mockResolvedValue(workflowStub as never);
+
+      const ctx = makeCtx();
+      await run(ctx, makeInput());
+
+      expect(ctx.printer.error).toHaveBeenCalledWith(
+        'Node failed: Ask — Native CLI binary for darwin-arm64 not found'
+      );
+    });
   });
 
   // -------------------------------------------------------------------------
