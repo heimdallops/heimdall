@@ -369,7 +369,7 @@ describe.each(sharedBehaviorCases)('AgenticNode shared behavior ($name)', ({ bui
       const result = await runPromise;
 
       expect(result.status).toBe('completed');
-      expect((result as NodeRunCompleted).result).toEqual({ output: { label: 'bug' } });
+      expect((result as NodeRunCompleted).result['output']).toEqual({ label: 'bug' });
     });
 
     it('fails with ENGINE_AGENTIC_STRUCTURED_OUTPUT_MISSING when no structured output arrives', async () => {
@@ -400,7 +400,7 @@ describe.each(sharedBehaviorCases)('AgenticNode shared behavior ($name)', ({ bui
       });
       const result = await runPromise;
 
-      expect((result as NodeRunCompleted).result).toEqual({ output: 'plain text' });
+      expect((result as NodeRunCompleted).result['output']).toBe('plain text');
     });
   });
 
@@ -507,6 +507,19 @@ describe.each(sharedBehaviorCases)('AgenticNode shared behavior ($name)', ({ bui
       expect((result as NodeRunCompleted).sessionId).toBe('sess-xyz');
     });
 
+    it('exposes the stream session id as result.session_id', async () => {
+      const { node, ctx } = await build();
+      const adapter = new FakeAdapter();
+      const runtime = makeRuntime(adapter);
+      const runPromise = node.run(makeOptions(runtime, { ctx }));
+      afterAdapterCalled(adapter, () => {
+        adapter.stream.emitDone('sess-xyz');
+      });
+      const result = await runPromise;
+
+      expect((result as NodeRunCompleted).result['session_id']).toBe('sess-xyz');
+    });
+
     it('omits sessionId from the result when stream sessionId() rejects', async () => {
       const { node, ctx } = await build();
       const adapter = new FakeAdapter();
@@ -521,6 +534,7 @@ describe.each(sharedBehaviorCases)('AgenticNode shared behavior ($name)', ({ bui
 
       expect(result.status).toBe('completed');
       expect('sessionId' in result).toBe(false);
+      expect('session_id' in (result as NodeRunCompleted).result).toBe(false);
     });
 
     it('returns status failed with the error when the stream emits an error event', async () => {
