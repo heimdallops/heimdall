@@ -115,7 +115,6 @@ const makeCtx = (overrides: Partial<ExecutionContext> = {}): ExecutionContext =>
 
 const makeOptions = (overrides: Partial<SchedulerOptions> = {}): SchedulerOptions => ({
   emitter: createEngineEmitter(),
-  sharedContextMap: new Map(),
   ...overrides,
 });
 
@@ -970,39 +969,6 @@ describe('runScheduler', () => {
       expect(causeError).toBeInstanceOf(NodeError);
       expect(causeError.message).toMatch(/timed out after \d+ms \(node: "slow_node"\)/i);
       expect(causeError.code).toBe('ENGINE_NODE_TIMEOUT');
-    });
-  });
-
-  describe('sharedContextMap / predecessorSessionId wiring', () => {
-    it('passes predecessorSessionId to node B when sharedContextMap maps B → A and A returns a sessionId', async () => {
-      const nodeA = new StubNode(
-        { id: 'a' },
-        { status: 'completed', result: {}, sessionId: 'sess-abc' }
-      );
-      const nodeB = new StubNode({ id: 'b', depends_on: ['a'] });
-
-      const sharedContextMap = new Map([['b', 'a']]);
-      const runOptions = makeOptions({ emitter, sharedContextMap });
-
-      await runScheduler([nodeA, nodeB], makeCtx(), runOptions);
-
-      expect(nodeB.capturedOptions).toHaveLength(1);
-      expect(nodeB.capturedOptions[0]!.predecessorSessionId).toBe('sess-abc');
-    });
-
-    it('does not pass predecessorSessionId to a node that is not in sharedContextMap', async () => {
-      const nodeA = new StubNode(
-        { id: 'a' },
-        { status: 'completed', result: {}, sessionId: 'sess-abc' }
-      );
-      const nodeB = new StubNode({ id: 'b', depends_on: ['a'] });
-
-      const runOptions = makeOptions({ emitter, sharedContextMap: new Map() });
-
-      await runScheduler([nodeA, nodeB], makeCtx(), runOptions);
-
-      expect(nodeB.capturedOptions).toHaveLength(1);
-      expect(nodeB.capturedOptions[0]!.predecessorSessionId).toBeUndefined();
     });
   });
 

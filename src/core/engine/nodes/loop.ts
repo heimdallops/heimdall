@@ -1,10 +1,5 @@
 import { evalCel } from '../cel.ts';
-import {
-  buildContextInheritanceMap,
-  topologicalSort,
-  validateDependencyReferences,
-  validateSharedContextFanIn,
-} from '../dag-utils.ts';
+import { topologicalSort, validateDependencyReferences } from '../dag-utils.ts';
 import type { NodeResult } from '../emitter.ts';
 import { NodeError } from '../errors.ts';
 import { buildCheckpointContext, extendScope, selectDeclaredNeeds } from '../expression-context.ts';
@@ -36,7 +31,6 @@ export class LoopNode extends BaseNode<NodeRunCompleted | NodeRunExited | NodeRu
   private readonly maxIterations: number | undefined;
   private readonly bodyNodes: BaseNode[];
   private readonly outputs: Record<string, string> | undefined;
-  private readonly bodySharedContextMap: Map<string, string>;
 
   public static matches(raw: Record<string, unknown>): boolean {
     return 'loop' in raw;
@@ -68,15 +62,13 @@ export class LoopNode extends BaseNode<NodeRunCompleted | NodeRunExited | NodeRu
     this.maxIterations = data.maxIterations;
     this.bodyNodes = data.bodyNodes;
     this.outputs = data.outputs;
-    this.bodySharedContextMap = buildContextInheritanceMap(data.bodyNodes);
   }
 
-  // Validates the loop body in isolation: depends_on references, shared-context
-  // fan-in, and cycles are all scoped to the body list, so a body node cannot
-  // reference a node outside the loop. Nested loops validate recursively.
+  // Validates the loop body in isolation: depends_on references and cycles are
+  // scoped to the body list, so a body node cannot reference a node outside the
+  // loop. Nested loops validate recursively.
   public override validate(): void {
     validateDependencyReferences(this.bodyNodes);
-    validateSharedContextFanIn(this.bodyNodes);
     topologicalSort(this.bodyNodes);
 
     for (const node of this.bodyNodes) {
@@ -129,7 +121,6 @@ export class LoopNode extends BaseNode<NodeRunCompleted | NodeRunExited | NodeRu
       const res = await runScheduler(this.bodyNodes, innerCtx, {
         platform,
         emitter,
-        sharedContextMap: this.bodySharedContextMap,
         signal,
       });
 

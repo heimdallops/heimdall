@@ -511,20 +511,6 @@ describe.each(sharedBehaviorCases)('AgenticNode shared behavior ($name)', ({ bui
       expect((result as NodeRunCompleted).result['output']).toBe('');
     });
 
-    it('includes sessionId from the stream on completion', async () => {
-      const { node, ctx } = await build();
-      const adapter = new FakeAdapter();
-      const runtime = makeRuntime(adapter);
-      const runPromise = node.run(makeOptions(runtime, { ctx }));
-      afterAdapterCalled(adapter, () => {
-        adapter.stream.emitDone('sess-xyz');
-      });
-      const result = await runPromise;
-
-      expect(result.status).toBe('completed');
-      expect((result as NodeRunCompleted).sessionId).toBe('sess-xyz');
-    });
-
     it('exposes the stream session id as result.session_id', async () => {
       const { node, ctx } = await build();
       const adapter = new FakeAdapter();
@@ -538,20 +524,19 @@ describe.each(sharedBehaviorCases)('AgenticNode shared behavior ($name)', ({ bui
       expect((result as NodeRunCompleted).result['session_id']).toBe('sess-xyz');
     });
 
-    it('omits sessionId from the result when stream sessionId() rejects', async () => {
+    it('omits session_id from the result when stream sessionId() rejects', async () => {
       const { node, ctx } = await build();
       const adapter = new FakeAdapter();
       const runtime = makeRuntime(adapter);
       const runPromise = node.run(makeOptions(runtime, { ctx }));
       // emitDone() with no sid rejects sessionId(); the node swallows the rejection and omits
-      // sessionId from the result rather than propagating the error.
+      // session_id from the result rather than propagating the error.
       afterAdapterCalled(adapter, () => {
         adapter.stream.emitDone();
       });
       const result = await runPromise;
 
       expect(result.status).toBe('completed');
-      expect('sessionId' in result).toBe(false);
       expect('session_id' in (result as NodeRunCompleted).result).toBe(false);
     });
 

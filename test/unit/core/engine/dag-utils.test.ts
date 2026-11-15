@@ -1,12 +1,10 @@
 import { describe, expect, it } from 'vitest';
 
 import {
-  buildContextInheritanceMap,
   topologicalSort,
   validateDependencyReferences,
   validateNodeIds,
   validateNoNodeTypes,
-  validateSharedContextFanIn,
 } from '../../../../src/core/engine/dag-utils.ts';
 import { EngineConfigError } from '../../../../src/core/engine/errors.ts';
 import type { NodeRunOptions, NodeRunResult } from '../../../../src/core/engine/nodes/base.ts';
@@ -25,40 +23,6 @@ class BreakLikeNode extends BaseNode {
 }
 
 class ApprovalLikeNode extends BaseNode {
-  public run(_options: NodeRunOptions): Promise<NodeRunResult> {
-    return Promise.resolve({ status: 'completed', result: {} });
-  }
-}
-
-class AgenticStubNode extends BaseNode {
-  public override isAgentic(): boolean {
-    return true;
-  }
-
-  public run(_options: NodeRunOptions): Promise<NodeRunResult> {
-    return Promise.resolve({ status: 'completed', result: {} });
-  }
-}
-
-class SharedContextNode extends BaseNode {
-  public override isAgentic(): boolean {
-    return true;
-  }
-
-  public override useSharedContext(): boolean {
-    return true;
-  }
-
-  public run(_options: NodeRunOptions): Promise<NodeRunResult> {
-    return Promise.resolve({ status: 'completed', result: {} });
-  }
-}
-
-class NonAgenticSharedContextNode extends BaseNode {
-  public override useSharedContext(): boolean {
-    return true;
-  }
-
   public run(_options: NodeRunOptions): Promise<NodeRunResult> {
     return Promise.resolve({ status: 'completed', result: {} });
   }
@@ -166,77 +130,6 @@ describe('validateDependencyReferences', () => {
   });
 });
 
-describe('validateSharedContextFanIn', () => {
-  it('includes the consumer node id and both agentic predecessor ids in the error message', () => {
-    const nodes = [
-      new AgenticStubNode({ id: 'agent1' }),
-      new AgenticStubNode({ id: 'agent2' }),
-      new SharedContextNode({ id: 'consumer', depends_on: ['agent1', 'agent2'] }),
-    ];
-
-    let thrown: unknown;
-    try {
-      validateSharedContextFanIn(nodes);
-    } catch (e) {
-      thrown = e;
-    }
-
-    expect(thrown).toBeInstanceOf(EngineConfigError);
-    expect((thrown as Error).message).toBe(
-      "Node 'consumer' with context:shared has multiple agentic predecessors: ['agent1', 'agent2']; at most one is allowed"
-    );
-  });
-
-  it('does not throw when a shared-context node has exactly one agentic predecessor', () => {
-    const nodes = [
-      new AgenticStubNode({ id: 'agent1' }),
-      new SharedContextNode({ id: 'consumer', depends_on: ['agent1'] }),
-    ];
-
-    expect(() => {
-      validateSharedContextFanIn(nodes);
-    }).not.toThrow();
-  });
-
-  it('does not throw when additional agentic nodes are only transitive predecessors', () => {
-    const nodes = [
-      new AgenticStubNode({ id: 'agent1' }),
-      new AgenticStubNode({ id: 'agent2', depends_on: ['agent1'] }),
-      new SharedContextNode({ id: 'consumer', depends_on: ['agent2'] }),
-    ];
-
-    expect(() => {
-      validateSharedContextFanIn(nodes);
-    }).not.toThrow();
-  });
-
-  it('throws when a shared-context node has two direct agentic predecessors even when they are also chained', () => {
-    const nodes = [
-      new AgenticStubNode({ id: 'agent1' }),
-      new AgenticStubNode({ id: 'agent2', depends_on: ['agent1'] }),
-      new SharedContextNode({ id: 'consumer', depends_on: ['agent1', 'agent2'] }),
-    ];
-
-    expect(() => {
-      validateSharedContextFanIn(nodes);
-    }).toThrow(
-      "Node 'consumer' with context:shared has multiple agentic predecessors: ['agent1', 'agent2']; at most one is allowed"
-    );
-  });
-
-  it('does not throw when a non-shared-context node has multiple agentic predecessors', () => {
-    const nodes = [
-      new AgenticStubNode({ id: 'agent1' }),
-      new AgenticStubNode({ id: 'agent2' }),
-      new StubNode({ id: 'collector', depends_on: ['agent1', 'agent2'] }),
-    ];
-
-    expect(() => {
-      validateSharedContextFanIn(nodes);
-    }).not.toThrow();
-  });
-});
-
 describe('topologicalSort', () => {
   it('includes the cycle participant ids and message in the error', () => {
     const nodes = [
@@ -288,75 +181,6 @@ describe('topologicalSort', () => {
   });
 });
 
-describe('buildContextInheritanceMap', () => {
-  it('returns an empty map when no shared-context nodes are present', () => {
-    const nodes = [new StubNode({ id: 'A' }), new StubNode({ id: 'B', depends_on: ['A'] })];
-
-    const result = buildContextInheritanceMap(nodes);
-
-    expect(result.size).toBe(0);
-  });
-
-  it('returns the correct entry for a shared-context node with one agentic predecessor', () => {
-    const writer = new AgenticStubNode({ id: 'writer' });
-    const reader = new SharedContextNode({ id: 'reader', depends_on: ['writer'] });
-
-    const result = buildContextInheritanceMap([writer, reader]);
-
-    expect(result.get('reader')).toBe('writer');
-  });
-
-  it('does not include a shared-context node with zero agentic predecessors in the map', () => {
-    const nodes = [
-      new StubNode({ id: 'prep' }),
-      new NonAgenticSharedContextNode({ id: 'consumer', depends_on: ['prep'] }),
-    ];
-
-    const result = buildContextInheritanceMap(nodes);
-
-    expect(result.has('consumer')).toBe(false);
-  });
-
-  it('maps only the agentic predecessor when a shared-context node has one agentic and one non-agentic predecessor', () => {
-    const nodes = [
-      new AgenticStubNode({ id: 'agent' }),
-      new StubNode({ id: 'helper' }),
-      new SharedContextNode({ id: 'consumer', depends_on: ['agent', 'helper'] }),
-    ];
-
-    const result = buildContextInheritanceMap(nodes);
-
-    expect(result.get('consumer')).toBe('agent');
-  });
-
-  it('returns entries for all shared-context nodes that have an agentic predecessor', () => {
-    const nodes = [
-      new AgenticStubNode({ id: 'agent1' }),
-      new AgenticStubNode({ id: 'agent2' }),
-      new SharedContextNode({ id: 'consumer1', depends_on: ['agent1'] }),
-      new SharedContextNode({ id: 'consumer2', depends_on: ['agent2'] }),
-    ];
-
-    const result = buildContextInheritanceMap(nodes);
-
-    expect(result.get('consumer1')).toBe('agent1');
-    expect(result.get('consumer2')).toBe('agent2');
-    expect(result.size).toBe(2);
-  });
-
-  it('maps the direct agentic predecessor when additional agentic nodes are only transitive', () => {
-    const nodes = [
-      new AgenticStubNode({ id: 'agent1' }),
-      new AgenticStubNode({ id: 'agent2', depends_on: ['agent1'] }),
-      new SharedContextNode({ id: 'consumer', depends_on: ['agent2'] }),
-    ];
-
-    const result = buildContextInheritanceMap(nodes);
-
-    expect(result.get('consumer')).toBe('agent2');
-  });
-});
-
 describe('validateNoNodeTypes', () => {
   it('does not throw when disallowedClasses is empty, even with nodes present', () => {
     const nodes = [new BreakLikeNode({ id: 'node-a' }), new ApprovalLikeNode({ id: 'node-b' })];
@@ -373,7 +197,7 @@ describe('validateNoNodeTypes', () => {
   });
 
   it('does not throw when no node is an instance of any disallowed class', () => {
-    const nodes = [new StubNode({ id: 'step-1' }), new AgenticStubNode({ id: 'step-2' })];
+    const nodes = [new StubNode({ id: 'step-1' }), new StubNode({ id: 'step-2' })];
 
     expect(() => {
       validateNoNodeTypes(nodes, [BreakLikeNode, ApprovalLikeNode]);

@@ -32,7 +32,6 @@ export const RESERVED_IDS: ReadonlySet<string> = new Set([
 export interface NodeRunCompleted {
   status: 'completed';
   result: NodeResult;
-  sessionId?: string | undefined;
 }
 
 export interface NodeRunExited {
@@ -124,7 +123,6 @@ export interface NodeRunOptions {
   platform?: PlatformRuntime | undefined;
   emitter: EngineEmitter;
   signal: AbortSignal;
-  predecessorSessionId?: string | undefined;
 }
 
 export interface BaseNodeData {
@@ -161,16 +159,6 @@ export abstract class BaseNode<R extends NodeRunResult = NodeRunResult> {
   // Subclasses throw EngineConfigError to reject the workflow before execution starts.
   public validate(): void {
     return;
-  }
-
-  // Both default to false; subclasses opt in. False is the safe default for the engine's
-  // branching logic — a subclass that forgets to override is inert, not dangerous.
-  public isAgentic(): boolean {
-    return false;
-  }
-
-  public useSharedContext(): boolean {
-    return false;
   }
 
   // Default true: a skipped node cascades its skip to dependents. Control-flow nodes
