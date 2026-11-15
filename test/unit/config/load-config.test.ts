@@ -82,11 +82,24 @@ describe('loadConfig', () => {
       expect(config.claudeCodeExecutable).toBe('/from/env');
     });
 
-    it('rejects an empty HEIMDALL_CLAUDE_CODE_EXECUTABLE', async () => {
+    it('treats an empty HEIMDALL_CLAUDE_CODE_EXECUTABLE as unset', async () => {
       const cwd = await makeTempCwd();
       vi.stubEnv('HEIMDALL_CLAUDE_CODE_EXECUTABLE', '');
 
-      await expect(loadConfig({}, cwd)).rejects.toThrow();
+      const config = await loadConfig({}, cwd);
+
+      expect(config.claudeCodeExecutable).toBeUndefined();
+    });
+
+    it('falls back to the config file when HEIMDALL_CLAUDE_CODE_EXECUTABLE is empty', async () => {
+      const cwd = await makeTempCwd();
+      const configPath = join(cwd, 'heimdall.config.json');
+      await writeFile(configPath, JSON.stringify({ claudeCodeExecutable: '/from/file' }), 'utf8');
+      vi.stubEnv('HEIMDALL_CLAUDE_CODE_EXECUTABLE', '');
+
+      const config = await loadConfig({ config: configPath }, cwd);
+
+      expect(config.claudeCodeExecutable).toBe('/from/file');
     });
   });
 });

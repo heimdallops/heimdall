@@ -16,9 +16,14 @@ const hasOwn = (source: Record<string, unknown>, key: string): boolean => {
   return Object.prototype.hasOwnProperty.call(source, key);
 };
 
+/** Drops empty variables so `VAR=` reads as unset, following the usual shell convention. */
+const withoutEmptyValues = (env: NodeJS.ProcessEnv): NodeJS.ProcessEnv => {
+  return Object.fromEntries(Object.entries(env).filter(([, value]) => value !== ''));
+};
+
 export const loadConfig = async (flagsInput: unknown, cwd: string): Promise<Config> => {
   const flags = cliFlagsSchema.parse(flagsInput);
-  const env = envSchema.parse(process.env);
+  const env = envSchema.parse(withoutEmptyValues(process.env));
   const result = flags.config ? await explorer.load(flags.config) : await explorer.search(cwd);
   const file = fileConfigSchema.parse(result?.config ?? {});
   const config: Record<string, unknown> = {};
