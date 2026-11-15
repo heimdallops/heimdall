@@ -68,8 +68,8 @@ export interface PlatformAdapter<TOptions extends BasePlatformOptions> {
    *
    * @param prompt - The user message to send.
    * @param options - Platform-specific options (model, tools, budget, etc.).
-   * @param sessionId - If provided, resumes a prior conversation session. The platform
-   *   will attempt to continue from the session's context.
+   * @param sessionId - If provided, continues from a fork of that prior session: the run
+   *   starts with its context but reports a new session ID, and the prior session is unchanged.
    * @returns A `PlatformStream` that emits `chunk`, `done`, and `error` events.
    */
   run(prompt: string, options: TOptions, sessionId?: string): PlatformStream;
