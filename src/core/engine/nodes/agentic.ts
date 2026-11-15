@@ -27,7 +27,7 @@ interface AgenticNodeResult extends Record<string, unknown> {
 interface AgenticNodeData extends BaseNodeData {
   platform?: Platform | undefined;
   platformOptions?: Record<string, unknown> | undefined;
-  context?: 'clean' | 'shared' | undefined;
+  session?: string | undefined;
   outputFormat?: Record<string, unknown> | undefined;
 }
 
@@ -40,30 +40,27 @@ const toAgenticNodeData = (data: ParsedAgenticBase): AgenticNodeData => ({
   ...(data.retries !== undefined ? { retries: data.retries } : {}),
   platform: data.platform,
   platformOptions: data.platform_options,
-  context: data.context ?? 'clean',
+  session: data.session,
   outputFormat: data.output_format,
 });
 
 export abstract class AgenticNode extends BaseNode<NodeRunCompleted | NodeRunFailed> {
   public readonly platform: Platform | undefined;
   public readonly platformOptions: Record<string, unknown> | undefined;
-  public readonly context: 'clean' | 'shared';
   public readonly outputFormat: Record<string, unknown> | undefined;
+
+  private readonly session: string | undefined;
 
   public constructor(data: AgenticNodeData) {
     super(data);
     this.platform = data.platform;
     this.platformOptions = data.platformOptions;
-    this.context = data.context ?? 'clean';
+    this.session = data.session;
     this.outputFormat = data.outputFormat;
   }
 
   public override isAgentic(): boolean {
     return true;
-  }
-
-  public override useSharedContext(): boolean {
-    return this.context === 'shared';
   }
 
   /** Builds the interpolated (or file-derived) prompt dispatched to the adapter. */
@@ -78,7 +75,7 @@ export abstract class AgenticNode extends BaseNode<NodeRunCompleted | NodeRunFai
   }
 
   public override async run(options: NodeRunOptions): Promise<NodeRunCompleted | NodeRunFailed> {
-    const { ctx, platform: runtime, signal, predecessorSessionId } = options;
+    const { ctx, platform: runtime, signal } = options;
 
     if (runtime === undefined) {
       throw new NodeError(
@@ -102,12 +99,29 @@ export abstract class AgenticNode extends BaseNode<NodeRunCompleted | NodeRunFai
       adapterOptions['output_format'] = this.outputFormat;
     }
 
-    const sessionId = this.useSharedContext() ? predecessorSessionId : undefined;
+    const sessionId = this.resolveSession(ctx);
 
     const adapter = await runtime.factory(platform, ctx.cwd);
     const stream = adapter.run(prompt, adapterOptions, sessionId);
 
     return this.consumeStream(stream, signal);
+  }
+
+  private resolveSession(ctx: ExecutionContext): string | undefined {
+    if (this.session === undefined) {
+      return undefined;
+    }
+
+    const session = interpolateField(
+      this.session,
+      'session',
+      ctx,
+      this.getDependencies(),
+      this.id,
+      this.name
+    );
+
+    return session.trim() === '' ? undefined : session;
   }
 
   private consumeStream(
