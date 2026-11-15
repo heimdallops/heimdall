@@ -24,10 +24,8 @@ properties:
     description: |-
       CEL expression that must evaluate to true for this node to run. Do not wrap in ${{ }}.
 
-      Evaluated at entry — see `schemas/expression_context.yaml`:
-
-      - `self.needs` — this node's own depends_on outputs.
-      - `scopes` — one entry per enclosing scoped node, keyed by that node's id.
+      Evaluated at entry, where `self.needs` and `scopes` are bound — see
+      `schemas/expression_context.yaml`.
   timeout:
     type: number
     description: Maximum time to wait before timing out, in milliseconds.

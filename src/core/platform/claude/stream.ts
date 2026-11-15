@@ -102,6 +102,7 @@ export class ClaudeStream extends EventEmitter implements PlatformStream {
 
   private async execute(): Promise<void> {
     let terminated = false;
+    let structuredOutput: unknown;
     try {
       const stream = query({ prompt: this.prompt, options: this.buildSdkOptions() });
       let sessionResolved = false;
@@ -115,6 +116,9 @@ export class ClaudeStream extends EventEmitter implements PlatformStream {
 
         if (message.type === 'result') {
           streamCompleted = true;
+          if (message.subtype === 'success') {
+            structuredOutput = message.structured_output;
+          }
         }
 
         if (message.type === 'stream_event') {
@@ -161,7 +165,7 @@ export class ClaudeStream extends EventEmitter implements PlatformStream {
     }
 
     if (!terminated) {
-      this.emit('done');
+      this.emit('done', structuredOutput);
     }
   }
 
@@ -197,6 +201,9 @@ export class ClaudeStream extends EventEmitter implements PlatformStream {
       ...(options.max_budget_usd !== undefined && { maxBudgetUsd: options.max_budget_usd }),
       ...(systemPrompt !== undefined && { systemPrompt }),
       ...(options.sandbox !== undefined && { sandbox: options.sandbox }),
+      ...(options.output_format !== undefined && {
+        outputFormat: { type: 'json_schema', schema: options.output_format },
+      }),
       ...(this.initialSessionId !== undefined && { resume: this.initialSessionId }),
     };
   }

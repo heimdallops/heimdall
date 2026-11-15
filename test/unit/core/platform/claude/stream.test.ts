@@ -15,6 +15,7 @@ type SDKMessage = Record<string, unknown>;
 
 let mockGeneratorFactory: () => AsyncGenerator<SDKMessage, void>;
 let capturedAbortController: AbortController | undefined;
+let capturedOptions: Record<string, unknown> | undefined;
 
 vi.mock('@anthropic-ai/claude-agent-sdk', () => {
   class AbortError extends Error {
@@ -28,6 +29,7 @@ vi.mock('@anthropic-ai/claude-agent-sdk', () => {
     const opts = _params.options;
 
     capturedAbortController = opts?.['abortController'] as AbortController | undefined;
+    capturedOptions = opts;
 
     const gen = mockGeneratorFactory();
 
@@ -57,7 +59,7 @@ const makeAssistantMessage = (sessionId = 'sess-1'): SDKMessage => ({
 });
 
 // Utility: build a minimal SDKResultSuccess (terminal completion)
-const makeResultMessage = (sessionId = 'sess-1'): SDKMessage => ({
+const makeResultMessage = (sessionId = 'sess-1', extra: SDKMessage = {}): SDKMessage => ({
   type: 'result',
   subtype: 'success',
   session_id: sessionId,
@@ -72,6 +74,7 @@ const makeResultMessage = (sessionId = 'sess-1'): SDKMessage => ({
   modelUsage: {},
   permission_denials: [],
   uuid: 'uuid-2',
+  ...extra,
 });
 
 // Waits for all pending microtasks and one macrotask cycle.
@@ -102,6 +105,7 @@ const captureEvents = (stream: ClaudeStream): Captured => {
 
 beforeEach(() => {
   capturedAbortController = undefined;
+  capturedOptions = undefined;
   mockGeneratorFactory = async function* (): AsyncGenerator<SDKMessage, void> {
     await Promise.resolve();
     throw new Error('mockGeneratorFactory was not set for this test');
@@ -173,6 +177,65 @@ describe('ClaudeStream', () => {
 
       expect(captured.done).toBe(true);
       expect(captured.chunks).toHaveLength(0);
+    });
+  });
+
+  describe('output_format', () => {
+    it('forwards output_format to the SDK as a json_schema outputFormat', async () => {
+      mockGeneratorFactory = async function* (): AsyncGenerator<SDKMessage, void> {
+        await Promise.resolve();
+        yield makeResultMessage();
+      };
+      const schema = { type: 'object', properties: { label: { type: 'string' } } };
+
+      const stream = new ClaudeStream('test prompt', { output_format: schema });
+      captureEvents(stream);
+      await flushMicrotasks();
+
+      expect(capturedOptions?.['outputFormat']).toEqual({ type: 'json_schema', schema });
+    });
+
+    it('omits outputFormat when output_format is not set', async () => {
+      mockGeneratorFactory = async function* (): AsyncGenerator<SDKMessage, void> {
+        await Promise.resolve();
+        yield makeResultMessage();
+      };
+
+      const stream = new ClaudeStream('test prompt', {});
+      captureEvents(stream);
+      await flushMicrotasks();
+
+      expect(capturedOptions).toBeDefined();
+      expect('outputFormat' in capturedOptions!).toBe(false);
+    });
+
+    it("passes the result's structured_output as the 'done' payload", async () => {
+      mockGeneratorFactory = async function* (): AsyncGenerator<SDKMessage, void> {
+        await Promise.resolve();
+        yield makeChunk('ignored text');
+        yield makeResultMessage('sess-1', { structured_output: { label: 'bug' } });
+      };
+
+      const stream = new ClaudeStream('test prompt', { output_format: { type: 'object' } });
+      const payloads: unknown[] = [];
+      stream.on('done', (structuredOutput) => payloads.push(structuredOutput));
+      await flushMicrotasks();
+
+      expect(payloads).toEqual([{ label: 'bug' }]);
+    });
+
+    it("emits 'done' with no payload when the result has no structured_output", async () => {
+      mockGeneratorFactory = async function* (): AsyncGenerator<SDKMessage, void> {
+        await Promise.resolve();
+        yield makeResultMessage();
+      };
+
+      const stream = new ClaudeStream('test prompt', {});
+      const payloads: unknown[] = [];
+      stream.on('done', (structuredOutput) => payloads.push(structuredOutput));
+      await flushMicrotasks();
+
+      expect(payloads).toEqual([undefined]);
     });
   });
 

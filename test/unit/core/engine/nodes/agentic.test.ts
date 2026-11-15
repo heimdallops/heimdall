@@ -74,9 +74,10 @@ class FakeStream implements PlatformStream {
 
   /**
    * Emit done. If sessionId is provided the stream's sessionId() promise resolves with it;
-   * otherwise it rejects (testing the "no session" path).
+   * otherwise it rejects (testing the "no session" path). structuredOutput is passed to the
+   * 'done' handlers as the platform's structured result.
    */
-  public emitDone(sid?: string): void {
+  public emitDone(sid?: string, structuredOutput?: unknown): void {
     if (sid !== undefined) {
       this.resolveSessionId(sid);
     } else {
@@ -84,7 +85,7 @@ class FakeStream implements PlatformStream {
     }
 
     for (const h of this.handlers['done'] ?? []) {
-      h();
+      h(structuredOutput);
     }
   }
 
@@ -330,7 +331,7 @@ describe.each(sharedBehaviorCases)('AgenticNode shared behavior ($name)', ({ bui
 
   describe('output_format', () => {
     it('passes output_format object to adapter.run options unchanged', async () => {
-      const format = { type: 'json_schema', schema: { type: 'object' } };
+      const format = { type: 'object', properties: { label: { type: 'string' } } };
       const { node, ctx } = await build({ output_format: format });
       const adapter = new FakeAdapter();
       const runtime = makeRuntime(adapter);
@@ -354,6 +355,52 @@ describe.each(sharedBehaviorCases)('AgenticNode shared behavior ($name)', ({ bui
       await runPromise;
 
       expect('output_format' in adapter.calls[0]!.options).toBe(false);
+    });
+
+    it('uses the structured output as result.output instead of the streamed text', async () => {
+      const { node, ctx } = await build({ output_format: { type: 'object' } });
+      const adapter = new FakeAdapter();
+      const runtime = makeRuntime(adapter);
+      const runPromise = node.run(makeOptions(runtime, { ctx }));
+      afterAdapterCalled(adapter, () => {
+        adapter.stream.emitChunk('some prose');
+        adapter.stream.emitDone('sess-1', { label: 'bug' });
+      });
+      const result = await runPromise;
+
+      expect(result.status).toBe('completed');
+      expect((result as NodeRunCompleted).result).toEqual({ output: { label: 'bug' } });
+    });
+
+    it('fails with ENGINE_AGENTIC_STRUCTURED_OUTPUT_MISSING when no structured output arrives', async () => {
+      const { node, ctx } = await build({ output_format: { type: 'object' } });
+      const adapter = new FakeAdapter();
+      const runtime = makeRuntime(adapter);
+      const runPromise = node.run(makeOptions(runtime, { ctx }));
+      afterAdapterCalled(adapter, () => {
+        adapter.stream.emitChunk('some prose');
+        adapter.stream.emitDone('sess-1');
+      });
+      const result = await runPromise;
+
+      expect(result.status).toBe('failed');
+      const { error } = result as NodeRunFailed;
+      expect(error).toBeInstanceOf(NodeError);
+      expect((error as NodeError).code).toBe('ENGINE_AGENTIC_STRUCTURED_OUTPUT_MISSING');
+    });
+
+    it('ignores a structured payload and keeps the streamed text when output_format is absent', async () => {
+      const { node, ctx } = await build();
+      const adapter = new FakeAdapter();
+      const runtime = makeRuntime(adapter);
+      const runPromise = node.run(makeOptions(runtime, { ctx }));
+      afterAdapterCalled(adapter, () => {
+        adapter.stream.emitChunk('plain text');
+        adapter.stream.emitDone('sess-1', { label: 'bug' });
+      });
+      const result = await runPromise;
+
+      expect((result as NodeRunCompleted).result).toEqual({ output: 'plain text' });
     });
   });
 

@@ -25,4 +25,6 @@ allOf:
         type: object
         description: >-
           JSON Schema object defining the structure for this node's output.
-          Must be a valid JSON Schema.
+          Must be a valid JSON Schema. The model is asked to return data matching
+          it, and the node's output is that structured object; the node fails if
+          the model completes without producing it.

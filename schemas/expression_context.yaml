@@ -1,16 +1,17 @@
 $schema: 'https://json-schema.org/draft/2020-12/schema'
 description: |-
-  What a `${{ }}` expression, `if` or loop condition can reference. Every value is owned by
-  something — the workflow owns `inputs`, `vars` and `heimdall`; `self` is the node the expression
-  is attached to; `scopes` holds the scoped nodes that node is nested within. A scoped node is one
-  with a body of nodes of its own; today that is loop_node.
+  What a CEL expression can reference, whether it is a `${{ }}` interpolation or a bare CEL field.
+  Every value is owned by something: the workflow owns `inputs`, `vars` and `heimdall`; `self` is
+  the node the expression is attached to; `scopes` holds the scoped nodes that node is nested
+  within. A scoped node is one with a body of nodes of its own.
 
-  What `self` holds depends on when the expression runs:
+  What `self` holds depends on the expression's phase. Each node type's schema assigns its
+  expression fields to a phase; an expression in a field it does not name is evaluated at entry.
 
-  - At entry — a node's own `if` and the `${{ }}` interpolation of its own fields. Nothing the
-    node owns has produced a result yet.
-  - At a checkpoint — expressions a scoped node evaluates around its body: a loop's `while`,
-    `until` and `outputs`.
+  - At entry, `self` holds `needs` only.
+  - At an active site, `self` holds `needs` plus the node type's own attributes, never `nodes`.
+  - At a checkpoint, `self` holds `needs`, the node type's own attributes, and the body's latest
+    results as `nodes`.
 type: object
 properties:
   inputs:
@@ -59,9 +60,9 @@ properties:
     type: object
     title: The node the expression is attached to
     description: |-
-      Holds the shape below for when the expression runs; a scoped node type adds its own members,
-      documented in its schema. Referencing a member that isn't available at that point fails the
-      expression; guard it with `has()`.
+      Holds the entry or checkpoint shape below; an active site holds the entry shape. A scoped
+      node type adds its own members, documented in its schema. Referencing a member that isn't
+      available at that point fails the expression; guard it with `has()`.
     anyOf:
       - $ref: '#/$defs/self_at_entry'
       - $ref: '#/$defs/self_at_checkpoint'
@@ -84,9 +85,8 @@ $defs:
     type: object
     title: What self holds at entry
     description: >-
-      A node's own `if` and the `${{ }}` interpolation of its own fields. Nothing the node owns
-      has produced a result yet, so `needs` is all it can see. For a node that isn't scoped, this
-      is all `self` ever holds.
+      No body results are visible here, even in a field evaluated after the body has run. For a
+      node that isn't scoped, this is all `self` ever holds.
     properties:
       needs:
         type: object
