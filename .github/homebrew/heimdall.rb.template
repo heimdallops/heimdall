@@ -22,6 +22,13 @@ class Heimdall < Formula
     bin.install "heimdall"
   end
 
+  def caveats
+    <<~EOS
+      Agent nodes need Claude Code installed, with `claude` on your PATH.
+      To use another location, set HEIMDALL_CLAUDE_CODE_EXECUTABLE to its path.
+    EOS
+  end
+
   test do
     system "#{bin}/heimdall", "--version"
   end

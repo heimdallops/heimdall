@@ -1,11 +1,23 @@
+import { resolveClaudeCodeExecutable } from '../platform/claude/executable.ts';
 import type { Platform } from '../platform/index.ts';
 import { ClaudeCodeAdapter } from '../platform/index.ts';
 import type { AdapterFactory, PlatformAdapter } from './nodes/base.ts';
 
-export const createAdapter = async (platform: Platform, cwd: string): Promise<PlatformAdapter> => {
+export interface AdapterSettings {
+  readonly claudeCodeExecutable?: string | undefined;
+}
+
+export const createAdapter = async (
+  platform: Platform,
+  cwd: string,
+  settings: AdapterSettings = {}
+): Promise<PlatformAdapter> => {
   switch (platform) {
     case 'claude':
-      return new ClaudeCodeAdapter(cwd);
+      return new ClaudeCodeAdapter(
+        cwd,
+        await resolveClaudeCodeExecutable(settings.claudeCodeExecutable)
+      );
     default: {
       // Compile-time exhaustiveness: a new platform enum member fails to assign to never,
       // forcing a matching case above.

@@ -1,0 +1,6 @@
+name: sea-smoke
+description: Smoke test for the standalone binary
+
+nodes:
+  - id: hello
+    bash: echo sea-smoke-ok
