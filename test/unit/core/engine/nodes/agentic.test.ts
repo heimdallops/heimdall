@@ -285,11 +285,15 @@ const sharedBehaviorCases: SharedBehaviorCase[] = [
 
 describe.each(sharedBehaviorCases)('AgenticNode shared behavior ($name)', ({ build }) => {
   describe('session wiring', () => {
-    it('passes predecessorSessionId to adapter.run when context is shared', async () => {
-      const { node, ctx } = await build({ context: 'shared' });
+    it('passes the interpolated session to adapter.run', async () => {
+      const { node, ctx } = await build({
+        depends_on: ['plan'],
+        session: '${{ self.needs.plan.session_id }}',
+      });
       const adapter = new FakeAdapter();
       const runtime = makeRuntime(adapter);
-      const runPromise = node.run(makeOptions(runtime, { ctx, predecessorSessionId: 'sess-abc' }));
+      const needs = new Map([['plan', { output: 'a plan', session_id: 'sess-abc' }]]);
+      const runPromise = node.run(makeOptions(runtime, { ctx: { ...ctx, needs } }));
       afterAdapterCalled(adapter, () => {
         adapter.stream.emitDone('sess-1');
       });
@@ -298,13 +302,11 @@ describe.each(sharedBehaviorCases)('AgenticNode shared behavior ($name)', ({ bui
       expect(adapter.calls[0]!.sessionId).toBe('sess-abc');
     });
 
-    it('passes undefined to adapter.run when context is clean even when predecessorSessionId is supplied', async () => {
-      const { node, ctx } = await build({ context: 'clean' });
+    it('starts a fresh session when session interpolates to an empty string', async () => {
+      const { node, ctx } = await build({ session: "${{ '' }}" });
       const adapter = new FakeAdapter();
       const runtime = makeRuntime(adapter);
-      const runPromise = node.run(
-        makeOptions(runtime, { ctx, predecessorSessionId: 'sess-should-be-ignored' })
-      );
+      const runPromise = node.run(makeOptions(runtime, { ctx }));
       afterAdapterCalled(adapter, () => {
         adapter.stream.emitDone('sess-1');
       });
@@ -313,19 +315,35 @@ describe.each(sharedBehaviorCases)('AgenticNode shared behavior ($name)', ({ bui
       expect(adapter.calls[0]!.sessionId).toBeUndefined();
     });
 
-    it('passes undefined to adapter.run when context is absent', async () => {
+    it('starts a fresh session when session is absent', async () => {
       const { node, ctx } = await build();
       const adapter = new FakeAdapter();
       const runtime = makeRuntime(adapter);
-      const runPromise = node.run(
-        makeOptions(runtime, { ctx, predecessorSessionId: 'sess-should-be-ignored' })
-      );
+      const runPromise = node.run(makeOptions(runtime, { ctx }));
       afterAdapterCalled(adapter, () => {
         adapter.stream.emitDone('sess-1');
       });
       await runPromise;
 
       expect(adapter.calls[0]!.sessionId).toBeUndefined();
+    });
+
+    it('throws NodeError and does not call the adapter when session reads an undeclared node', async () => {
+      const { node, ctx } = await build({ session: '${{ self.needs.plan.session_id }}' });
+      const adapter = new FakeAdapter();
+      const runtime = makeRuntime(adapter);
+      const needs = new Map([['plan', { output: 'a plan', session_id: 'sess-abc' }]]);
+
+      let caught: unknown;
+      try {
+        await node.run(makeOptions(runtime, { ctx: { ...ctx, needs } }));
+      } catch (err) {
+        caught = err;
+      }
+
+      expect(caught).toBeInstanceOf(NodeError);
+      expect((caught as NodeError).code).toBe('ENGINE_AGENTIC_INTERPOLATION_ERROR');
+      expect(adapter.calls).toHaveLength(0);
     });
   });
 

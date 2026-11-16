@@ -86,7 +86,7 @@ export const BashNodeSchema = BaseNodeSchema.extend({
 export const AgenticBaseNodeSchema = BaseNodeSchema.extend({
   platform: platformSchema.optional(),
   platform_options: z.record(z.string(), z.unknown()).optional(),
-  context: z.enum(['clean', 'shared']).optional(),
+  session: z.string().optional(),
   output_format: z.record(z.string(), z.unknown()).optional(),
 });
 
