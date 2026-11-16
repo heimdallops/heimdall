@@ -17,12 +17,10 @@ import { load as loadYaml } from 'js-yaml';
 import { DEFAULT_PLATFORM } from '../platform/index.ts';
 import { createAdapterFactory } from './adapter-factory.ts';
 import {
-  buildContextInheritanceMap,
   topologicalSort,
   validateDependencyReferences,
   validateNodeIds,
   validateNoNodeTypes,
-  validateSharedContextFanIn,
 } from './dag-utils.ts';
 import type { EngineEmitter } from './emitter.ts';
 import { createEngineEmitter } from './emitter.ts';
@@ -77,18 +75,12 @@ const coerceDeclaredInteger = (
 export class Workflow {
   private readonly definition: WorkflowDefinition;
   private readonly sortedNodes: BaseNode[];
-  private readonly sharedContextMap: Map<string, string>;
 
   private started = false;
 
-  private constructor(
-    definition: WorkflowDefinition,
-    sortedNodes: BaseNode[],
-    sharedContextMap: Map<string, string>
-  ) {
+  private constructor(definition: WorkflowDefinition, sortedNodes: BaseNode[]) {
     this.definition = definition;
     this.sortedNodes = sortedNodes;
-    this.sharedContextMap = sharedContextMap;
   }
 
   /**
@@ -102,9 +94,8 @@ export class Workflow {
     const definition = Workflow.validateDefinition(raw);
     const nodes = Workflow.buildNodes(definition);
     const sortedNodes = Workflow.validateGraph(nodes);
-    const sharedContextMap = buildContextInheritanceMap(sortedNodes);
 
-    return new Workflow(definition, sortedNodes, sharedContextMap);
+    return new Workflow(definition, sortedNodes);
   }
 
   /**
@@ -171,7 +162,6 @@ export class Workflow {
           defaultPlatformOptions: this.definition.platform_options,
         },
         emitter,
-        sharedContextMap: this.sharedContextMap,
         signal: options.signal,
       });
 
@@ -241,7 +231,6 @@ export class Workflow {
   private static validateGraph(nodes: BaseNode[]): BaseNode[] {
     validateNodeIds(nodes);
     validateDependencyReferences(nodes);
-    validateSharedContextFanIn(nodes);
     const sortedNodes = topologicalSort(nodes);
     // BreakNode is only meaningful inside a loop body; at top level there is no
     // loop to break, so its presence is a workflow authoring error.

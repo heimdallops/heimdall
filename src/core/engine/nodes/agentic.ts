@@ -59,10 +59,6 @@ export abstract class AgenticNode extends BaseNode<NodeRunCompleted | NodeRunFai
     this.outputFormat = data.outputFormat;
   }
 
-  public override isAgentic(): boolean {
-    return true;
-  }
-
   /** Builds the interpolated (or file-derived) prompt dispatched to the adapter. */
   protected abstract resolvePrompt(ctx: ExecutionContext): Promise<string>;
 
@@ -199,11 +195,7 @@ export abstract class AgenticNode extends BaseNode<NodeRunCompleted | NodeRunFai
             output,
             ...(sessionId !== undefined ? { session_id: sessionId } : {}),
           };
-          resolvePromise({
-            status: 'completed',
-            result,
-            ...(sessionId !== undefined ? { sessionId } : {}),
-          });
+          resolvePromise({ status: 'completed', result });
         })();
       });
 

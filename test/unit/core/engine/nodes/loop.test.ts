@@ -1627,48 +1627,5 @@ describe('LoopNode', () => {
         ciLoop.validate();
       }).toThrow("unknown depends_on reference: 'ghost'");
     });
-
-    it('throws EngineConfigError with a context:shared fan-in message when a shared node has multiple agentic predecessors', () => {
-      const agenticA1 = new (class extends BaseNode {
-        public override isAgentic(): boolean {
-          return true;
-        }
-
-        public override run(_opts: NodeRunOptions): Promise<NodeRunResult> {
-          return Promise.resolve({ status: 'completed', result: {} });
-        }
-      })({ id: 'a1' });
-
-      const agenticA2 = new (class extends BaseNode {
-        public override isAgentic(): boolean {
-          return true;
-        }
-
-        public override run(_opts: NodeRunOptions): Promise<NodeRunResult> {
-          return Promise.resolve({ status: 'completed', result: {} });
-        }
-      })({ id: 'a2' });
-
-      const sharedB = new (class extends BaseNode {
-        public override useSharedContext(): boolean {
-          return true;
-        }
-
-        public override run(_opts: NodeRunOptions): Promise<NodeRunResult> {
-          return Promise.resolve({ status: 'completed', result: {} });
-        }
-      })({ id: 'b', depends_on: ['a1', 'a2'] });
-
-      const loop = makeLoopNode({ max_iterations: 1 }, [agenticA1, agenticA2, sharedB]);
-
-      expect(() => {
-        loop.validate();
-      }).toThrow(EngineConfigError);
-      // The fan-in error message is the distinctive substring — confirms this is the
-      // context:shared / agentic-predecessors error and not the dependency-reference error.
-      expect(() => {
-        loop.validate();
-      }).toThrow('context:shared has multiple agentic predecessors');
-    });
   });
 });
