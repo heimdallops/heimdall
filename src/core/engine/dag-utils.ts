@@ -24,26 +24,6 @@ export const validateDependencyReferences = (nodes: BaseNode[]): void => {
   }
 };
 
-export const validateSharedContextFanIn = (nodes: BaseNode[]): void => {
-  const nodeById = new Map(nodes.map((n) => [n.id, n]));
-
-  for (const node of nodes) {
-    if (!node.useSharedContext()) {
-      continue;
-    }
-
-    const agenticPredecessors = node
-      .getDependencies()
-      .filter((depId) => nodeById.get(depId)?.isAgentic() === true);
-
-    if (agenticPredecessors.length > 1) {
-      throw new EngineConfigError(
-        `Node '${node.id}' with context:shared has multiple agentic predecessors: [${agenticPredecessors.map((id) => `'${id}'`).join(', ')}]; at most one is allowed`
-      );
-    }
-  }
-};
-
 export const validateNoNodeTypes = (
   nodes: BaseNode[],
   disallowedClasses: readonly (abstract new (...args: never[]) => BaseNode)[]
@@ -114,25 +94,4 @@ export const topologicalSort = (nodes: BaseNode[]): BaseNode[] => {
   }
 
   return order.map((id) => nodeById.get(id)!);
-};
-
-export const buildContextInheritanceMap = (orderedNodes: BaseNode[]): Map<string, string> => {
-  const nodeById = new Map(orderedNodes.map((n) => [n.id, n]));
-  const sharedContextMap = new Map<string, string>();
-
-  for (const node of orderedNodes) {
-    if (!node.useSharedContext()) {
-      continue;
-    }
-
-    const agenticPredecessor = node
-      .getDependencies()
-      .find((depId) => nodeById.get(depId)?.isAgentic() === true);
-
-    if (agenticPredecessor !== undefined) {
-      sharedContextMap.set(node.id, agenticPredecessor);
-    }
-  }
-
-  return sharedContextMap;
 };

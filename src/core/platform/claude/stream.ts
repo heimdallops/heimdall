@@ -204,7 +204,10 @@ export class ClaudeStream extends EventEmitter implements PlatformStream {
       ...(options.output_format !== undefined && {
         outputFormat: { type: 'json_schema', schema: options.output_format },
       }),
-      ...(this.initialSessionId !== undefined && { resume: this.initialSessionId }),
+      ...(this.initialSessionId !== undefined && {
+        resume: this.initialSessionId,
+        forkSession: true,
+      }),
     };
   }
 }

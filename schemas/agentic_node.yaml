@@ -8,19 +8,15 @@ allOf:
         $ref: platform.yaml
       platform_options:
         $ref: platform_options_union.yaml
-      context:
+      session:
         type: string
         description: >-
-          Controls session continuity with the previous agentic node (default: clean).
-          "clean" starts a fresh session with no memory of prior agent interactions.
-          "shared" continues the session from the immediately preceding agentic node,
-          as if the conversation had not ended. Only valid when this node has a single
-          agentic predecessor — not supported in fan-in scenarios where depends_on
-          references multiple nodes. Prefer node outputs or artifacts over shared
-          context to keep data flow explicit and debuggable.
-        enum:
-          - clean
-          - shared
+          Session to continue from, normally another agentic node's
+          `self.needs.<id>.session_id`. Supports `${{ }}` expressions. The node
+          runs in a fork of that session: it starts with the session's conversation
+          and produces its own `session_id`, leaving the original unchanged, so
+          several nodes may continue from the same session. Absent or empty starts
+          a fresh session with no memory of prior agent interactions.
       output_format:
         type: object
         description: >-

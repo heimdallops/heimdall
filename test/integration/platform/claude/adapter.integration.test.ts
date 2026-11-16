@@ -101,6 +101,7 @@ describe('ClaudeCodeAdapter integration', () => {
       const { output } = await collectStream(stream2);
 
       expect(output.toLowerCase()).toContain('zygote');
+      expect(await stream2.sessionId()).not.toBe(sessionId);
     },
     60_000
   );

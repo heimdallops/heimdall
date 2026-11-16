@@ -13,13 +13,11 @@ export type NodeStatus = 'pending' | 'in_flight' | 'skipped' | 'completed' | 'fa
 interface NodeStateEntry {
   node: BaseNode;
   status: NodeStatus;
-  sessionId?: string | undefined;
 }
 
 export interface SchedulerOptions {
   platform?: PlatformRuntime | undefined;
   emitter: EngineEmitter;
-  sharedContextMap: Map<string, string>;
   // External cancellation signal (e.g. a LoopNode's attempt signal). When it fires, the scheduler
   // stops dispatching, drains in-flight nodes through the grace period, and aborts node runs.
   signal?: AbortSignal | undefined;
@@ -159,7 +157,7 @@ export const runScheduler = async (
   ctx: ExecutionContext,
   options: SchedulerOptions
 ): Promise<SchedulerResult> => {
-  const { platform, emitter, sharedContextMap } = options;
+  const { platform, emitter } = options;
   const externalSignal = options.signal;
 
   // Mutable needs map — shared by reference across all concurrent dispatches so nodes always see the latest completed results
@@ -204,15 +202,11 @@ export const runScheduler = async (
     pendingCount--;
     emitter.emit('node_started', { nodeId: node.id, nodeName: node.displayName() });
 
-    const predecessorId = sharedContextMap.get(node.id);
-    const predecessorSessionId = predecessorId ? state.get(predecessorId)?.sessionId : undefined;
-
     const buildOptions = (signal: AbortSignal): Parameters<BaseNode['run']>[0] => ({
       ctx: buildCtx(),
       platform,
       emitter,
       signal,
-      predecessorSessionId,
     });
 
     const promise = runWithRetry(node, nodeRunSignal, buildOptions).then((result) => {
@@ -243,7 +237,6 @@ export const runScheduler = async (
 
         case 'completed':
           entry.status = 'completed';
-          entry.sessionId = result.sessionId;
 
           needs.set(node.id, result.result);
           emitter.emit('node_completed', {

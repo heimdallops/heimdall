@@ -149,7 +149,7 @@ describe('ClaudeCodeAdapter', () => {
       expect(opts['systemPrompt']).toEqual({ type: 'preset', preset: 'claude_code' });
     });
 
-    it('passes sessionId through to the SDK as the resume option when provided', async () => {
+    it('forks the session it resumes when a sessionId is provided', async () => {
       const { query: mockedQuery } = await import('@anthropic-ai/claude-agent-sdk');
       const queryMock = vi.mocked(mockedQuery);
       queryMock.mockClear();
@@ -160,6 +160,7 @@ describe('ClaudeCodeAdapter', () => {
       expect(queryMock).toHaveBeenCalledOnce();
       const opts = queryMock.mock.calls[0]![0].options as Record<string, unknown>;
       expect(opts['resume']).toBe('resume-session-id');
+      expect(opts['forkSession']).toBe(true);
     });
 
     it('does not set resume option when no sessionId argument is provided', async () => {
@@ -172,6 +173,7 @@ describe('ClaudeCodeAdapter', () => {
 
       const opts = queryMock.mock.calls[0]![0].options as Record<string, unknown>;
       expect(opts['resume']).toBeUndefined();
+      expect(opts['forkSession']).toBeUndefined();
     });
 
     it('sets includePartialMessages to true in all run() calls', async () => {
