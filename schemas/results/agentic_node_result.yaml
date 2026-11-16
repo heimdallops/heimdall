@@ -14,5 +14,11 @@ properties:
     oneOf:
       - type: string
       - type: object
+  session_id:
+    title: The platform session the agent ran in
+    description: >-
+      Identifies the conversation this node produced, reachable as
+      `self.needs.<id>.session_id`.
+    type: string
 required:
   - output

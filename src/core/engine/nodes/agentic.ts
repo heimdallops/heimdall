@@ -21,6 +21,7 @@ import { nodeRegistry } from './registry.ts';
 
 interface AgenticNodeResult extends Record<string, unknown> {
   output: unknown;
+  session_id?: string;
 }
 
 interface AgenticNodeData extends BaseNodeData {
@@ -180,7 +181,10 @@ export abstract class AgenticNode extends BaseNode<NodeRunCompleted | NodeRunFai
         const output = this.outputFormat !== undefined ? structuredOutput : buffer;
         void (async (): Promise<void> => {
           const sessionId = await stream.sessionId().catch(() => undefined);
-          const result: AgenticNodeResult = { output };
+          const result: AgenticNodeResult = {
+            output,
+            ...(sessionId !== undefined ? { session_id: sessionId } : {}),
+          };
           resolvePromise({
             status: 'completed',
             result,
