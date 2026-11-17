@@ -1,0 +1,339 @@
+$schema: 'https://json-schema.org/draft/2020-12/schema'
+title: Heimdall run event
+description: |-
+  One event of a workflow run — one line of the run's `events.jsonl`. Hand-maintained to match
+  `src/core/engine/events.ts`; nothing validates events against this file.
+
+  Guarantees for a single run:
+
+  - `run.started` is the first event and `run.completed` is the last.
+  - `sequence` starts at 1 and increases by exactly 1 per event, with no gaps.
+  - Every node instance (a distinct `node.path` and `node.attempt`) that the scheduler handles
+    gets exactly one terminal event: `node.completed`, `node.failed`, `node.skipped` or
+    `node.cancelled`. A retried node gets `node.retrying` for each failed attempt that is
+    followed by another one, and a terminal event only for its last attempt.
+  - `node.output` may arrive after the node's terminal event (for example, output flushed
+    late by a background process).
+  - Integers that the engine holds as BigInt (CEL integers, loop iteration counts) are encoded
+    as JSON numbers when they fit a safe integer (±2^53 − 1), otherwise as decimal strings.
+
+  Consumers should ignore event types they don't recognize.
+type: object
+oneOf:
+  - $ref: '#/$defs/run_started'
+  - $ref: '#/$defs/run_exited'
+  - $ref: '#/$defs/run_completed'
+  - $ref: '#/$defs/node_started'
+  - $ref: '#/$defs/node_output'
+  - $ref: '#/$defs/node_retrying'
+  - $ref: '#/$defs/node_completed'
+  - $ref: '#/$defs/node_failed'
+  - $ref: '#/$defs/node_skipped'
+  - $ref: '#/$defs/node_cancelled'
+  - $ref: '#/$defs/approval_requested'
+  - $ref: '#/$defs/approval_resolved'
+
+$defs:
+  envelope:
+    description: >-
+      Fields shared by every event. Run events (`run.*`) have no `node`; node events carry one.
+    type: object
+    properties:
+      version:
+        const: 1
+        title: Event format version
+      sequence:
+        type: integer
+        minimum: 1
+        title: Position of the event in the run, from 1 with no gaps
+      timestamp:
+        type: string
+        format: date-time
+        title: When the event was published (ISO 8601, UTC)
+      runId:
+        type: string
+        title: Id of the run; also the name of the run directory
+      type:
+        type: string
+        title: Event type; selects the shape of `data`
+      data:
+        type: object
+        title: Type-specific payload
+    required: [version, sequence, timestamp, runId, type, data]
+
+  node_envelope:
+    description: Fields shared by every node event (`node.*` and `approval.*`).
+    allOf:
+      - $ref: '#/$defs/envelope'
+    properties:
+      node:
+        $ref: '#/$defs/node_ref'
+    required: [node]
+
+  node_ref:
+    description: Identifies one instance of a node.
+    type: object
+    properties:
+      id:
+        type: string
+        title: Node id from the workflow YAML
+      name:
+        type: string
+        title: Display name (the node's `name`, falling back to `id`)
+      kind:
+        type: string
+        title: Node type
+        description: >-
+          The node type's YAML key: `bash`, `agent`, `prompt`, `prompt_file`, `loop`, `approval`,
+          `exit` or `break`.
+      path:
+        type: array
+        items:
+          type: [string, integer]
+        minItems: 1
+        title: Location of this instance from the workflow root
+        description: >-
+          Node ids interleaved with 0-based loop iteration indexes, ending with this node's id.
+          A top-level node is `["build"]`; the `fix` node in the second iteration of loop
+          `retry_loop` is `["retry_loop", 1, "fix"]`.
+      attempt:
+        type: integer
+        minimum: 0
+        title: Attempt number
+        description: >-
+          1 for the first try, incremented on each retry. 0 when the node was never dispatched
+          (skipped, or its `if` failed to evaluate).
+    required: [id, name, kind, path, attempt]
+
+  serialized_error:
+    description: A thrown error converted to JSON.
+    type: object
+    properties:
+      name:
+        type: string
+        description: The error class name, or `NonError` when something other than an Error was thrown.
+      message:
+        type: string
+      code:
+        type: string
+        description: Heimdall error code (e.g. `ENGINE_BASH_NONZERO_EXIT`) or Node.js system error code.
+      exitCode:
+        type: integer
+        description: Process exit code, for errors from a child process.
+      signal:
+        type: string
+        description: Terminating signal, for errors from a child process.
+      stack:
+        type: string
+      cause:
+        $ref: '#/$defs/serialized_error'
+        description: The underlying error. Chains are cut off after 10 levels or at a cycle.
+    required: [name, message]
+
+  run_started:
+    description: The run began. Always the first event.
+    allOf:
+      - $ref: '#/$defs/envelope'
+    properties:
+      type:
+        const: run.started
+      data:
+        type: object
+        properties:
+          workflow:
+            type: string
+            title: Workflow name
+          cwd:
+            type: string
+            title: Working directory nodes run in
+          runDirectory:
+            type: string
+            title: Directory holding this run's state and `events.jsonl`
+        required: [workflow, cwd, runDirectory]
+
+  run_exited:
+    description: >-
+      An exit node ended the run early. Published at most once, before `run.completed`.
+    allOf:
+      - $ref: '#/$defs/envelope'
+    properties:
+      type:
+        const: run.exited
+      data:
+        type: object
+        properties:
+          reason:
+            type: string
+            title: The exit node's reason, when given
+          failure:
+            type: boolean
+            title: Whether the exit counts as a failed run
+        required: [failure]
+
+  run_completed:
+    description: The run finished. Always the last event, including when the run threw.
+    allOf:
+      - $ref: '#/$defs/envelope'
+    properties:
+      type:
+        const: run.completed
+      data:
+        type: object
+        properties:
+          success:
+            type: boolean
+          exitReason:
+            type: string
+            title: Reason given by the exit node, when the run exited early
+          error:
+            $ref: '#/$defs/serialized_error'
+            title: Present when the run itself threw (not when a node failed)
+        required: [success]
+
+  node_started:
+    description: An attempt of a node began. Published once per attempt.
+    allOf:
+      - $ref: '#/$defs/node_envelope'
+    properties:
+      type:
+        const: node.started
+      data:
+        type: object
+        maxProperties: 0
+
+  node_output:
+    description: >-
+      One line of output from a running node, without its line terminator. May arrive after the
+      node's terminal event.
+    allOf:
+      - $ref: '#/$defs/node_envelope'
+    properties:
+      type:
+        const: node.output
+      data:
+        type: object
+        properties:
+          stream:
+            enum: [stdout, stderr, agent, tool]
+            description: >-
+              `stdout`/`stderr` from bash nodes; `agent` for model text and `tool` for tool calls
+              from agentic nodes.
+          text:
+            type: string
+        required: [stream, text]
+
+  node_retrying:
+    description: >-
+      An attempt failed and another will run after `delayMs`. `node` identifies the attempt that
+      failed.
+    allOf:
+      - $ref: '#/$defs/node_envelope'
+    properties:
+      type:
+        const: node.retrying
+      data:
+        type: object
+        properties:
+          error:
+            $ref: '#/$defs/serialized_error'
+          delayMs:
+            type: integer
+            minimum: 0
+        required: [error, delayMs]
+
+  node_completed:
+    description: Terminal. The node succeeded.
+    allOf:
+      - $ref: '#/$defs/node_envelope'
+    properties:
+      type:
+        const: node.completed
+      data:
+        type: object
+        properties:
+          result:
+            title: The node's result
+            description: >-
+              The value downstream nodes read as `self.needs.<id>` — see `schemas/results/`.
+              Exit and break nodes report `{}`.
+          control:
+            enum: [exit, break]
+            title: Set when an exit or break node fired
+        required: [result]
+
+  node_failed:
+    description: Terminal. The node failed after its last attempt, or its `if` failed to evaluate.
+    allOf:
+      - $ref: '#/$defs/node_envelope'
+    properties:
+      type:
+        const: node.failed
+      data:
+        type: object
+        properties:
+          error:
+            $ref: '#/$defs/serialized_error'
+        required: [error]
+
+  node_skipped:
+    description: Terminal. The node never ran; `node.attempt` is 0.
+    allOf:
+      - $ref: '#/$defs/node_envelope'
+    properties:
+      type:
+        const: node.skipped
+      data:
+        type: object
+        properties:
+          reason:
+            enum: [if, dependency_skipped, halted]
+            description: >-
+              `if` — its `if` expression was false. `dependency_skipped` — a node it depends on
+              was skipped. `halted` — the run stopped dispatching (a failure, exit, break or
+              cancellation) before it was reached.
+        required: [reason]
+
+  node_cancelled:
+    description: Terminal. The node was running when the run was aborted.
+    allOf:
+      - $ref: '#/$defs/node_envelope'
+    properties:
+      type:
+        const: node.cancelled
+      data:
+        type: object
+        maxProperties: 0
+
+  approval_requested:
+    description: An approval node is waiting for a decision.
+    allOf:
+      - $ref: '#/$defs/node_envelope'
+    properties:
+      type:
+        const: approval.requested
+      data:
+        type: object
+        properties:
+          message:
+            type: string
+          enableFeedback:
+            type: boolean
+            title: Whether the approver may leave feedback
+        required: [message, enableFeedback]
+
+  approval_resolved:
+    description: >-
+      An approval node received its decision. Not published when the approval is cancelled.
+    allOf:
+      - $ref: '#/$defs/node_envelope'
+    properties:
+      type:
+        const: approval.resolved
+      data:
+        type: object
+        properties:
+          approved:
+            type: boolean
+          feedback:
+            type: string
+        required: [approved]
