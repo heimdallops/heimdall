@@ -83,7 +83,7 @@ $defs:
       name:
         type: string
         title: Display name (the node's `name`, falling back to `id`)
-      kind:
+      type:
         type: string
         title: Node type
         description: >-
@@ -106,7 +106,7 @@ $defs:
         description: >-
           1 for the first try, incremented on each retry. 0 when the node was never dispatched
           (skipped, or its `if` failed to evaluate).
-    required: [id, name, kind, path, attempt]
+    required: [id, name, type, path, attempt]
 
   serialized_error:
     description: A thrown error converted to JSON.

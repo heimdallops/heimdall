@@ -5,7 +5,7 @@ import type { HeimdallEvent, NodeRef } from '../../../../src/core/engine/events.
 
 const FIXED_DATE = new Date('2026-01-02T03:04:05.678Z');
 
-const ref: NodeRef = { id: 'build', name: 'Build', kind: 'bash', path: ['build'], attempt: 1 };
+const ref: NodeRef = { id: 'build', name: 'Build', type: 'bash', path: ['build'], attempt: 1 };
 
 const setup = (): {
   publisher: ReturnType<typeof createEventPublisher>;

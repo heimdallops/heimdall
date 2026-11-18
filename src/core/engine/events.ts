@@ -9,7 +9,7 @@ export interface NodeRef {
   /** The node's display name (name, falling back to id). */
   name: string;
   /** The node type's YAML key: 'bash', 'agent', 'prompt', 'prompt_file', 'loop', 'approval', 'exit', 'break'. */
-  kind: string;
+  type: string;
   /** Node ids and 0-based loop iteration indexes from the root, e.g. ['retry_loop', 1, 'fix']. */
   path: (string | number)[];
   /** 1-based attempt number; 0 when the node was never dispatched (skipped, `if` error). */
