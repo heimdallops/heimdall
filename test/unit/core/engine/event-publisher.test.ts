@@ -22,9 +22,9 @@ describe('createEventPublisher', () => {
   it('numbers events 1, 2, 3 across run and node events', () => {
     const { publisher, events } = setup();
 
-    publisher.run('run.started', { workflow: 'w', cwd: '/c', runDirectory: '/r' });
-    publisher.node(ref, 'node.started', {});
-    publisher.run('run.completed', { success: true });
+    publisher.publishRunEvent('run.started', { workflow: 'w', cwd: '/c', runDirectory: '/r' });
+    publisher.publishNodeEvent(ref, 'node.started', {});
+    publisher.publishRunEvent('run.completed', { success: true });
 
     expect(events.map((e) => e.sequence)).toEqual([1, 2, 3]);
   });
@@ -32,7 +32,7 @@ describe('createEventPublisher', () => {
   it('stamps version, runId and the injected timestamp', () => {
     const { publisher, events } = setup();
 
-    publisher.run('run.started', { workflow: 'w', cwd: '/c', runDirectory: '/r' });
+    publisher.publishRunEvent('run.started', { workflow: 'w', cwd: '/c', runDirectory: '/r' });
 
     expect(events[0]).toEqual({
       version: 1,
@@ -48,8 +48,8 @@ describe('createEventPublisher', () => {
   it('attaches the NodeRef to node events and omits node from run events', () => {
     const { publisher, events } = setup();
 
-    publisher.node(ref, 'node.output', { stream: 'stdout', text: 'hello' });
-    publisher.run('run.exited', { reason: 'done', failure: false });
+    publisher.publishNodeEvent(ref, 'node.output', { stream: 'stdout', text: 'hello' });
+    publisher.publishRunEvent('run.exited', { reason: 'done', failure: false });
 
     expect(events[0]).toMatchObject({ type: 'node.output', node: ref });
     expect(events[1]).not.toHaveProperty('node');
@@ -58,7 +58,7 @@ describe('createEventPublisher', () => {
   it('freezes events', () => {
     const { publisher, events } = setup();
 
-    publisher.node(ref, 'node.started', {});
+    publisher.publishNodeEvent(ref, 'node.started', {});
 
     expect(Object.isFrozen(events[0])).toBe(true);
   });
@@ -70,7 +70,7 @@ describe('createEventPublisher', () => {
     publisher.subscribe(() => calls.push('b'));
     publisher.subscribe(() => calls.push('c'));
 
-    publisher.node(ref, 'node.started', {});
+    publisher.publishNodeEvent(ref, 'node.started', {});
 
     expect(calls).toEqual(['a', 'b', 'c']);
   });
@@ -80,9 +80,9 @@ describe('createEventPublisher', () => {
     const sink = vi.fn();
     const unsubscribe = publisher.subscribe(sink);
 
-    publisher.node(ref, 'node.started', {});
+    publisher.publishNodeEvent(ref, 'node.started', {});
     unsubscribe();
-    publisher.node(ref, 'node.cancelled', {});
+    publisher.publishNodeEvent(ref, 'node.cancelled', {});
 
     expect(sink).toHaveBeenCalledTimes(1);
   });
@@ -98,7 +98,7 @@ describe('createEventPublisher', () => {
     publisher.subscribe(later);
 
     expect(() => {
-      publisher.node(ref, 'node.started', {});
+      publisher.publishNodeEvent(ref, 'node.started', {});
     }).not.toThrow();
 
     expect(later).toHaveBeenCalledTimes(1);
@@ -111,7 +111,7 @@ describe('createEventPublisher', () => {
       throw new Error('x');
     });
     expect(() => {
-      quiet.run('run.completed', { success: true });
+      quiet.publishRunEvent('run.completed', { success: true });
     }).not.toThrow();
 
     const loud = createEventPublisher({
@@ -124,7 +124,7 @@ describe('createEventPublisher', () => {
       throw new Error('x');
     });
     expect(() => {
-      loud.run('run.completed', { success: true });
+      loud.publishRunEvent('run.completed', { success: true });
     }).not.toThrow();
   });
 
@@ -137,8 +137,8 @@ describe('createEventPublisher', () => {
     });
     publisher.subscribe(() => calls.push('b'));
 
-    publisher.node(ref, 'node.started', {});
-    publisher.node(ref, 'node.cancelled', {});
+    publisher.publishNodeEvent(ref, 'node.started', {});
+    publisher.publishNodeEvent(ref, 'node.cancelled', {});
 
     expect(calls).toEqual(['a', 'b', 'b']);
   });
@@ -151,8 +151,8 @@ describe('createEventPublisher', () => {
     });
     publisher.subscribe((e) => sequences.push(e.sequence));
 
-    publisher.node(ref, 'node.started', {});
-    publisher.node(ref, 'node.completed', { result: { output: '' } });
+    publisher.publishNodeEvent(ref, 'node.started', {});
+    publisher.publishNodeEvent(ref, 'node.completed', { result: { output: '' } });
 
     expect(sequences).toEqual([1, 2]);
   });

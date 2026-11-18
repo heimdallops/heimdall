@@ -7,8 +7,8 @@ export interface EventPublisher {
   readonly runId: string;
   /** Adds a sink. Returns a function that removes it. */
   subscribe(sink: EventSink): () => void;
-  run<T extends RunEventType>(type: T, data: EventData<T>): void;
-  node<T extends NodeEventType>(ref: NodeRef, type: T, data: EventData<T>): void;
+  publishRunEvent<T extends RunEventType>(type: T, data: EventData<T>): void;
+  publishNodeEvent<T extends NodeEventType>(ref: NodeRef, type: T, data: EventData<T>): void;
 }
 
 export interface EventPublisherOptions {
@@ -58,10 +58,10 @@ export const createEventPublisher = (options: EventPublisherOptions): EventPubli
         sinks = sinks.filter((s) => s !== sink);
       };
     },
-    run(type, data): void {
+    publishRunEvent(type, data): void {
       deliver({ ...envelope(), type, data } as HeimdallEvent);
     },
-    node(ref, type, data): void {
+    publishNodeEvent(ref, type, data): void {
       deliver({ ...envelope(), type, node: ref, data } as HeimdallEvent);
     },
   };
