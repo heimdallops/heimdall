@@ -12,6 +12,8 @@ export class ExitNode extends BaseNode<NodeRunExited> {
   private readonly reason: string | undefined;
   private readonly failure: boolean;
 
+  public static override readonly type = 'exit';
+
   public static matches(raw: Record<string, unknown>): boolean {
     return 'exit' in raw;
   }

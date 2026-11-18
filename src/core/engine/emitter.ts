@@ -2,42 +2,6 @@ import { EventEmitter } from 'node:events';
 
 export type NodeResult = Record<string, unknown>;
 
-export interface NodeStartedEvent {
-  nodeId: string;
-  nodeName: string;
-}
-
-export interface NodeCompletedEvent {
-  nodeId: string;
-  nodeName: string;
-  result: NodeResult;
-}
-
-export interface NodeSkippedEvent {
-  nodeId: string;
-  nodeName: string;
-}
-
-export interface NodeCancelledEvent {
-  nodeId: string;
-  nodeName: string;
-}
-
-export interface NodeFailedEvent {
-  nodeId: string;
-  nodeName: string;
-  error: unknown;
-}
-
-export interface WorkflowExitedEvent {
-  reason?: string | undefined;
-  failure: boolean;
-}
-
-export interface WorkflowCompletedEvent {
-  success: boolean;
-}
-
 export interface WorktreeDirtyEvent {
   worktreePath: string;
 }
@@ -55,14 +19,9 @@ export interface ApprovalRequestedEvent {
   resolve: (result: ApprovalResult) => void;
 }
 
+// Lifecycle events go through the EventPublisher. The emitter carries only the interactive
+// approval handshake and the worktree_dirty notice.
 export interface EngineEventMap {
-  node_started: [NodeStartedEvent];
-  node_completed: [NodeCompletedEvent];
-  node_skipped: [NodeSkippedEvent];
-  node_cancelled: [NodeCancelledEvent];
-  node_failed: [NodeFailedEvent];
-  workflow_exited: [WorkflowExitedEvent];
-  workflow_completed: [WorkflowCompletedEvent];
   worktree_dirty: [WorktreeDirtyEvent];
   approval_requested: [ApprovalRequestedEvent];
 }

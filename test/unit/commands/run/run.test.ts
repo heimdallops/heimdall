@@ -8,6 +8,10 @@ import type { CliContext } from '../../../../src/cli/context.ts';
 import type { RunInput } from '../../../../src/commands/run/run.ts';
 import type { ApprovalResult, EngineEmitter } from '../../../../src/core/engine/emitter.ts';
 import { EngineConfigError, EngineValidationError } from '../../../../src/core/engine/errors.ts';
+import type { EventPublisher, EventSink } from '../../../../src/core/engine/event-publisher.ts';
+import { createEventPublisher } from '../../../../src/core/engine/event-publisher.ts';
+import type { HeimdallEvent, NodeRef } from '../../../../src/core/engine/events.ts';
+import { serializeError } from '../../../../src/core/engine/events.ts';
 import type { WorkflowResult } from '../../../../src/core/engine/workflow.ts';
 import { CliError, ERROR_CODE, EXIT_CODE } from '../../../../src/errors/cli-error.ts';
 import type { Printer } from '../../../../src/output/printer.ts';
@@ -72,11 +76,15 @@ interface SpiedPrinter extends Printer {
  */
 type InputType = 'string' | 'number' | 'integer' | 'boolean';
 
+interface StubRunOptions {
+  inputs: Record<string, string | number | boolean>;
+  onEvent?: EventSink;
+  onSinkError?: (error: unknown, event: HeimdallEvent) => void;
+}
+
 interface WorkflowStub {
   inputs: Map<string, { default?: string; type?: InputType }>;
-  run: Mock<
-    (options: { inputs: Record<string, string | number | boolean> }) => Promise<WorkflowResult>
-  >;
+  run: Mock<(options: StubRunOptions) => Promise<WorkflowResult>>;
 }
 
 // ---------------------------------------------------------------------------
@@ -135,11 +143,7 @@ const makeWorkflowStub = (
   runResult: WorkflowResult = { success: true }
 ): WorkflowStub => ({
   inputs: inputDeclarations,
-  run: vi
-    .fn<
-      (options: { inputs: Record<string, string | number | boolean> }) => Promise<WorkflowResult>
-    >()
-    .mockResolvedValue(runResult),
+  run: vi.fn<(options: StubRunOptions) => Promise<WorkflowResult>>().mockResolvedValue(runResult),
 });
 
 // ---------------------------------------------------------------------------
@@ -466,12 +470,31 @@ describe('run command — run()', () => {
      * The run() implementation is a plain synchronous-returning function that
      * returns a resolved Promise — avoids the `no-misused-promises` rule.
      */
-    const makeWorkflowWithEvents = (events: (() => void)[]): WorkflowStub => {
+    const ref = (name: string): NodeRef => ({
+      id: 'n1',
+      name,
+      type: 'bash',
+      path: ['n1'],
+      attempt: 1,
+    });
+
+    // Publishes through a real publisher wired to the onEvent/onSinkError that run() passes in.
+    const makeWorkflowWithEvents = (
+      events: ((publisher: EventPublisher) => void)[]
+    ): WorkflowStub => {
       const stub = makeWorkflowStub();
 
-      stub.run.mockImplementation((): Promise<WorkflowResult> => {
-        for (const emitFn of events) {
-          emitFn();
+      stub.run.mockImplementation((options): Promise<WorkflowResult> => {
+        const publisher = createEventPublisher({
+          runId: 'run-1',
+          ...(options.onSinkError !== undefined ? { onSinkError: options.onSinkError } : {}),
+        });
+        if (options.onEvent !== undefined) {
+          publisher.subscribe(options.onEvent);
+        }
+
+        for (const publishFn of events) {
+          publishFn(publisher);
         }
 
         return Promise.resolve({ success: true });
@@ -480,10 +503,10 @@ describe('run command — run()', () => {
       return stub;
     };
 
-    it('calls printer.info when node_started fires', async () => {
+    it('calls printer.info when node.started is published', async () => {
       const workflowStub = makeWorkflowWithEvents([
-        (): void => {
-          emitter.emit('node_started', { nodeId: 'n1', nodeName: 'My Node' });
+        (publisher): void => {
+          publisher.publishNodeEvent(ref('My Node'), 'node.started', {});
         },
       ]);
       workflowFromMock.mockResolvedValue(workflowStub as never);
@@ -494,10 +517,10 @@ describe('run command — run()', () => {
       expect(ctx.printer.info).toHaveBeenCalledWith(expect.stringContaining('My Node'));
     });
 
-    it('calls printer.success when node_completed fires', async () => {
+    it('calls printer.success when node.completed is published', async () => {
       const workflowStub = makeWorkflowWithEvents([
-        (): void => {
-          emitter.emit('node_completed', { nodeId: 'n1', nodeName: 'My Node', result: {} });
+        (publisher): void => {
+          publisher.publishNodeEvent(ref('My Node'), 'node.completed', { result: {} });
         },
       ]);
       workflowFromMock.mockResolvedValue(workflowStub as never);
@@ -508,10 +531,10 @@ describe('run command — run()', () => {
       expect(ctx.printer.success).toHaveBeenCalledWith(expect.stringContaining('My Node'));
     });
 
-    it('calls printer.warn when node_skipped fires', async () => {
+    it('calls printer.warn when node.skipped is published', async () => {
       const workflowStub = makeWorkflowWithEvents([
-        (): void => {
-          emitter.emit('node_skipped', { nodeId: 'n1', nodeName: 'My Node' });
+        (publisher): void => {
+          publisher.publishNodeEvent(ref('My Node'), 'node.skipped', { reason: 'if' });
         },
       ]);
       workflowFromMock.mockResolvedValue(workflowStub as never);
@@ -522,10 +545,10 @@ describe('run command — run()', () => {
       expect(ctx.printer.warn).toHaveBeenCalledWith(expect.stringContaining('My Node'));
     });
 
-    it('calls printer.warn when node_cancelled fires', async () => {
+    it('calls printer.warn when node.cancelled is published', async () => {
       const workflowStub = makeWorkflowWithEvents([
-        (): void => {
-          emitter.emit('node_cancelled', { nodeId: 'n1', nodeName: 'My Node' });
+        (publisher): void => {
+          publisher.publishNodeEvent(ref('My Node'), 'node.cancelled', {});
         },
       ]);
       workflowFromMock.mockResolvedValue(workflowStub as never);
@@ -536,13 +559,11 @@ describe('run command — run()', () => {
       expect(ctx.printer.warn).toHaveBeenCalledWith(expect.stringContaining('My Node'));
     });
 
-    it('calls printer.error when node_failed fires with an Error object', async () => {
+    it('calls printer.error when node.failed is published with an Error object', async () => {
       const workflowStub = makeWorkflowWithEvents([
-        (): void => {
-          emitter.emit('node_failed', {
-            nodeId: 'n1',
-            nodeName: 'My Node',
-            error: new Error('boom'),
+        (publisher): void => {
+          publisher.publishNodeEvent(ref('My Node'), 'node.failed', {
+            error: serializeError(new Error('boom')),
           });
         },
       ]);
@@ -555,13 +576,11 @@ describe('run command — run()', () => {
       expect(ctx.printer.error).toHaveBeenCalledWith(expect.stringContaining('boom'));
     });
 
-    it('calls printer.error when node_failed fires with a non-Error value', async () => {
+    it('calls printer.error when node.failed is published with a non-Error value', async () => {
       const workflowStub = makeWorkflowWithEvents([
-        (): void => {
-          emitter.emit('node_failed', {
-            nodeId: 'n1',
-            nodeName: 'Fail Step',
-            error: 'string error',
+        (publisher): void => {
+          publisher.publishNodeEvent(ref('Fail Step'), 'node.failed', {
+            error: serializeError('string error'),
           });
         },
       ]);
@@ -573,15 +592,15 @@ describe('run command — run()', () => {
       expect(ctx.printer.error).toHaveBeenCalledWith(expect.stringContaining('string error'));
     });
 
-    it('prints the cause message when node_failed fires with a wrapped error', async () => {
+    it('prints the cause message when node.failed is published with a wrapped error', async () => {
       const workflowStub = makeWorkflowWithEvents([
-        (): void => {
-          emitter.emit('node_failed', {
-            nodeId: 'n1',
-            nodeName: 'Ask',
-            error: new Error('Node failed (node: "Ask")', {
-              cause: new Error('Native CLI binary for darwin-arm64 not found'),
-            }),
+        (publisher): void => {
+          publisher.publishNodeEvent(ref('Ask'), 'node.failed', {
+            error: serializeError(
+              new Error('Node failed (node: "Ask")', {
+                cause: new Error('Native CLI binary for darwin-arm64 not found'),
+              })
+            ),
           });
         },
       ]);
@@ -592,6 +611,50 @@ describe('run command — run()', () => {
 
       expect(ctx.printer.error).toHaveBeenCalledWith(
         'Node failed: Ask — Native CLI binary for darwin-arm64 not found'
+      );
+    });
+
+    it('prints nothing for events it has no line for', async () => {
+      const workflowStub = makeWorkflowWithEvents([
+        (publisher): void => {
+          publisher.publishRunEvent('run.started', {
+            workflow: 'wf',
+            cwd: '/tmp',
+            runDirectory: '/tmp/run',
+          });
+          publisher.publishNodeEvent(ref('My Node'), 'node.output', {
+            stream: 'stdout',
+            text: 'hello',
+          });
+        },
+      ]);
+      workflowFromMock.mockResolvedValue(workflowStub as never);
+
+      const ctx = makeCtx();
+      await run(ctx, makeInput());
+
+      for (const spy of [ctx.printer.info, ctx.printer.success, ctx.printer.warn]) {
+        expect(spy).not.toHaveBeenCalledWith(expect.stringContaining('hello'));
+        expect(spy).not.toHaveBeenCalledWith(expect.stringContaining('wf'));
+      }
+    });
+
+    it('warns instead of failing the run when printing an event throws', async () => {
+      const workflowStub = makeWorkflowWithEvents([
+        (publisher): void => {
+          publisher.publishNodeEvent(ref('My Node'), 'node.started', {});
+        },
+      ]);
+      workflowFromMock.mockResolvedValue(workflowStub as never);
+
+      const ctx = makeCtx();
+      ctx.printer.info.mockImplementationOnce(() => {
+        throw new Error('stdout closed');
+      });
+      await run(ctx, makeInput());
+
+      expect(ctx.printer.warn).toHaveBeenCalledWith(
+        'Event sink error on node.started: stdout closed'
       );
     });
   });

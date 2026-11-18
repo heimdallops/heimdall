@@ -23,6 +23,7 @@ import type {
   PlatformStream,
 } from '../../../../../src/core/engine/nodes/base.ts';
 import type { Platform } from '../../../../../src/core/platform/index.ts';
+import { eventOptions } from '../_events.ts';
 
 // ---------------------------------------------------------------------------
 // Fake PlatformStream
@@ -153,6 +154,7 @@ const makeCtx = (overrides: Partial<ExecutionContext> = {}): ExecutionContext =>
   cwd: '/tmp/work',
   heimdall: { run_cwd: '/tmp/work', session_dir: '/tmp/session' },
   scopes: new Map(),
+  path: [],
   ...overrides,
 });
 
@@ -173,6 +175,7 @@ const makeOptions = (
   platform: runtime,
   emitter: createEngineEmitter(),
   signal: new AbortController().signal,
+  ...eventOptions(),
   ...overrides,
 });
 

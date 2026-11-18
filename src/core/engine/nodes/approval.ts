@@ -29,6 +29,8 @@ export class ApprovalNode extends BaseNode<NodeRunCompleted | NodeRunExited | No
   private readonly exitOnNo: boolean;
   private readonly enableFeedback: boolean;
 
+  public static override readonly type = 'approval';
+
   public static matches(raw: Record<string, unknown>): boolean {
     return 'approval' in raw;
   }
@@ -59,7 +61,7 @@ export class ApprovalNode extends BaseNode<NodeRunCompleted | NodeRunExited | No
   public override async run(
     options: NodeRunOptions
   ): Promise<NodeRunCompleted | NodeRunExited | NodeRunFailed> {
-    const { ctx, emitter, signal } = options;
+    const { ctx, emitter, signal, publish } = options;
 
     let interpolatedMessage: string;
     try {
@@ -117,6 +119,15 @@ export class ApprovalNode extends BaseNode<NodeRunCompleted | NodeRunExited | No
           );
         }
 
+        const result: ApprovalNodeResult = {
+          approved: approvalResult.approved,
+          ...(this.enableFeedback && approvalResult.feedback
+            ? { feedback: approvalResult.feedback }
+            : {}),
+        };
+        // Reports the decision as the node sees it: feedback only when enabled and non-empty.
+        publish('approval.resolved', result);
+
         // Only suppress early exit when feedback is both enabled and provided — the caller can't act on it otherwise.
         if (
           this.exitOnNo &&
@@ -128,18 +139,16 @@ export class ApprovalNode extends BaseNode<NodeRunCompleted | NodeRunExited | No
           return;
         }
 
-        const result: ApprovalNodeResult = {
-          approved: approvalResult.approved,
-          ...(this.enableFeedback && approvalResult.feedback
-            ? { feedback: approvalResult.feedback }
-            : {}),
-        };
-
         settle({ status: 'completed', result });
       };
 
       signal.addEventListener('abort', onAbort, { once: true });
 
+      // A cancelled approval publishes no approval.resolved; node.cancelled covers it.
+      publish('approval.requested', {
+        message: interpolatedMessage,
+        enableFeedback: this.enableFeedback,
+      });
       emitter.emit('approval_requested', {
         nodeId: this.id,
         nodeName: this.displayName(),

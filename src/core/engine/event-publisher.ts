@@ -1,6 +1,19 @@
-import type { EventData, HeimdallEvent, NodeEventType, NodeRef, RunEventType } from './events.ts';
+import type {
+  EventData,
+  HeimdallEvent,
+  NodeEventType,
+  NodeRef,
+  OutputStream,
+  RunEventType,
+} from './events.ts';
 
 export type EventSink = (event: HeimdallEvent) => void;
+
+/** Publishes a node event for a NodeRef fixed in advance. */
+export type NodeEventPublish = <T extends NodeEventType>(type: T, data: EventData<T>) => void;
+
+/** Publishes one line of node output as `node.output`. */
+export type NodeOutput = (stream: OutputStream, text: string) => void;
 
 /** Stamps events with the run's envelope (version, sequence, timestamp, runId) and hands them to sinks. */
 export interface EventPublisher {
@@ -66,3 +79,16 @@ export const createEventPublisher = (options: EventPublisherOptions): EventPubli
     },
   };
 };
+
+/** Binds node event publishing to one node attempt, so the node never builds its own NodeRef. */
+export const bindNodeEvents = (
+  publisher: EventPublisher,
+  ref: NodeRef
+): { publish: NodeEventPublish; output: NodeOutput } => ({
+  publish: (type, data): void => {
+    publisher.publishNodeEvent(ref, type, data);
+  },
+  output: (stream, text): void => {
+    publisher.publishNodeEvent(ref, 'node.output', { stream, text });
+  },
+});
