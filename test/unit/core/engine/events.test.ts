@@ -38,7 +38,7 @@ describe('serializeError', () => {
   it('turns a plain object into a NonError with its JSON as the message', () => {
     expect(serializeError({ reason: 'bad', count: 2n })).toEqual({
       name: 'NonError',
-      message: '{"reason":"bad","count":2}',
+      message: '{"reason":"bad","count":"2"}',
     });
   });
 
@@ -137,17 +137,19 @@ describe('rootErrorMessage', () => {
 });
 
 describe('jsonReplacer', () => {
-  it('writes a safe-range BigInt as a number', () => {
-    expect(JSON.stringify({ n: 2n }, jsonReplacer)).toBe('{"n":2}');
+  it('writes a small BigInt as a string', () => {
+    expect(JSON.stringify({ n: 2n }, jsonReplacer)).toBe('{"n":"2"}');
   });
 
-  it('writes a BigInt beyond MAX_SAFE_INTEGER as a string', () => {
-    const big = BigInt(Number.MAX_SAFE_INTEGER) + 1n;
-    expect(JSON.stringify({ n: big }, jsonReplacer)).toBe(`{"n":"${big.toString()}"}`);
+  it('writes a BigInt beyond MAX_SAFE_INTEGER as a string without rounding', () => {
+    const big = BigInt(Number.MAX_SAFE_INTEGER) + 2n;
+    expect(JSON.stringify({ n: big }, jsonReplacer)).toBe('{"n":"9007199254740993"}');
   });
 
-  it('handles nested BigInts and leaves other values alone', () => {
-    const value = { a: [1n, { b: -3n }], s: 'x', f: 1.5, z: null };
-    expect(JSON.stringify(value, jsonReplacer)).toBe('{"a":[1,{"b":-3}],"s":"x","f":1.5,"z":null}');
+  it('handles nested BigInts and leaves other values, including plain numbers, alone', () => {
+    const value = { a: [1n, { b: -3n }], s: 'x', i: 4, f: 1.5, z: null };
+    expect(JSON.stringify(value, jsonReplacer)).toBe(
+      '{"a":["1",{"b":"-3"}],"s":"x","i":4,"f":1.5,"z":null}'
+    );
   });
 });

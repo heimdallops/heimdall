@@ -65,18 +65,11 @@ export type EventData<T extends HeimdallEvent['type']> = Extract<
   { type: T }
 >['data'];
 
-// JSON.stringify throws on a BigInt, and integer CEL bindings and loop results are BigInt. A JSON
-// number is a double, so values outside its exact range become decimal strings rather than
-// silently rounding.
-export const jsonReplacer = (_key: string, value: unknown): unknown => {
-  if (typeof value !== 'bigint') {
-    return value;
-  }
-
-  return value >= BigInt(Number.MIN_SAFE_INTEGER) && value <= BigInt(Number.MAX_SAFE_INTEGER)
-    ? Number(value)
-    : value.toString();
-};
+// JSON.stringify throws on a BigInt, and CEL integers and loop iteration counts are BigInt. Every
+// BigInt becomes a decimal string, whatever its size, so a field always has one JSON type.
+// Unlike cel.ts's interpolation replacer, which keeps safe-range values as numbers.
+export const jsonReplacer = (_key: string, value: unknown): unknown =>
+  typeof value === 'bigint' ? value.toString() : value;
 
 const MAX_CAUSE_DEPTH = 10;
 

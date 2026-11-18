@@ -14,8 +14,11 @@ description: |-
     followed by another one, and a terminal event only for its last attempt.
   - `node.output` may arrive after the node's terminal event (for example, output flushed
     late by a background process).
-  - Integers that the engine holds as BigInt (CEL integers, loop iteration counts) are encoded
-    as JSON numbers when they fit a safe integer (±2^53 − 1), otherwise as decimal strings.
+  - Integers that the engine holds as BigInt (CEL integers, loop iteration counts) are always
+    encoded as decimal strings, whatever their size. A loop's result therefore reads
+    `"iterations": "2"` here, although `schemas/results/loop_node_result.yaml` types it as an
+    integer. Numbers parsed from JSON (for example a bash node's `output_format: json`) stay JSON
+    numbers.
 
   Consumers should ignore event types they don't recognize.
 type: object
