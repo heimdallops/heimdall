@@ -4,6 +4,7 @@ import { ZodError } from 'zod';
 import { createEngineEmitter } from '../../../../../src/core/engine/emitter.ts';
 import type { ExecutionContext } from '../../../../../src/core/engine/nodes/base.ts';
 import { BreakNode } from '../../../../../src/core/engine/nodes/break.ts';
+import { eventOptions } from '../_events.ts';
 
 const makeCtx = (): ExecutionContext => ({
   inputs: {},
@@ -12,6 +13,7 @@ const makeCtx = (): ExecutionContext => ({
   cwd: '/tmp/work',
   heimdall: { run_cwd: '/tmp/work', session_dir: '/tmp/session' },
   scopes: new Map(),
+  path: [],
 });
 
 describe('BreakNode', () => {
@@ -47,6 +49,7 @@ describe('BreakNode', () => {
         ctx: makeCtx(),
         emitter,
         signal: new AbortController().signal,
+        ...eventOptions(),
       });
 
       expect(result).toEqual({ status: 'break' });

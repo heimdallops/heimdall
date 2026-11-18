@@ -24,6 +24,7 @@ const makeCtx = (overrides: Partial<ExecutionContext> = {}): ExecutionContext =>
   cwd: '/tmp/work',
   heimdall: { run_cwd: '/tmp/work', session_dir: '/tmp/session' },
   scopes: new Map(),
+  path: [],
   ...overrides,
 });
 
@@ -55,6 +56,21 @@ describe('the five-root CEL namespace', () => {
     const built = buildCheckpointContext(makeCtx(), [], new Map());
 
     expect(Object.keys(built).sort()).toEqual(['heimdall', 'inputs', 'scopes', 'self', 'vars']);
+  });
+
+  it('never binds the engine-only event path, at any site', () => {
+    const ctx = makeCtx({ path: ['outer', 1, 'inner', 0] });
+    const sites = [
+      buildEntryContext(ctx, []),
+      buildActiveContext(ctx, []),
+      buildCheckpointContext(ctx, [], new Map()),
+    ];
+
+    for (const built of sites) {
+      expect(built).not.toHaveProperty('path');
+      expect(built.self).not.toHaveProperty('path');
+      expect(() => evalCel('path', built)).toThrow();
+    }
   });
 
   it('fails to resolve a root name outside the five closed roots', () => {

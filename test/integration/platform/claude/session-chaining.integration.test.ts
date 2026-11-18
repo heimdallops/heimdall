@@ -9,8 +9,8 @@ import { execa } from 'execa';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import type { NodeResult } from '../../../../src/core/engine/emitter.ts';
-import { createEngineEmitter } from '../../../../src/core/engine/emitter.ts';
 import { Workflow } from '../../../../src/core/engine/workflow.ts';
+import { recordEvents, resultOf as completedResult } from '../../../unit/core/engine/_events.ts';
 
 // The SDK spawns a bundled Claude Code CLI binary that accepts ANTHROPIC_API_KEY from the
 // environment or the developer's existing Claude Code CLI OAuth credentials (~/.claude/).
@@ -78,13 +78,13 @@ describe('agent session chaining against Claude', () => {
   // One entry per completion, in order, so a node inside a loop appears once per iteration.
   const runWorkflow = async (yaml: string): Promise<Map<string, NodeResult[]>> => {
     const workflow = await Workflow.from(yaml);
-    const emitter = createEngineEmitter();
+    const recorder = recordEvents();
     const results = new Map<string, NodeResult[]>();
-    emitter.on('node_completed', ({ nodeId, result }) => {
-      results.set(nodeId, [...(results.get(nodeId) ?? []), result]);
+    recorder.on('node.completed', (event) => {
+      results.set(event.node.id, [...(results.get(event.node.id) ?? []), completedResult(event)]);
     });
 
-    const outcome = await workflow.run({ inputs: {}, emitter, cwd: tempDir });
+    const outcome = await workflow.run({ inputs: {}, onEvent: recorder.onEvent, cwd: tempDir });
 
     expect(outcome.success).toBe(true);
 

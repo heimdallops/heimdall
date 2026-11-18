@@ -51,6 +51,8 @@ export class BashNode extends BaseNode<NodeRunCompleted | NodeRunFailed> {
   private readonly env: Record<string, string> | undefined;
   private readonly outputFormat: 'text' | 'json';
 
+  public static override readonly type = 'bash';
+
   public static matches(raw: Record<string, unknown>): boolean {
     return 'bash' in raw;
   }

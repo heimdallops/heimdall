@@ -4,6 +4,7 @@ import { ZodError } from 'zod';
 import { createEngineEmitter } from '../../../../../src/core/engine/emitter.ts';
 import type { ExecutionContext } from '../../../../../src/core/engine/nodes/base.ts';
 import { ExitNode } from '../../../../../src/core/engine/nodes/exit.ts';
+import { eventOptions } from '../_events.ts';
 
 const makeCtx = (): ExecutionContext => ({
   inputs: {},
@@ -12,6 +13,7 @@ const makeCtx = (): ExecutionContext => ({
   cwd: '/tmp/work',
   heimdall: { run_cwd: '/tmp/work', session_dir: '/tmp/session' },
   scopes: new Map(),
+  path: [],
 });
 
 describe('ExitNode', () => {
@@ -45,6 +47,7 @@ describe('ExitNode', () => {
         ctx: makeCtx(),
         emitter,
         signal: new AbortController().signal,
+        ...eventOptions(),
       });
 
       expect(result.failure).toBe(false);
@@ -68,6 +71,7 @@ describe('ExitNode', () => {
         ctx: makeCtx(),
         emitter,
         signal: new AbortController().signal,
+        ...eventOptions(),
       });
 
       expect(result).toEqual({ status: 'exited', reason: 'done', failure: false });
@@ -81,6 +85,7 @@ describe('ExitNode', () => {
         ctx: makeCtx(),
         emitter,
         signal: new AbortController().signal,
+        ...eventOptions(),
       });
 
       expect(result).toEqual({ status: 'exited', reason: 'fatal', failure: true });
@@ -94,6 +99,7 @@ describe('ExitNode', () => {
         ctx: makeCtx(),
         emitter,
         signal: new AbortController().signal,
+        ...eventOptions(),
       });
 
       expect(result).toEqual({ status: 'exited', failure: false });

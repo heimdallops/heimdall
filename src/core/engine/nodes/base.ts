@@ -2,6 +2,7 @@ import type { Platform } from '../../platform/index.ts';
 import { evalCel } from '../cel.ts';
 import type { EngineEmitter, NodeResult } from '../emitter.ts';
 import { EngineConfigError, NodeError } from '../errors.ts';
+import type { EventPublisher, NodeEventPublish, NodeOutput } from '../event-publisher.ts';
 import { buildEntryContext } from '../expression-context.ts';
 import type { RetryPolicy } from '../schema.ts';
 
@@ -116,6 +117,9 @@ export interface ExecutionContext {
   readonly cwd: string;
   readonly heimdall: HeimdallContext;
   readonly scopes: ScopeChain;
+  // Engine-only location of this scheduler's nodes in the run: enclosing node ids and loop
+  // iteration indexes, [] at the top level. Not a CEL binding.
+  readonly path: readonly (string | number)[];
 }
 
 export interface NodeRunOptions {
@@ -123,6 +127,12 @@ export interface NodeRunOptions {
   platform?: PlatformRuntime | undefined;
   emitter: EngineEmitter;
   signal: AbortSignal;
+  // Publish this attempt's node events. Both are bound to the node's NodeRef for this attempt.
+  publish: NodeEventPublish;
+  output: NodeOutput;
+  // For container nodes (loop) to pass to a nested scheduler only. A leaf node publishes through
+  // `publish`/`output`, never through the publisher directly.
+  publisher: EventPublisher;
 }
 
 export interface BaseNodeData {
@@ -135,6 +145,9 @@ export interface BaseNodeData {
 }
 
 export abstract class BaseNode<R extends NodeRunResult = NodeRunResult> {
+  // The node type's YAML key ('bash', 'loop', ...). Every registered node class overrides it.
+  public static readonly type: string = 'unknown';
+
   public readonly id: string;
   public readonly name: string | undefined;
   public readonly timeout: number | undefined;
@@ -208,6 +221,10 @@ export abstract class BaseNode<R extends NodeRunResult = NodeRunResult> {
 
   public displayName(): string {
     return this.name ?? this.id;
+  }
+
+  public type(): string {
+    return (this.constructor as typeof BaseNode).type;
   }
 
   public abstract run(options: NodeRunOptions): Promise<R>;

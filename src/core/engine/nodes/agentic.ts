@@ -217,6 +217,8 @@ export abstract class AgenticNode extends BaseNode<NodeRunCompleted | NodeRunFai
 export class PromptNode extends AgenticNode {
   private readonly prompt: string;
 
+  public static override readonly type = 'prompt';
+
   public static matches(raw: Record<string, unknown>): boolean {
     return 'prompt' in raw;
   }
@@ -242,6 +244,8 @@ export class PromptNode extends AgenticNode {
 export class AgentNode extends AgenticNode {
   private readonly agent: string;
   private readonly instructions: string | undefined;
+
+  public static override readonly type = 'agent';
 
   public static matches(raw: Record<string, unknown>): boolean {
     return 'agent' in raw;
@@ -305,6 +309,8 @@ export class AgentNode extends AgenticNode {
 
 export class PromptFileNode extends AgenticNode {
   private readonly promptFile: string;
+
+  public static override readonly type = 'prompt_file';
 
   public static matches(raw: Record<string, unknown>): boolean {
     return 'prompt_file' in raw;

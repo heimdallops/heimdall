@@ -25,6 +25,10 @@ import {
 import type { EngineEmitter } from './emitter.ts';
 import { createEngineEmitter } from './emitter.ts';
 import { EngineConfigError, EngineError, EngineValidationError } from './errors.ts';
+import type { EventSink } from './event-publisher.ts';
+import { createEventPublisher } from './event-publisher.ts';
+import type { HeimdallEvent } from './events.ts';
+import { serializeError } from './events.ts';
 import type { AdapterFactory, BaseNode, ExecutionContext } from './nodes/base.ts';
 import { BreakNode } from './nodes/break.ts';
 import { nodeRegistry } from './nodes/registry.ts';
@@ -40,6 +44,12 @@ export interface WorkflowRunOptions {
   // External cancellation signal. When it fires, the scheduler stops dispatching,
   // drains in-flight nodes through the grace period, and aborts node runs.
   readonly signal?: AbortSignal | undefined;
+  // Receives every run event, in order. Subscribed before the first event is published.
+  readonly onEvent?: EventSink | undefined;
+  // Called when onEvent throws. The run continues either way.
+  readonly onSinkError?: ((error: unknown, event: HeimdallEvent) => void) | undefined;
+  // Defaults to a random UUID. Also names the run directory.
+  readonly runId?: string | undefined;
 }
 
 export interface WorkflowResult {
@@ -130,6 +140,14 @@ export class Workflow {
     const emitter = options.emitter ?? createEngineEmitter();
     const cwd = options.cwd ?? process.cwd();
     const adapterFactory = options.adapterFactory ?? createAdapterFactory();
+    const runId = options.runId ?? randomUUID();
+    const publisher = createEventPublisher({
+      runId,
+      ...(options.onSinkError !== undefined ? { onSinkError: options.onSinkError } : {}),
+    });
+    if (options.onEvent !== undefined) {
+      publisher.subscribe(options.onEvent);
+    }
 
     // An unset or empty XDG_DATA_HOME falls back to the default; otherwise the run dir
     // would resolve relative to cwd.
@@ -138,13 +156,26 @@ export class Workflow {
       xdgDataHome === undefined || xdgDataHome === ''
         ? join(homedir(), '.local', 'share')
         : xdgDataHome;
-    const runDir = join(dataHome, 'heimdall', 'runs', randomUUID());
+    const runDir = join(dataHome, 'heimdall', 'runs', runId);
     const sessionDir = join(runDir, 'session');
 
+    let started = false;
+    const publishStarted = (): void => {
+      started = true;
+      publisher.publishRunEvent('run.started', {
+        workflow: this.definition.name,
+        cwd,
+        runDirectory: runDir,
+      });
+    };
+
     let result: WorkflowResult | undefined;
+    // Boxed so a thrown `undefined` still counts as a throw.
+    let thrown: { error: unknown } | undefined;
 
     try {
       await mkdir(sessionDir, { recursive: true });
+      publishStarted();
 
       const ctx: ExecutionContext = {
         inputs: resolvedInputs,
@@ -153,6 +184,7 @@ export class Workflow {
         cwd,
         heimdall: { run_cwd: cwd, session_dir: sessionDir },
         scopes: new Map(),
+        path: [],
       };
 
       result = await runScheduler(this.sortedNodes, ctx, {
@@ -162,6 +194,7 @@ export class Workflow {
           defaultPlatformOptions: this.definition.platform_options,
         },
         emitter,
+        publisher,
         signal: options.signal,
       });
 
@@ -172,11 +205,21 @@ export class Workflow {
       }
 
       return { success: result.success, exitReason: result.exitReason };
+    } catch (err) {
+      thrown = { error: err };
+      throw err;
     } finally {
-      // workflow_completed must always be the terminal event, even when mkdir,
-      // the scheduler, or teardown throw. `result?.success ?? false` reports
-      // failure when we never reached a scheduler result.
-      emitter.emit('workflow_completed', { success: result?.success ?? false });
+      // run.started is always first and run.completed always last, even when mkdir, the
+      // scheduler, or teardown throw. Without a scheduler result the run reports failure.
+      if (!started) {
+        publishStarted();
+      }
+
+      publisher.publishRunEvent('run.completed', {
+        success: thrown === undefined && (result?.success ?? false),
+        ...(result?.exitReason !== undefined ? { exitReason: result.exitReason } : {}),
+        ...(thrown !== undefined ? { error: serializeError(thrown.error) } : {}),
+      });
     }
   }
 

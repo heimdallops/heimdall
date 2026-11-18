@@ -6,6 +6,8 @@ import { nodeRegistry } from './registry.ts';
 type BreakNodeData = BaseNodeData;
 
 export class BreakNode extends BaseNode<NodeRunBreak> {
+  public static override readonly type = 'break';
+
   public static matches(raw: Record<string, unknown>): boolean {
     return 'break' in raw;
   }

@@ -1,14 +1,12 @@
 import '../../../../src/core/engine/nodes/approval.ts';
 import '../../../../src/core/engine/nodes/bash.ts';
 
-import { mkdtemp, readdir, rm } from 'node:fs/promises';
+import { mkdtemp, readdir, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import type { EngineEmitter, EngineEventMap } from '../../../../src/core/engine/emitter.ts';
-import { createEngineEmitter } from '../../../../src/core/engine/emitter.ts';
 import {
   EngineConfigError,
   EngineError,
@@ -18,18 +16,8 @@ import type { NodeRunCompleted, NodeRunOptions } from '../../../../src/core/engi
 import { BaseNode } from '../../../../src/core/engine/nodes/base.ts';
 import { nodeRegistry } from '../../../../src/core/engine/nodes/registry.ts';
 import { Workflow } from '../../../../src/core/engine/workflow.ts';
-
-const collectEvents = <K extends keyof EngineEventMap>(
-  emitter: EngineEmitter,
-  event: K
-): EngineEventMap[K][0][] => {
-  const events: EngineEventMap[K][0][] = [];
-  emitter.on(event, (payload) => {
-    events.push(payload);
-  });
-
-  return events;
-};
+import type { EventOf } from './_events.ts';
+import { recordEvents, resultOf } from './_events.ts';
 
 // ---------------------------------------------------------------------------
 // Minimal valid YAML helpers
@@ -392,12 +380,12 @@ nodes:
   describe('workflow.run — missing required input (FR-025)', () => {
     it('throws EngineConfigError before any node runs when a required input has no runtime value and no default', async () => {
       const workflow = await Workflow.from(workflowWithRequiredInput);
-      const emitter = createEngineEmitter();
-      const started = collectEvents(emitter, 'node_started');
+      const recorder = recordEvents();
+      const started = recorder.collect('node.started');
 
       const runPromise = workflow.run({
         inputs: {}, // 'token' is not supplied
-        emitter,
+        onEvent: recorder.onEvent,
       });
 
       await expect(runPromise).rejects.toBeInstanceOf(EngineConfigError);
@@ -454,24 +442,24 @@ nodes:
       ['integer division against an int literal', celDivided, '3'],
     ])('resolves %s on a supplied integer input', async (_label, expr, expected) => {
       const workflow = await Workflow.from(integerInputWorkflow(expr, true));
-      const emitter = createEngineEmitter();
-      const completed = collectEvents(emitter, 'node_completed');
+      const recorder = recordEvents();
+      const completed = recorder.collect('node.completed');
 
-      const result = await workflow.run({ inputs: { count: 6 }, emitter });
+      const result = await workflow.run({ inputs: { count: 6 }, onEvent: recorder.onEvent });
 
       expect(result.success).toBe(true);
-      expect(completed[0]?.result['output']).toBe(expected);
+      expect(resultOf(completed[0]!)['output']).toBe(expected);
     });
 
     it('resolves arithmetic on an integer input taken from its declared default', async () => {
       const workflow = await Workflow.from(integerInputWorkflow(celMinusOne, false));
-      const emitter = createEngineEmitter();
-      const completed = collectEvents(emitter, 'node_completed');
+      const recorder = recordEvents();
+      const completed = recorder.collect('node.completed');
 
-      const result = await workflow.run({ inputs: {}, emitter });
+      const result = await workflow.run({ inputs: {}, onEvent: recorder.onEvent });
 
       expect(result.success).toBe(true);
-      expect(completed[0]?.result['output']).toBe('5');
+      expect(resultOf(completed[0]!)['output']).toBe('5');
     });
 
     it('rejects a non-integer supplied for an integer input with EngineConfigError, naming the input', async () => {
@@ -549,38 +537,38 @@ nodes:
   });
 
   // -------------------------------------------------------------------------
-  // workflow.run — workflow_completed event
+  // workflow.run — run.completed event
   // -------------------------------------------------------------------------
 
-  describe('workflow.run — workflow_completed event', () => {
-    it('emits workflow_completed with success: true after a successful workflow', async () => {
+  describe('workflow.run — run.completed event', () => {
+    it('publishes run.completed with success: true after a successful workflow', async () => {
       const workflow = await Workflow.from(minimalWorkflow);
-      const emitter = createEngineEmitter();
-      const completed = collectEvents(emitter, 'workflow_completed');
+      const recorder = recordEvents();
+      const completed = recorder.collect('run.completed');
 
-      await workflow.run({ inputs: {}, emitter });
+      await workflow.run({ inputs: {}, onEvent: recorder.onEvent });
 
       expect(completed).toHaveLength(1);
-      expect(completed[0]!.success).toBe(true);
+      expect(completed[0]!.data.success).toBe(true);
     });
 
-    it('emits workflow_completed AFTER node lifecycle events (after node_completed for the last node)', async () => {
+    it('publishes run.completed AFTER node lifecycle events (after node.completed for the last node)', async () => {
       const workflow = await Workflow.from(minimalWorkflow);
-      const emitter = createEngineEmitter();
+      const recorder = recordEvents();
       const eventLog: string[] = [];
 
-      emitter.on('node_completed', () => eventLog.push('node_completed'));
-      emitter.on('workflow_completed', () => eventLog.push('workflow_completed'));
+      recorder.on('node.completed', () => eventLog.push('node.completed'));
+      recorder.on('run.completed', () => eventLog.push('run.completed'));
 
-      await workflow.run({ inputs: {}, emitter });
+      await workflow.run({ inputs: {}, onEvent: recorder.onEvent });
 
-      const nodeCompletedIdx = eventLog.lastIndexOf('node_completed');
-      const workflowCompletedIdx = eventLog.indexOf('workflow_completed');
+      const nodeCompletedIdx = eventLog.lastIndexOf('node.completed');
+      const workflowCompletedIdx = eventLog.indexOf('run.completed');
 
       expect(workflowCompletedIdx).toBeGreaterThan(nodeCompletedIdx);
     });
 
-    it('emits workflow_completed with success: false when a node fails', async () => {
+    it('publishes run.completed with success: false when a node fails', async () => {
       const yaml = `
 name: failing
 nodes:
@@ -588,14 +576,150 @@ nodes:
     bash: "exit 1"
 `;
       const workflow = await Workflow.from(yaml);
-      const emitter = createEngineEmitter();
-      const completed = collectEvents(emitter, 'workflow_completed');
+      const recorder = recordEvents();
+      const completed = recorder.collect('run.completed');
 
-      const result = await workflow.run({ inputs: {}, emitter });
+      const result = await workflow.run({ inputs: {}, onEvent: recorder.onEvent });
 
       expect(completed).toHaveLength(1);
-      expect(completed[0]!.success).toBe(false);
+      expect(completed[0]!.data.success).toBe(false);
       expect(result.success).toBe(false);
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // workflow.run — run events
+  // -------------------------------------------------------------------------
+
+  describe('workflow.run — run events', () => {
+    const failingWorkflow = `
+name: failing
+nodes:
+  - id: fail_step
+    bash: "exit 1"
+`;
+
+    it('publishes run.started first and run.completed last on success', async () => {
+      const workflow = await Workflow.from(minimalWorkflow);
+      const recorder = recordEvents();
+
+      await workflow.run({ inputs: {}, onEvent: recorder.onEvent, runId: 'run-abc', cwd: '/tmp' });
+
+      const types = recorder.events.map((e) => e.type);
+      expect(types[0]).toBe('run.started');
+      expect(types.at(-1)).toBe('run.completed');
+      expect(recorder.events[0]!.data).toEqual({
+        workflow: 'minimal',
+        cwd: '/tmp',
+        runDirectory: join(xdgRoot, 'heimdall', 'runs', 'run-abc'),
+      });
+      expect(recorder.events.at(-1)!.data).toEqual({ success: true });
+    });
+
+    it('publishes run.completed with success: false and no error when a node fails', async () => {
+      const workflow = await Workflow.from(failingWorkflow);
+      const recorder = recordEvents();
+
+      await workflow.run({ inputs: {}, onEvent: recorder.onEvent });
+
+      expect(recorder.events[0]!.type).toBe('run.started');
+      expect(recorder.events.at(-1)).toMatchObject({
+        type: 'run.completed',
+        data: { success: false },
+      });
+      expect(recorder.events.at(-1)!.data).not.toHaveProperty('error');
+    });
+
+    it('carries the exit reason on run.completed when an exit node ends the run', async () => {
+      const yaml = `
+name: exiting
+nodes:
+  - id: stop
+    exit: { reason: done early }
+`;
+      const workflow = await Workflow.from(yaml);
+      const recorder = recordEvents();
+
+      await workflow.run({ inputs: {}, onEvent: recorder.onEvent });
+
+      expect(recorder.events.at(-1)).toMatchObject({
+        type: 'run.completed',
+        data: { success: true, exitReason: 'done early' },
+      });
+    });
+
+    it('still publishes run.started then run.completed with the error when the run directory cannot be created', async () => {
+      // A file where the data directory should be makes mkdir fail.
+      const blocker = join(xdgRoot, 'not-a-dir');
+      await writeFile(blocker, '');
+      vi.stubEnv('XDG_DATA_HOME', blocker);
+      const workflow = await Workflow.from(minimalWorkflow);
+      const recorder = recordEvents();
+
+      await expect(workflow.run({ inputs: {}, onEvent: recorder.onEvent })).rejects.toThrow();
+
+      expect(recorder.events.map((e) => e.type)).toEqual(['run.started', 'run.completed']);
+      const last = recorder.events[1] as EventOf<'run.completed'>;
+      expect(last.data.success).toBe(false);
+      expect(last.data.error?.code).toBe('ENOTDIR');
+    });
+
+    it('uses the runId option for every event and for the run directory name', async () => {
+      const workflow = await Workflow.from(failingWorkflow);
+      const recorder = recordEvents();
+
+      await workflow.run({ inputs: {}, onEvent: recorder.onEvent, runId: 'my-run' });
+
+      expect(new Set(recorder.events.map((e) => e.runId))).toEqual(new Set(['my-run']));
+      // A failed run keeps its directory.
+      expect(await readdir(join(xdgRoot, 'heimdall', 'runs'))).toEqual(['my-run']);
+    });
+
+    it('numbers events from 1 with no gaps across a run with a loop', async () => {
+      const yaml = `
+name: looping
+nodes:
+  - id: before
+    bash: "true"
+  - id: repeat
+    depends_on: [before]
+    loop:
+      max_iterations: 2
+      nodes:
+        - id: body
+          bash: "true"
+`;
+      const workflow = await Workflow.from(yaml);
+      const recorder = recordEvents();
+
+      await workflow.run({ inputs: {}, onEvent: recorder.onEvent });
+
+      expect(recorder.events.map((e) => e.sequence)).toEqual(recorder.events.map((_e, i) => i + 1));
+      const bodyPaths = recorder.events
+        .filter((e): e is EventOf<'node.started'> => e.type === 'node.started')
+        .filter((e) => e.node.id === 'body')
+        .map((e) => e.node.path);
+      expect(bodyPaths).toEqual([
+        ['repeat', 0, 'body'],
+        ['repeat', 1, 'body'],
+      ]);
+    });
+
+    it('reports a throwing onEvent to onSinkError and finishes the run', async () => {
+      const workflow = await Workflow.from(minimalWorkflow);
+      const sinkErrors: string[] = [];
+
+      const result = await workflow.run({
+        inputs: {},
+        onEvent: () => {
+          throw new Error('sink broke');
+        },
+        onSinkError: (_err, event) => sinkErrors.push(event.type),
+      });
+
+      expect(result.success).toBe(true);
+      expect(sinkErrors[0]).toBe('run.started');
+      expect(sinkErrors.at(-1)).toBe('run.completed');
     });
   });
 
@@ -604,17 +728,17 @@ nodes:
   // -------------------------------------------------------------------------
 
   describe('workflow.run — successful execution', () => {
-    it('resolves with success: true and actually runs the node (node_completed emitted)', async () => {
+    it('resolves with success: true and actually runs the node (node.completed published)', async () => {
       const workflow = await Workflow.from(minimalWorkflow);
-      const emitter = createEngineEmitter();
-      const completed = collectEvents(emitter, 'node_completed');
+      const recorder = recordEvents();
+      const completed = recorder.collect('node.completed');
 
-      const result = await workflow.run({ inputs: {}, emitter });
+      const result = await workflow.run({ inputs: {}, onEvent: recorder.onEvent });
 
       expect(result.success).toBe(true);
       // The node genuinely ran — not just a pass-through
       expect(completed).toHaveLength(1);
-      expect(completed[0]!.nodeId).toBe('step1');
+      expect(completed[0]!.node.id).toBe('step1');
     });
   });
 
@@ -634,13 +758,17 @@ nodes:
 
       try {
         const workflow = await Workflow.from(runCwdWorkflow);
-        const emitter = createEngineEmitter();
-        const completed = collectEvents(emitter, 'node_completed');
+        const recorder = recordEvents();
+        const completed = recorder.collect('node.completed');
 
-        const result = await workflow.run({ inputs: {}, emitter, cwd: explicitCwd });
+        const result = await workflow.run({
+          inputs: {},
+          onEvent: recorder.onEvent,
+          cwd: explicitCwd,
+        });
 
         expect(result.success).toBe(true);
-        expect(completed[0]!.result['output']).toBe(explicitCwd);
+        expect(resultOf(completed[0]!)['output']).toBe(explicitCwd);
       } finally {
         await rm(explicitCwd, { recursive: true, force: true });
       }
@@ -648,13 +776,13 @@ nodes:
 
     it('falls back to process.cwd() as heimdall.run_cwd when no cwd option is supplied', async () => {
       const workflow = await Workflow.from(runCwdWorkflow);
-      const emitter = createEngineEmitter();
-      const completed = collectEvents(emitter, 'node_completed');
+      const recorder = recordEvents();
+      const completed = recorder.collect('node.completed');
 
-      const result = await workflow.run({ inputs: {}, emitter });
+      const result = await workflow.run({ inputs: {}, onEvent: recorder.onEvent });
 
       expect(result.success).toBe(true);
-      expect(completed[0]!.result['output']).toBe(process.cwd());
+      expect(resultOf(completed[0]!)['output']).toBe(process.cwd());
     });
   });
 
@@ -673,13 +801,13 @@ nodes:
     bash: 'echo -n "${celSessionDir}" > "$HEIMDALL_OUTPUT"'
 `;
       const workflow = await Workflow.from(yaml);
-      const emitter = createEngineEmitter();
-      const completed = collectEvents(emitter, 'node_completed');
+      const recorder = recordEvents();
+      const completed = recorder.collect('node.completed');
 
-      const result = await workflow.run({ inputs: {}, emitter });
+      const result = await workflow.run({ inputs: {}, onEvent: recorder.onEvent });
 
       expect(result.success).toBe(true);
-      const sessionDir = completed[0]!.result['output'] as string;
+      const sessionDir = resultOf(completed[0]!)['output'] as string;
       // The run's session directory lives under XDG_DATA_HOME/heimdall/runs/<uuid>/session;
       // xdgRoot is stubbed per-test (see the outer beforeEach), so this proves
       // heimdall.session_dir resolves to the real, run-specific session directory rather
@@ -704,20 +832,20 @@ nodes:
     bash: "sleep 30"
 `;
       const workflow = await Workflow.from(yaml);
-      const emitter = createEngineEmitter();
-      const cancelled = collectEvents(emitter, 'node_cancelled');
+      const recorder = recordEvents();
+      const cancelled = recorder.collect('node.cancelled');
       const controller = new AbortController();
 
       // Abort the instant the node goes in-flight so we exercise mid-run cancellation,
       // not a pre-aborted no-op that never dispatches.
-      emitter.on('node_started', () => {
+      recorder.on('node.started', () => {
         controller.abort();
       });
 
-      await workflow.run({ inputs: {}, emitter, signal: controller.signal });
+      await workflow.run({ inputs: {}, onEvent: recorder.onEvent, signal: controller.signal });
 
       expect(cancelled).toHaveLength(1);
-      expect(cancelled[0]!.nodeId).toBe('step1');
+      expect(cancelled[0]!.node.id).toBe('step1');
     });
   });
 
@@ -762,15 +890,15 @@ nodes:
   // -------------------------------------------------------------------------
 
   describe('three-node chain: execution order and chained needs (independent acceptance test)', () => {
-    it('executes A, B, C in dependency order and emits node_completed for each in correct sequence', async () => {
+    it('executes A, B, C in dependency order and publishes node.completed for each in correct sequence', async () => {
       const workflow = await Workflow.from(threeNodeChainWorkflow);
-      const emitter = createEngineEmitter();
+      const recorder = recordEvents();
       const events: string[] = [];
 
-      emitter.on('node_started', (e) => events.push(`started:${e.nodeId}`));
-      emitter.on('node_completed', (e) => events.push(`completed:${e.nodeId}`));
+      recorder.on('node.started', (e) => events.push(`started:${e.node.id}`));
+      recorder.on('node.completed', (e) => events.push(`completed:${e.node.id}`));
 
-      const result = await workflow.run({ inputs: {}, emitter });
+      const result = await workflow.run({ inputs: {}, onEvent: recorder.onEvent });
 
       expect(result.success).toBe(true);
 
@@ -801,35 +929,37 @@ nodes:
     bash: 'echo -n "${celNodeB}-c" > "$HEIMDALL_OUTPUT"'
 `;
       const workflow = await Workflow.from(yaml);
-      const emitter = createEngineEmitter();
-      const completed = collectEvents(emitter, 'node_completed');
+      const recorder = recordEvents();
+      const completed = recorder.collect('node.completed');
 
-      const result = await workflow.run({ inputs: {}, emitter });
+      const result = await workflow.run({ inputs: {}, onEvent: recorder.onEvent });
 
       expect(result.success).toBe(true);
       expect(completed).toHaveLength(3);
 
       // nodeB must have received nodeA's output and appended "-b"
-      const nodeBEvent = completed.find((e) => e.nodeId === 'nodeB');
+      const nodeBEvent = completed.find((e) => e.node.id === 'nodeB');
       expect(nodeBEvent).toBeDefined();
-      expect(nodeBEvent!.result['output']).toBe('value_a-b');
+      expect(resultOf(nodeBEvent!)['output']).toBe('value_a-b');
 
       // nodeC must have received nodeB's output ("value_a-b") and appended "-c",
       // proving the full chain A→B→C propagated correctly
-      const nodeCEvent = completed.find((e) => e.nodeId === 'nodeC');
+      const nodeCEvent = completed.find((e) => e.node.id === 'nodeC');
       expect(nodeCEvent).toBeDefined();
-      expect(nodeCEvent!.result['output']).toBe('value_a-b-c');
+      expect(resultOf(nodeCEvent!)['output']).toBe('value_a-b-c');
     });
 
-    it('emits node_started before node_completed for each node in the chain', async () => {
+    it('publishes node.started before node.completed for each node in the chain', async () => {
       const workflow = await Workflow.from(threeNodeChainWorkflow);
-      const emitter = createEngineEmitter();
+      const recorder = recordEvents();
       const eventLog: { event: string; nodeId: string }[] = [];
 
-      emitter.on('node_started', (e) => eventLog.push({ event: 'started', nodeId: e.nodeId }));
-      emitter.on('node_completed', (e) => eventLog.push({ event: 'completed', nodeId: e.nodeId }));
+      recorder.on('node.started', (e) => eventLog.push({ event: 'started', nodeId: e.node.id }));
+      recorder.on('node.completed', (e) =>
+        eventLog.push({ event: 'completed', nodeId: e.node.id })
+      );
 
-      await workflow.run({ inputs: {}, emitter });
+      await workflow.run({ inputs: {}, onEvent: recorder.onEvent });
 
       for (const id of ['nodeA', 'nodeB', 'nodeC']) {
         const startedIdx = eventLog.findIndex((e) => e.event === 'started' && e.nodeId === id);

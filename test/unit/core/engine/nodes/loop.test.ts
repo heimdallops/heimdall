@@ -19,6 +19,7 @@ import type {
 import { BaseNode } from '../../../../../src/core/engine/nodes/base.ts';
 import { BreakNode } from '../../../../../src/core/engine/nodes/break.ts';
 import { LoopNode } from '../../../../../src/core/engine/nodes/loop.ts';
+import { collectEvents, eventOptions } from '../_events.ts';
 
 const makeCtx = (overrides: Partial<ExecutionContext> = {}): ExecutionContext => ({
   inputs: {},
@@ -29,6 +30,7 @@ const makeCtx = (overrides: Partial<ExecutionContext> = {}): ExecutionContext =>
   cwd: tmpdir(),
   heimdall: { run_cwd: tmpdir(), session_dir: '/tmp/session' },
   scopes: new Map(),
+  path: [],
   ...overrides,
 });
 
@@ -37,6 +39,7 @@ const runLoop = (node: LoopNode, ctx: ExecutionContext = makeCtx()): Promise<Nod
     ctx,
     emitter: createEngineEmitter(),
     signal: new AbortController().signal,
+    ...eventOptions(),
   });
 
 // ScopeEntry is a union over the scoped node types; `index` is what distinguishes a loop's.
@@ -235,6 +238,7 @@ describe('LoopNode', () => {
         ctx,
         emitter: createEngineEmitter(),
         signal: new AbortController().signal,
+        ...eventOptions(),
       });
 
       expect(result.status).toBe('completed');
@@ -293,6 +297,7 @@ describe('LoopNode', () => {
         ctx: makeCtx(),
         emitter: createEngineEmitter(),
         signal: new AbortController().signal,
+        ...eventOptions(),
       });
 
       expect(result.status).toBe('completed');
@@ -313,6 +318,7 @@ describe('LoopNode', () => {
         ctx: makeCtx(),
         emitter: createEngineEmitter(),
         signal: new AbortController().signal,
+        ...eventOptions(),
       });
 
       expect(result.status).toBe('completed');
@@ -333,18 +339,17 @@ describe('LoopNode', () => {
         },
       });
 
-      const completedEvents: string[] = [];
-      const emitter = createEngineEmitter();
-      emitter.on('node_completed', (e) => completedEvents.push(e.nodeId));
+      const collected = collectEvents();
 
       const result = await loop.run({
         ctx: makeCtx(),
-        emitter,
+        emitter: createEngineEmitter(),
         signal: new AbortController().signal,
+        ...eventOptions(collected.publisher),
       });
 
-      // The BreakNode is a control-flow signal — it does NOT emit node_completed.
-      expect(completedEvents).not.toContain('stopper');
+      // The BreakNode is a control-flow signal — it does NOT publish node.completed.
+      expect(collected.ofType('node.completed').map((e) => e.node.id)).not.toContain('stopper');
 
       // The loop itself resolves as completed (break is normal exit, not failure).
       expect(result.status).toBe('completed');
@@ -371,6 +376,7 @@ describe('LoopNode', () => {
         ctx: makeCtx(),
         emitter: createEngineEmitter(),
         signal: new AbortController().signal,
+        ...eventOptions(),
       });
 
       expect(result.status).toBe('completed');
@@ -621,6 +627,7 @@ describe('LoopNode', () => {
           ctx: makeCtx(),
           emitter: createEngineEmitter(),
           signal: new AbortController().signal,
+          ...eventOptions(),
         })
       ).rejects.toMatchObject({ code: 'ENGINE_CEL_ERROR' });
     });
@@ -643,6 +650,7 @@ describe('LoopNode', () => {
         ctx: makeCtx(),
         emitter: createEngineEmitter(),
         signal: new AbortController().signal,
+        ...eventOptions(),
       });
 
       expect(result.status).toBe('completed');
@@ -928,6 +936,7 @@ describe('LoopNode', () => {
         ctx,
         emitter: createEngineEmitter(),
         signal: new AbortController().signal,
+        ...eventOptions(),
       });
 
       expect(result.status).toBe('completed');
@@ -954,6 +963,7 @@ describe('LoopNode', () => {
         ctx,
         emitter: createEngineEmitter(),
         signal: new AbortController().signal,
+        ...eventOptions(),
       });
 
       expect(result.status).toBe('completed');
@@ -979,6 +989,7 @@ describe('LoopNode', () => {
           ctx: makeCtx(),
           emitter: createEngineEmitter(),
           signal: new AbortController().signal,
+          ...eventOptions(),
         })
       ).rejects.toMatchObject({ code: 'ENGINE_CEL_ERROR' });
     });
@@ -1008,6 +1019,7 @@ describe('LoopNode', () => {
           ctx,
           emitter: createEngineEmitter(),
           signal: new AbortController().signal,
+          ...eventOptions(),
         })
       ).rejects.toMatchObject({ code: 'ENGINE_CEL_ERROR' });
 
@@ -1024,6 +1036,7 @@ describe('LoopNode', () => {
         ctx,
         emitter: createEngineEmitter(),
         signal: new AbortController().signal,
+        ...eventOptions(),
       });
 
       expect(result.status).toBe('completed');
@@ -1054,6 +1067,7 @@ describe('LoopNode', () => {
         ctx,
         emitter: createEngineEmitter(),
         signal: new AbortController().signal,
+        ...eventOptions(),
       });
 
       expect(result.status).toBe('completed');
@@ -1112,11 +1126,13 @@ describe('LoopNode', () => {
         ctx: ctxAtCiIndex(0n),
         emitter: createEngineEmitter(),
         signal: new AbortController().signal,
+        ...eventOptions(),
       });
       const resultAt1 = await retryLoop.run({
         ctx: ctxAtCiIndex(1n),
         emitter: createEngineEmitter(),
         signal: new AbortController().signal,
+        ...eventOptions(),
       });
 
       expect(resultAt0.status).toBe('completed');
@@ -1442,6 +1458,7 @@ describe('LoopNode', () => {
         ctx: makeCtx(),
         emitter: createEngineEmitter(),
         signal: AbortSignal.abort(),
+        ...eventOptions(),
       });
 
       expect(result.status).toBe('failed');
@@ -1497,6 +1514,7 @@ describe('LoopNode', () => {
         ctx: makeCtx(),
         emitter: createEngineEmitter(),
         signal: controller.signal,
+        ...eventOptions(),
       });
 
       // Wait until the body node is in-flight, THEN abort.
@@ -1626,6 +1644,71 @@ describe('LoopNode', () => {
       expect(() => {
         ciLoop.validate();
       }).toThrow("unknown depends_on reference: 'ghost'");
+    });
+  });
+
+  describe('event paths', () => {
+    const runCollecting = async (loop: LoopNode): Promise<ReturnType<typeof collectEvents>> => {
+      const collected = collectEvents();
+      await loop.run({
+        ctx: makeCtx(),
+        emitter: createEngineEmitter(),
+        signal: new AbortController().signal,
+        ...eventOptions(collected.publisher),
+      });
+
+      return collected;
+    };
+
+    it('places body node events at [loopId, iteration, nodeId], counting iterations from 0', async () => {
+      const loop = LoopNode.parse({
+        id: 'retry_loop',
+        loop: { max_iterations: 3, nodes: [{ id: 'fix', bash: 'true' }] },
+      });
+
+      const collected = await runCollecting(loop);
+
+      expect(collected.ofType('node.started').map((e) => e.node.path)).toEqual([
+        ['retry_loop', 0, 'fix'],
+        ['retry_loop', 1, 'fix'],
+        ['retry_loop', 2, 'fix'],
+      ]);
+      // A JSON number, never a BigInt, even though the CEL loop index is one.
+      expect(typeof collected.ofType('node.started')[0]!.node.path[1]).toBe('number');
+    });
+
+    it('nests paths for a loop inside a loop', async () => {
+      const loop = LoopNode.parse({
+        id: 'outer',
+        loop: {
+          max_iterations: 2,
+          nodes: [
+            {
+              id: 'inner',
+              loop: { max_iterations: 2, nodes: [{ id: 'step', bash: 'true' }] },
+            },
+          ],
+        },
+      });
+
+      const collected = await runCollecting(loop);
+
+      expect(collected.forNode('step').map((e) => [e.type, e.node.path])).toEqual([
+        ['node.started', ['outer', 0, 'inner', 0, 'step']],
+        ['node.completed', ['outer', 0, 'inner', 0, 'step']],
+        ['node.started', ['outer', 0, 'inner', 1, 'step']],
+        ['node.completed', ['outer', 0, 'inner', 1, 'step']],
+        ['node.started', ['outer', 1, 'inner', 0, 'step']],
+        ['node.completed', ['outer', 1, 'inner', 0, 'step']],
+        ['node.started', ['outer', 1, 'inner', 1, 'step']],
+        ['node.completed', ['outer', 1, 'inner', 1, 'step']],
+      ]);
+      expect(collected.forNode('inner').map((e) => e.node.path)).toEqual([
+        ['outer', 0, 'inner'],
+        ['outer', 0, 'inner'],
+        ['outer', 1, 'inner'],
+        ['outer', 1, 'inner'],
+      ]);
     });
   });
 });

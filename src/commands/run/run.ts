@@ -8,6 +8,7 @@ import { createAdapter, createAdapterFactory } from '../../core/engine/adapter-f
 import type { ApprovalResult } from '../../core/engine/emitter.ts';
 import { createEngineEmitter } from '../../core/engine/emitter.ts';
 import { EngineConfigError, EngineValidationError } from '../../core/engine/errors.ts';
+import type { HeimdallEvent } from '../../core/engine/events.ts';
 import type { InputDeclaration } from '../../core/engine/schema.ts';
 import { Workflow } from '../../core/engine/workflow.ts';
 import { CliError, ERROR_CODE, EXIT_CODE } from '../../errors/cli-error.ts';
@@ -109,6 +110,35 @@ const coerceInputs = (
  * chooses approve, reject-with-feedback, or reject; feedback accompanies a
  * rejection.
  */
+type Printer = CliContext['printer'];
+
+/** Prints the human-readable line for each node lifecycle event. Other events print nothing. */
+const printEvent = (printer: Printer, event: HeimdallEvent): void => {
+  switch (event.type) {
+    case 'node.started':
+      printer.info(`Node started: ${event.node.name}`);
+      break;
+    case 'node.completed':
+      printer.success(`Node completed: ${event.node.name}`);
+      break;
+    case 'node.skipped':
+      printer.warn(`Node skipped: ${event.node.name}`);
+      break;
+    case 'node.failed': {
+      // The engine wraps node failures in a NodeError whose own message only names the node;
+      // the cause says what actually went wrong.
+      const { error } = event.data;
+      printer.error(`Node failed: ${event.node.name} — ${(error.cause ?? error).message}`);
+      break;
+    }
+    case 'node.cancelled':
+      printer.warn(`Node cancelled: ${event.node.name}`);
+      break;
+    default:
+      break;
+  }
+};
+
 const promptApproval = async (
   nodeName: string,
   message: string,
@@ -198,30 +228,6 @@ export const run = async (
 
     const emitter = createEngineEmitter();
 
-    emitter.on('node_started', ({ nodeName }) => {
-      printer.info(`Node started: ${nodeName}`);
-    });
-
-    emitter.on('node_completed', ({ nodeName }) => {
-      printer.success(`Node completed: ${nodeName}`);
-    });
-
-    emitter.on('node_skipped', ({ nodeName }) => {
-      printer.warn(`Node skipped: ${nodeName}`);
-    });
-
-    emitter.on('node_failed', ({ nodeName, error }) => {
-      // The engine wraps node failures in a NodeError whose own message only names the node;
-      // the cause says what actually went wrong.
-      const reason = error instanceof Error && error.cause instanceof Error ? error.cause : error;
-      const message = reason instanceof Error ? reason.message : String(reason);
-      printer.error(`Node failed: ${nodeName} — ${message}`);
-    });
-
-    emitter.on('node_cancelled', ({ nodeName }) => {
-      printer.warn(`Node cancelled: ${nodeName}`);
-    });
-
     emitter.on('approval_requested', ({ nodeName, message, enableFeedback, resolve }) => {
       if (runInput.approve) {
         printer.info(`Approval auto-approved for '${nodeName}': ${message}`);
@@ -253,6 +259,14 @@ export const run = async (
     const result = await workflow.run({
       inputs,
       emitter,
+      onEvent: (event) => {
+        printEvent(printer, event);
+      },
+      onSinkError: (err, event) => {
+        printer.warn(
+          `Event sink error on ${event.type}: ${err instanceof Error ? err.message : String(err)}`
+        );
+      },
       cwd,
       adapterFactory: createAdapterFactory((platform, adapterCwd) =>
         createAdapter(platform, adapterCwd, adapterSettings)

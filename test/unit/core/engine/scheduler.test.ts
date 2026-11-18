@@ -1,17 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import type {
-  EngineEmitter,
-  EngineEventMap,
-  NodeCancelledEvent,
-  NodeCompletedEvent,
-  NodeFailedEvent,
-  NodeSkippedEvent,
-  NodeStartedEvent,
-  WorkflowExitedEvent,
-} from '../../../../src/core/engine/emitter.ts';
+import type { ApprovalRequestedEvent } from '../../../../src/core/engine/emitter.ts';
 import { createEngineEmitter } from '../../../../src/core/engine/emitter.ts';
-import { EngineError, NodeError } from '../../../../src/core/engine/errors.ts';
+import { EngineError } from '../../../../src/core/engine/errors.ts';
+import type { EventPublisher } from '../../../../src/core/engine/event-publisher.ts';
+import { createEventPublisher } from '../../../../src/core/engine/event-publisher.ts';
+import type { HeimdallEvent } from '../../../../src/core/engine/events.ts';
 import { ApprovalNode } from '../../../../src/core/engine/nodes/approval.ts';
 import type {
   ExecutionContext,
@@ -24,6 +18,7 @@ import { BaseNode } from '../../../../src/core/engine/nodes/base.ts';
 import { BreakNode } from '../../../../src/core/engine/nodes/break.ts';
 import type { SchedulerOptions } from '../../../../src/core/engine/scheduler.ts';
 import { runScheduler } from '../../../../src/core/engine/scheduler.ts';
+import type { EventOf } from './_events.ts';
 
 class StubNode extends BaseNode {
   public readonly capturedOptions: NodeRunOptions[] = [];
@@ -110,50 +105,56 @@ const makeCtx = (overrides: Partial<ExecutionContext> = {}): ExecutionContext =>
   cwd: '/tmp/work',
   heimdall: { run_cwd: '/tmp/work', session_dir: '/tmp/session' },
   scopes: new Map(),
+  path: [],
   ...overrides,
 });
 
 const makeOptions = (overrides: Partial<SchedulerOptions> = {}): SchedulerOptions => ({
   emitter: createEngineEmitter(),
+  publisher: createEventPublisher({ runId: 'test-run' }),
   ...overrides,
 });
 
-const collectEvents = <K extends keyof EngineEventMap>(
-  emitter: EngineEmitter,
-  event: K
-): EngineEventMap[K][0][] => {
-  const events: EngineEventMap[K][0][] = [];
-  emitter.on(event, (payload) => {
-    events.push(payload);
+// Live list of every published event of one type, from now on.
+const collectEvents = <T extends HeimdallEvent['type']>(
+  publisher: EventPublisher,
+  type: T
+): EventOf<T>[] => {
+  const events: EventOf<T>[] = [];
+  publisher.subscribe((event) => {
+    if (event.type === type) {
+      events.push(event as EventOf<T>);
+    }
   });
 
   return events;
 };
 
-const waitForEvent = <K extends keyof EngineEventMap>(
-  emitter: EngineEmitter,
-  event: K,
-  predicate?: (payload: EngineEventMap[K][0]) => boolean
-): Promise<EngineEventMap[K][0]> =>
+const waitForEvent = <T extends HeimdallEvent['type']>(
+  publisher: EventPublisher,
+  type: T,
+  predicate?: (event: EventOf<T>) => boolean
+): Promise<EventOf<T>> =>
   new Promise((resolve) => {
-    const handler = (payload: EngineEventMap[K][0]): void => {
-      if (!predicate || predicate(payload)) {
-        emitter.off(event, handler);
-        resolve(payload);
+    const unsubscribe = publisher.subscribe((event) => {
+      if (event.type === type && (!predicate || predicate(event as EventOf<T>))) {
+        unsubscribe();
+        resolve(event as EventOf<T>);
       }
-    };
-    emitter.on(event, handler);
+    });
   });
 
 describe('runScheduler', () => {
   let emitter: ReturnType<typeof createEngineEmitter>;
+  let publisher: EventPublisher;
   let options: SchedulerOptions;
 
   beforeEach(() => {
     vi.useRealTimers();
     vi.clearAllMocks();
     emitter = createEngineEmitter();
-    options = makeOptions({ emitter });
+    publisher = createEventPublisher({ runId: 'test-run' });
+    options = makeOptions({ emitter, publisher });
   });
 
   describe('dependency ordering', () => {
@@ -220,7 +221,7 @@ describe('runScheduler', () => {
   describe('skip propagation', () => {
     it('runs a node whose if expression evaluates to true', async () => {
       const node = new StubNode({ id: 'gated', if: 'true' });
-      const skipped: NodeSkippedEvent[] = collectEvents(emitter, 'node_skipped');
+      const skipped = collectEvents(publisher, 'node.skipped');
 
       const result = await runScheduler([node], makeCtx(), options);
 
@@ -232,23 +233,23 @@ describe('runScheduler', () => {
 
     it('skips a node whose if expression evaluates to false', async () => {
       const node = new StubNode({ id: 'gated', if: 'false' });
-      const skipped: NodeSkippedEvent[] = collectEvents(emitter, 'node_skipped');
+      const skipped = collectEvents(publisher, 'node.skipped');
 
       await runScheduler([node], makeCtx(), options);
 
       expect(skipped).toHaveLength(1);
-      expect(skipped[0]!.nodeId).toBe('gated');
+      expect(skipped[0]!.node.id).toBe('gated');
       expect(node.capturedOptions).toHaveLength(0);
     });
 
     it('skips a direct dependent of a skipped node', async () => {
       const nodeA = new StubNode({ id: 'nodeA', if: 'false' });
       const nodeB = new StubNode({ id: 'nodeB', depends_on: ['nodeA'] });
-      const skipped: NodeSkippedEvent[] = collectEvents(emitter, 'node_skipped');
+      const skipped = collectEvents(publisher, 'node.skipped');
 
       await runScheduler([nodeA, nodeB], makeCtx(), options);
 
-      const skippedIds = skipped.map((e) => e.nodeId);
+      const skippedIds = skipped.map((e) => e.node.id);
       expect(skippedIds).toContain('nodeA');
       expect(skippedIds).toContain('nodeB');
     });
@@ -257,11 +258,11 @@ describe('runScheduler', () => {
       const nodeA = new StubNode({ id: 'nodeA', if: 'false' });
       const nodeB = new StubNode({ id: 'nodeB', depends_on: ['nodeA'] });
       const nodeC = new StubNode({ id: 'nodeC', depends_on: ['nodeB'] });
-      const skipped: NodeSkippedEvent[] = collectEvents(emitter, 'node_skipped');
+      const skipped = collectEvents(publisher, 'node.skipped');
 
       await runScheduler([nodeA, nodeB, nodeC], makeCtx(), options);
 
-      const skippedIds = skipped.map((e) => e.nodeId);
+      const skippedIds = skipped.map((e) => e.node.id);
       expect(skippedIds).toContain('nodeA');
       expect(skippedIds).toContain('nodeB');
       expect(skippedIds).toContain('nodeC');
@@ -272,14 +273,14 @@ describe('runScheduler', () => {
       const nodeA = new StubNode({ id: 'nodeA' });
       const nodeB = new StubNode({ id: 'nodeB', depends_on: ['nodeA'], if: 'false' });
       const nodeC = new StubNode({ id: 'nodeC', depends_on: ['nodeB'] });
-      const skipped: NodeSkippedEvent[] = collectEvents(emitter, 'node_skipped');
+      const skipped = collectEvents(publisher, 'node.skipped');
 
       await runScheduler([nodeA, nodeB, nodeC], makeCtx(), options);
 
       expect(nodeA.runCount).toBe(1);
       expect(nodeB.runCount).toBe(0);
       expect(nodeC.runCount).toBe(0);
-      const skippedIds = skipped.map((e) => e.nodeId);
+      const skippedIds = skipped.map((e) => e.node.id);
       expect(skippedIds).toContain('nodeB');
       expect(skippedIds).toContain('nodeC');
     });
@@ -288,23 +289,23 @@ describe('runScheduler', () => {
       const nodeA = new StubNode({ id: 'nodeA' }, { status: 'completed', result: {} });
       const nodeB = new StubNode({ id: 'nodeB', if: 'false' });
       const nodeC = new StubNode({ id: 'nodeC', depends_on: ['nodeA', 'nodeB'] });
-      const skipped: NodeSkippedEvent[] = collectEvents(emitter, 'node_skipped');
+      const skipped = collectEvents(publisher, 'node.skipped');
 
       await runScheduler([nodeA, nodeB, nodeC], makeCtx(), options);
 
-      const skippedIds = skipped.map((e) => e.nodeId);
+      const skippedIds = skipped.map((e) => e.node.id);
       expect(skippedIds).toContain('nodeB');
       expect(skippedIds).toContain('nodeC');
     });
 
-    it('does not emit node_started for any skipped node', async () => {
+    it('does not publish node.started for any skipped node', async () => {
       const nodeA = new StubNode({ id: 'nodeA', if: 'false' });
       const nodeB = new StubNode({ id: 'nodeB', depends_on: ['nodeA'] });
-      const started: NodeStartedEvent[] = collectEvents(emitter, 'node_started');
+      const started = collectEvents(publisher, 'node.started');
 
       await runScheduler([nodeA, nodeB], makeCtx(), options);
 
-      const startedIds = started.map((e) => e.nodeId);
+      const startedIds = started.map((e) => e.node.id);
       expect(startedIds).not.toContain('nodeA');
       expect(startedIds).not.toContain('nodeB');
     });
@@ -314,12 +315,12 @@ describe('runScheduler', () => {
     it('runs a node downstream of a skipped break — a skipped break does not cascade its skip', async () => {
       const stop = new BreakNode({ id: 'stop', if: 'false' });
       const after = new StubNode({ id: 'after', depends_on: ['stop'] });
-      const skipped: NodeSkippedEvent[] = collectEvents(emitter, 'node_skipped');
+      const skipped = collectEvents(publisher, 'node.skipped');
 
       const result = await runScheduler([stop, after], makeCtx(), options);
 
       expect(after.runCount).toBe(1);
-      const skippedIds = skipped.map((e) => e.nodeId);
+      const skippedIds = skipped.map((e) => e.node.id);
       expect(skippedIds).toContain('stop');
       expect(skippedIds).not.toContain('after');
       expect(result.outcome).toBe('completed');
@@ -339,12 +340,12 @@ describe('runScheduler', () => {
       const data = new StubNode({ id: 'data', if: 'false' });
       const stop = new BreakNode({ id: 'stop', if: 'false' });
       const after = new StubNode({ id: 'after', depends_on: ['data', 'stop'] });
-      const skipped: NodeSkippedEvent[] = collectEvents(emitter, 'node_skipped');
+      const skipped = collectEvents(publisher, 'node.skipped');
 
       await runScheduler([data, stop, after], makeCtx(), options);
 
       expect(after.runCount).toBe(0);
-      const skippedIds = skipped.map((e) => e.nodeId);
+      const skippedIds = skipped.map((e) => e.node.id);
       expect(skippedIds).toContain('after');
     });
   });
@@ -397,7 +398,11 @@ describe('runScheduler', () => {
       const nodeB = new DeferredNode({ id: 'nodeB' });
 
       const completedIds: string[] = [];
-      emitter.on('node_completed', (e) => completedIds.push(e.nodeId));
+      publisher.subscribe((e) => {
+        if (e.type === 'node.completed') {
+          completedIds.push(e.node.id);
+        }
+      });
 
       const schedulerDone = runScheduler([nodeA, nodeB], makeCtx(), options);
 
@@ -405,7 +410,7 @@ describe('runScheduler', () => {
       await Promise.all([nodeA.started, nodeB.started]);
 
       // Fail A; B is still in-flight — wait for the scheduler to process A's failure
-      const nodeAFailed = waitForEvent(emitter, 'node_failed', (e) => e.nodeId === 'nodeA');
+      const nodeAFailed = waitForEvent(publisher, 'node.failed', (e) => e.node.id === 'nodeA');
       nodeA.resolve({ status: 'failed', error: new Error('A failed') });
       await nodeAFailed;
 
@@ -531,18 +536,18 @@ describe('runScheduler', () => {
   });
 
   describe('exit node behavior', () => {
-    it('emits workflow_exited with the reason when a node returns exited', async () => {
+    it('publishes run.exited with the reason when a node returns exited', async () => {
       const node = new StubNode(
         { id: 'exit_node' },
         { status: 'exited', reason: 'goal achieved', failure: false }
       );
-      const exitEvents: WorkflowExitedEvent[] = collectEvents(emitter, 'workflow_exited');
+      const exitEvents = collectEvents(publisher, 'run.exited');
 
       await runScheduler([node], makeCtx(), options);
 
       expect(exitEvents).toHaveLength(1);
-      expect(exitEvents[0]!.reason).toBe('goal achieved');
-      expect(exitEvents[0]!.failure).toBe(false);
+      expect(exitEvents[0]!.data.reason).toBe('goal achieved');
+      expect(exitEvents[0]!.data.failure).toBe(false);
     });
 
     it('resolves with outcome: exited, success: true, and exitReason when a node exits without failure', async () => {
@@ -602,9 +607,9 @@ describe('runScheduler', () => {
       expect(result.success).toBe(true);
     });
 
-    it('does not emit node_failed when a node returns break', async () => {
+    it('does not publish node.failed when a node returns break', async () => {
       const node = new StubNode({ id: 'breaker', name: 'Breaker' }, { status: 'break' });
-      const failed: NodeFailedEvent[] = collectEvents(emitter, 'node_failed');
+      const failed = collectEvents(publisher, 'node.failed');
 
       await runScheduler([node], makeCtx(), options);
 
@@ -636,10 +641,10 @@ describe('runScheduler', () => {
   });
 
   describe('cancellation', () => {
-    it('emits node_cancelled for an in-flight peer when an exit node fires', async () => {
+    it('publishes node.cancelled for an in-flight peer when an exit node fires', async () => {
       const nodeA = new DeferredNode({ id: 'nodeA', name: 'Node A' });
       const nodeB = new DeferredNode({ id: 'nodeB', name: 'Node B' });
-      const cancelled: NodeCancelledEvent[] = collectEvents(emitter, 'node_cancelled');
+      const cancelled = collectEvents(publisher, 'node.cancelled');
 
       const schedulerDone = runScheduler([nodeA, nodeB], makeCtx(), options);
 
@@ -652,14 +657,14 @@ describe('runScheduler', () => {
 
       expect(result.outcome).toBe('exited');
       expect(cancelled).toHaveLength(1);
-      expect(cancelled[0]!.nodeId).toBe('nodeB');
-      expect(cancelled[0]!.nodeName).toBe('Node B');
+      expect(cancelled[0]!.node.id).toBe('nodeB');
+      expect(cancelled[0]!.node.name).toBe('Node B');
     });
 
-    it('emits node_cancelled for an in-flight peer when a break node fires', async () => {
+    it('publishes node.cancelled for an in-flight peer when a break node fires', async () => {
       const nodeA = new DeferredNode({ id: 'nodeA', name: 'Node A' });
       const nodeB = new DeferredNode({ id: 'nodeB', name: 'Node B' });
-      const cancelled: NodeCancelledEvent[] = collectEvents(emitter, 'node_cancelled');
+      const cancelled = collectEvents(publisher, 'node.cancelled');
 
       const schedulerDone = runScheduler([nodeA, nodeB], makeCtx(), options);
 
@@ -672,8 +677,8 @@ describe('runScheduler', () => {
 
       expect(result.outcome).toBe('broke');
       expect(cancelled).toHaveLength(1);
-      expect(cancelled[0]!.nodeId).toBe('nodeB');
-      expect(cancelled[0]!.nodeName).toBe('Node B');
+      expect(cancelled[0]!.node.id).toBe('nodeB');
+      expect(cancelled[0]!.node.name).toBe('Node B');
     });
 
     it('aborts the signal delivered to in-flight nodes when an exit fires', async () => {
@@ -689,7 +694,7 @@ describe('runScheduler', () => {
       expect(nodeB.capturedSignal!.aborted).toBe(false);
 
       // Wait for the scheduler to process the exit and call controller.abort()
-      const nodeAExited = waitForEvent(emitter, 'workflow_exited');
+      const nodeAExited = waitForEvent(publisher, 'run.exited');
       nodeA.resolve({ status: 'exited', failure: false });
       await nodeAExited;
 
@@ -699,17 +704,21 @@ describe('runScheduler', () => {
       await schedulerDone;
     });
 
-    it('discards a late settlement from a cancelled node — no node_completed emitted', async () => {
+    it('discards a late settlement from a cancelled node — no node.completed published', async () => {
       const nodeA = new DeferredNode({ id: 'nodeA' });
       const nodeB = new DeferredNode({ id: 'nodeB' });
-      const completed: NodeCompletedEvent[] = collectEvents(emitter, 'node_completed');
+      const completed = collectEvents(publisher, 'node.completed');
 
       const schedulerDone = runScheduler([nodeA, nodeB], makeCtx(), options);
 
       await Promise.all([nodeA.started, nodeB.started]);
 
       // A exits, B gets cancelled — wait for the scheduler to mark B cancelled
-      const nodeBCancelled = waitForEvent(emitter, 'node_cancelled', (e) => e.nodeId === 'nodeB');
+      const nodeBCancelled = waitForEvent(
+        publisher,
+        'node.cancelled',
+        (e) => e.node.id === 'nodeB'
+      );
       nodeA.resolve({ status: 'exited', failure: false });
       await nodeBCancelled;
 
@@ -719,16 +728,16 @@ describe('runScheduler', () => {
       const result = await schedulerDone;
 
       expect(result.outcome).toBe('exited');
-      const nodeBCompleted = completed.filter((e) => e.nodeId === 'nodeB');
+      const nodeBCompleted = completed.filter((e) => e.node.id === 'nodeB');
       expect(nodeBCompleted).toHaveLength(0);
     });
   });
 
   describe('control-flow race: first exit/break wins', () => {
-    it('break-then-exit: first settler (break) wins — outcome is broke, no workflow_exited emitted', async () => {
+    it('break-then-exit: first settler (break) wins — outcome is broke, no run.exited published', async () => {
       const nodeA = new DeferredNode({ id: 'nodeA' });
       const nodeB = new DeferredNode({ id: 'nodeB' });
-      const exitEvents: WorkflowExitedEvent[] = collectEvents(emitter, 'workflow_exited');
+      const exitEvents = collectEvents(publisher, 'run.exited');
 
       const schedulerDone = runScheduler([nodeA, nodeB], makeCtx(), options);
 
@@ -736,7 +745,11 @@ describe('runScheduler', () => {
       await Promise.all([nodeA.started, nodeB.started]);
 
       // Wait for the scheduler to process A's break before resolving B
-      const nodeBCancelled = waitForEvent(emitter, 'node_cancelled', (e) => e.nodeId === 'nodeB');
+      const nodeBCancelled = waitForEvent(
+        publisher,
+        'node.cancelled',
+        (e) => e.node.id === 'nodeB'
+      );
       nodeA.resolve({ status: 'break' });
       await nodeBCancelled;
 
@@ -746,21 +759,25 @@ describe('runScheduler', () => {
 
       expect(result.outcome).toBe('broke');
       expect(result.success).toBe(true);
-      // The late exit settlement must be discarded — no workflow_exited event
+      // The late exit settlement must be discarded — no run.exited event
       expect(exitEvents).toHaveLength(0);
     });
 
-    it('exit-then-exit race: only the first exit wins — exactly one workflow_exited emitted with first reason', async () => {
+    it('exit-then-exit race: only the first exit wins — exactly one run.exited published with first reason', async () => {
       const nodeA = new DeferredNode({ id: 'nodeA' });
       const nodeB = new DeferredNode({ id: 'nodeB' });
-      const exitEvents: WorkflowExitedEvent[] = collectEvents(emitter, 'workflow_exited');
+      const exitEvents = collectEvents(publisher, 'run.exited');
 
       const schedulerDone = runScheduler([nodeA, nodeB], makeCtx(), options);
 
       await Promise.all([nodeA.started, nodeB.started]);
 
       // Wait for the scheduler to process A's exit before resolving B
-      const nodeBCancelled = waitForEvent(emitter, 'node_cancelled', (e) => e.nodeId === 'nodeB');
+      const nodeBCancelled = waitForEvent(
+        publisher,
+        'node.cancelled',
+        (e) => e.node.id === 'nodeB'
+      );
       nodeA.resolve({ status: 'exited', reason: 'first', failure: false });
       await nodeBCancelled;
 
@@ -769,8 +786,8 @@ describe('runScheduler', () => {
       const result = await schedulerDone;
 
       expect(exitEvents).toHaveLength(1);
-      expect(exitEvents[0]!.reason).toBe('first');
-      expect(exitEvents[0]!.failure).toBe(false);
+      expect(exitEvents[0]!.data.reason).toBe('first');
+      expect(exitEvents[0]!.data.failure).toBe(false);
 
       expect(result.outcome).toBe('exited');
       expect(result.exitReason).toBe('first');
@@ -788,7 +805,7 @@ describe('runScheduler', () => {
       await Promise.all([nodeA.started, nodeB.started]);
 
       // Wait for the scheduler to process A's failure before resolving B
-      const nodeAFailed = waitForEvent(emitter, 'node_failed', (e) => e.nodeId === 'nodeA');
+      const nodeAFailed = waitForEvent(publisher, 'node.failed', (e) => e.node.id === 'nodeA');
       nodeA.resolve({ status: 'failed', error: new Error('A failed') });
       await nodeAFailed;
 
@@ -809,7 +826,7 @@ describe('runScheduler', () => {
       await Promise.all([nodeA.started, nodeB.started]);
 
       // Wait for the scheduler to process A's failure before resolving B
-      const nodeAFailed = waitForEvent(emitter, 'node_failed', (e) => e.nodeId === 'nodeA');
+      const nodeAFailed = waitForEvent(publisher, 'node.failed', (e) => e.node.id === 'nodeA');
       nodeA.resolve({ status: 'failed', error: new Error('A failed') });
       await nodeAFailed;
 
@@ -831,19 +848,21 @@ describe('runScheduler', () => {
       expect(result.success).toBe(false);
     });
 
-    it('emits node_failed when if expression produces a non-boolean', async () => {
+    it('publishes node.failed when if expression produces a non-boolean', async () => {
       const nonBoolNode = new StubNode({ id: 'bad_if', name: 'Bad If', if: '42' });
-      const failed: NodeFailedEvent[] = collectEvents(emitter, 'node_failed');
+      const failed = collectEvents(publisher, 'node.failed');
 
       await runScheduler([nonBoolNode], makeCtx(), options);
 
       expect(failed).toHaveLength(1);
-      expect(failed[0]!.nodeId).toBe('bad_if');
-      expect(failed[0]!.error).toBeInstanceOf(NodeError);
-      const ifError = failed[0]!.error as NodeError;
+      expect(failed[0]!.node.id).toBe('bad_if');
+      // The if expression never dispatched the node, so there is no attempt.
+      expect(failed[0]!.node.attempt).toBe(0);
+      const ifError = failed[0]!.data.error;
+      expect(ifError.name).toBe('NodeError');
       expect(ifError.message).toBe('Failed to evaluate if expression (node: "Bad If")');
       expect(ifError.code).toBe('ENGINE_NODE_IF_ERROR');
-      expect((ifError.cause as Error).message).toMatch(/must evaluate to a boolean/);
+      expect(ifError.cause?.message).toMatch(/must evaluate to a boolean/);
     });
 
     it('does not dispatch a peer after an if-evaluation failure that occurs during a skip cascade', async () => {
@@ -851,19 +870,19 @@ describe('runScheduler', () => {
       const S = new StubNode({ id: 'S', if: 'false' });
       const X = new StubNode({ id: 'X', if: '42' });
       const Y = new StubNode({ id: 'Y' });
-      const failed: NodeFailedEvent[] = collectEvents(emitter, 'node_failed');
-      const skipped: NodeSkippedEvent[] = collectEvents(emitter, 'node_skipped');
-      const started: NodeStartedEvent[] = collectEvents(emitter, 'node_started');
+      const failed = collectEvents(publisher, 'node.failed');
+      const skipped = collectEvents(publisher, 'node.skipped');
+      const started = collectEvents(publisher, 'node.started');
 
       const result = await runScheduler([S, X, Y], makeCtx(), options);
 
       expect(Y.runCount).toBe(0);
-      expect(started.some((e) => e.nodeId === 'Y')).toBe(false);
+      expect(started.some((e) => e.node.id === 'Y')).toBe(false);
       expect(result.success).toBe(false);
-      expect(failed.some((e) => e.nodeId === 'X')).toBe(true);
-      const xFailure = failed.find((e) => e.nodeId === 'X')!.error as NodeError;
+      expect(failed.some((e) => e.node.id === 'X')).toBe(true);
+      const xFailure = failed.find((e) => e.node.id === 'X')!.data.error;
       expect(xFailure.code).toBe('ENGINE_NODE_IF_ERROR');
-      expect(skipped.some((e) => e.nodeId === 'S')).toBe(true);
+      expect(skipped.some((e) => e.node.id === 'S')).toBe(true);
     });
   });
 
@@ -876,8 +895,8 @@ describe('runScheduler', () => {
         { status: 'completed', result: { retried: true } },
       ]);
 
-      const completed: NodeCompletedEvent[] = collectEvents(emitter, 'node_completed');
-      const failed: NodeFailedEvent[] = collectEvents(emitter, 'node_failed');
+      const completed = collectEvents(publisher, 'node.completed');
+      const failed = collectEvents(publisher, 'node.failed');
 
       const schedulerDone = runScheduler([node], makeCtx(), options);
 
@@ -892,7 +911,7 @@ describe('runScheduler', () => {
       expect(failed).toHaveLength(0);
     });
 
-    it('resolves with success: false and emits node_failed when all attempts are exhausted', async () => {
+    it('resolves with success: false and publishes node.failed when all attempts are exhausted', async () => {
       vi.useFakeTimers();
 
       const error = new Error('always fails');
@@ -901,7 +920,7 @@ describe('runScheduler', () => {
         { status: 'failed', error }
       );
 
-      const failed: NodeFailedEvent[] = collectEvents(emitter, 'node_failed');
+      const failed = collectEvents(publisher, 'node.failed');
 
       const schedulerDone = runScheduler([node], makeCtx(), options);
 
@@ -912,7 +931,7 @@ describe('runScheduler', () => {
       expect(result.success).toBe(false);
       expect(node.runCount).toBe(3); // initial attempt + max_attempts retries
       expect(failed).toHaveLength(1);
-      expect(failed[0]!.nodeId).toBe('always_fail');
+      expect(failed[0]!.node.id).toBe('always_fail');
     });
 
     it('does not retry a node that returns exited — propagates immediately', async () => {
@@ -941,7 +960,7 @@ describe('runScheduler', () => {
       expect(result.success).toBe(true);
     });
 
-    it('emits node_failed with a timeout error when a node exceeds its timeout', async () => {
+    it('publishes node.failed with a timeout error when a node exceeds its timeout', async () => {
       vi.useFakeTimers();
 
       const node = new (class extends BaseNode {
@@ -950,7 +969,7 @@ describe('runScheduler', () => {
         }
       })({ id: 'slow_node', timeout: 5000 });
 
-      const failed: NodeFailedEvent[] = collectEvents(emitter, 'node_failed');
+      const failed = collectEvents(publisher, 'node.failed');
 
       const schedulerDone = runScheduler([node], makeCtx(), options);
 
@@ -960,134 +979,133 @@ describe('runScheduler', () => {
 
       expect(result.success).toBe(false);
       expect(failed).toHaveLength(1);
-      expect(failed[0]!.nodeId).toBe('slow_node');
-      expect(failed[0]!.error).toBeInstanceOf(NodeError);
-      const outerError = failed[0]!.error as NodeError;
+      expect(failed[0]!.node.id).toBe('slow_node');
+      const outerError = failed[0]!.data.error;
+      expect(outerError.name).toBe('NodeError');
       expect(outerError.message).toBe('Node failed (node: "slow_node")');
       expect(outerError.code).toBe('ENGINE_NODE_FAILED');
-      const causeError = outerError.cause as NodeError;
-      expect(causeError).toBeInstanceOf(NodeError);
+      const causeError = outerError.cause!;
+      expect(causeError.name).toBe('NodeError');
       expect(causeError.message).toMatch(/timed out after \d+ms \(node: "slow_node"\)/i);
       expect(causeError.code).toBe('ENGINE_NODE_TIMEOUT');
     });
   });
 
   describe('lifecycle events', () => {
-    it('emits node_started with correct nodeId and nodeName', async () => {
+    it('publishes node.started with correct node id and name', async () => {
       const node = new StubNode({ id: 'myNode', name: 'My Node' });
-      const started: NodeStartedEvent[] = collectEvents(emitter, 'node_started');
+      const started = collectEvents(publisher, 'node.started');
 
       await runScheduler([node], makeCtx(), options);
 
       expect(started).toHaveLength(1);
-      expect(started[0]!.nodeId).toBe('myNode');
-      expect(started[0]!.nodeName).toBe('My Node');
+      expect(started[0]!.node.id).toBe('myNode');
+      expect(started[0]!.node.name).toBe('My Node');
     });
 
-    it('uses id as nodeName when name is not set', async () => {
+    it('uses id as the node name when name is not set', async () => {
       const node = new StubNode({ id: 'unnamed_node' });
-      const started: NodeStartedEvent[] = collectEvents(emitter, 'node_started');
+      const started = collectEvents(publisher, 'node.started');
 
       await runScheduler([node], makeCtx(), options);
 
-      expect(started[0]!.nodeName).toBe('unnamed_node');
+      expect(started[0]!.node.name).toBe('unnamed_node');
     });
 
-    it('emits node_completed with correct nodeId, nodeName, and result', async () => {
+    it('publishes node.completed with correct node id, name, and result', async () => {
       const node = new StubNode(
         { id: 'worker', name: 'Worker' },
         { status: 'completed', result: { output: 'done' } }
       );
-      const completed: NodeCompletedEvent[] = collectEvents(emitter, 'node_completed');
+      const completed = collectEvents(publisher, 'node.completed');
 
       await runScheduler([node], makeCtx(), options);
 
       expect(completed).toHaveLength(1);
-      expect(completed[0]!.nodeId).toBe('worker');
-      expect(completed[0]!.nodeName).toBe('Worker');
-      expect(completed[0]!.result).toEqual({ output: 'done' });
+      expect(completed[0]!.node.id).toBe('worker');
+      expect(completed[0]!.node.name).toBe('Worker');
+      expect(completed[0]!.data.result).toEqual({ output: 'done' });
     });
 
-    it('emits node_skipped with correct nodeId and nodeName for an if:false node', async () => {
+    it('publishes node.skipped with correct node id and name for an if:false node', async () => {
       const node = new StubNode({ id: 'skippable', name: 'Skippable Step', if: 'false' });
-      const skipped: NodeSkippedEvent[] = collectEvents(emitter, 'node_skipped');
+      const skipped = collectEvents(publisher, 'node.skipped');
 
       await runScheduler([node], makeCtx(), options);
 
       expect(skipped).toHaveLength(1);
-      expect(skipped[0]!.nodeId).toBe('skippable');
-      expect(skipped[0]!.nodeName).toBe('Skippable Step');
+      expect(skipped[0]!.node.id).toBe('skippable');
+      expect(skipped[0]!.node.name).toBe('Skippable Step');
     });
 
-    it('emits node_failed with correct nodeId, nodeName, and error', async () => {
+    it('publishes node.failed with correct node id, name, and error', async () => {
       const boom = new Error('something broke');
       const node = new StubNode(
         { id: 'failer', name: 'Failer' },
         { status: 'failed', error: boom }
       );
-      const failed: NodeFailedEvent[] = collectEvents(emitter, 'node_failed');
+      const failed = collectEvents(publisher, 'node.failed');
 
       await runScheduler([node], makeCtx(), options);
 
       expect(failed).toHaveLength(1);
-      expect(failed[0]!.nodeId).toBe('failer');
-      expect(failed[0]!.nodeName).toBe('Failer');
-      expect(failed[0]!.error).toBeInstanceOf(NodeError);
-      const nodeError = failed[0]!.error as NodeError;
+      expect(failed[0]!.node.id).toBe('failer');
+      expect(failed[0]!.node.name).toBe('Failer');
+      const nodeError = failed[0]!.data.error;
+      expect(nodeError.name).toBe('NodeError');
       expect(nodeError.message).toBe('Node failed (node: "Failer")');
       expect(nodeError.code).toBe('ENGINE_NODE_FAILED');
-      expect(nodeError.nodeId).toBe('failer');
-      expect(nodeError.nodeName).toBe('Failer');
-      expect(nodeError.cause).toBe(boom);
+      expect(nodeError.cause).toMatchObject({ name: 'Error', message: 'something broke' });
     });
 
-    it('emits node_started before node_completed for the same node', async () => {
+    it('publishes node.started before node.completed for the same node', async () => {
       const node = new StubNode({ id: 'ordered' });
       const eventLog: string[] = [];
 
-      emitter.on('node_started', () => eventLog.push('started'));
-      emitter.on('node_completed', () => eventLog.push('completed'));
+      publisher.subscribe((e) => eventLog.push(e.type));
 
       await runScheduler([node], makeCtx(), options);
 
-      expect(eventLog).toEqual(['started', 'completed']);
+      expect(eventLog).toEqual(['node.started', 'node.completed']);
     });
 
-    it('emits node_started for each node in a two-node linear chain', async () => {
+    it('publishes node.started for each node in a two-node linear chain', async () => {
       const nodeA = new StubNode({ id: 'step1' });
       const nodeB = new StubNode({ id: 'step2', depends_on: ['step1'] });
-      const started: NodeStartedEvent[] = collectEvents(emitter, 'node_started');
+      const started = collectEvents(publisher, 'node.started');
 
       await runScheduler([nodeA, nodeB], makeCtx(), options);
 
-      const startedIds = started.map((e) => e.nodeId);
+      const startedIds = started.map((e) => e.node.id);
       expect(startedIds[0]).toBe('step1');
       expect(startedIds[1]).toBe('step2');
     });
 
-    it('emits node_completed in dependency order for a linear chain', async () => {
+    it('publishes node.completed in dependency order for a linear chain', async () => {
       const nodeA = new StubNode({ id: 'first' });
       const nodeB = new StubNode({ id: 'second', depends_on: ['first'] });
-      const completed: NodeCompletedEvent[] = collectEvents(emitter, 'node_completed');
+      const completed = collectEvents(publisher, 'node.completed');
 
       await runScheduler([nodeA, nodeB], makeCtx(), options);
 
-      expect(completed[0]!.nodeId).toBe('first');
-      expect(completed[1]!.nodeId).toBe('second');
+      expect(completed[0]!.node.id).toBe('first');
+      expect(completed[1]!.node.id).toBe('second');
     });
   });
 
   describe('approval flow', () => {
-    it('blocks an approval node until the hook resolves, then emits node_completed for it', async () => {
+    it('blocks an approval node until the hook resolves, then publishes node.completed for it', async () => {
       const gate = new ApprovalNode({
         id: 'gate',
         message: 'Deploy?',
         exitOnNo: false,
         enableFeedback: false,
       });
-      const completed: NodeCompletedEvent[] = collectEvents(emitter, 'node_completed');
+      const completed = collectEvents(publisher, 'node.completed');
       // Register before starting the scheduler — approval_requested fires during dispatch.
-      const requestArrived = waitForEvent(emitter, 'approval_requested');
+      const requestArrived = new Promise<ApprovalRequestedEvent>((resolve) => {
+        emitter.once('approval_requested', resolve);
+      });
 
       const schedulerDone = runScheduler([gate], makeCtx(), options);
       const request = await requestArrived;
@@ -1101,8 +1119,8 @@ describe('runScheduler', () => {
 
       expect(result.success).toBe(true);
       expect(completed).toHaveLength(1);
-      expect(completed[0]!.nodeId).toBe('gate');
-      expect(completed[0]!.result).toEqual({ approved: true });
+      expect(completed[0]!.node.id).toBe('gate');
+      expect(completed[0]!.data.result).toEqual({ approved: true });
     });
   });
 
@@ -1208,8 +1226,8 @@ describe('runScheduler', () => {
         { status: 'failed', error: new Error('b failed') }
       );
 
-      // Register before runScheduler so we don't miss the synchronous node_started emit
-      const nodeBStarted = waitForEvent(emitter, 'node_started', (e) => e.nodeId === 'nodeB');
+      // Register before runScheduler so we don't miss the synchronous node.started emit
+      const nodeBStarted = waitForEvent(publisher, 'node.started', (e) => e.node.id === 'nodeB');
 
       const schedulerDone = runScheduler([nodeA, nodeB], makeCtx(), options);
 
@@ -1301,7 +1319,7 @@ describe('runScheduler', () => {
         retries: { max_attempts: 1, initial_delay_ms: 200, max_delay_ms: 1000 },
       });
 
-      const completed: NodeCompletedEvent[] = collectEvents(emitter, 'node_completed');
+      const completed = collectEvents(publisher, 'node.completed');
 
       const schedulerDone = runScheduler([node], makeCtx(), options);
 
@@ -1314,7 +1332,7 @@ describe('runScheduler', () => {
       expect(result.success).toBe(true);
       expect(attempt).toBe(2);
       expect(completed).toHaveLength(1);
-      expect(completed[0]!.nodeId).toBe('timeout_retry_node');
+      expect(completed[0]!.node.id).toBe('timeout_retry_node');
     });
   });
 
@@ -1324,9 +1342,9 @@ describe('runScheduler', () => {
 
       const node = new DeferredNode({ id: 'fast_node', timeout: 5000 });
 
-      const completed: NodeCompletedEvent[] = collectEvents(emitter, 'node_completed');
-      const failed: NodeFailedEvent[] = collectEvents(emitter, 'node_failed');
-      const cancelled: NodeCancelledEvent[] = collectEvents(emitter, 'node_cancelled');
+      const completed = collectEvents(publisher, 'node.completed');
+      const failed = collectEvents(publisher, 'node.failed');
+      const cancelled = collectEvents(publisher, 'node.cancelled');
 
       const schedulerDone = runScheduler([node], makeCtx(), options);
 
@@ -1338,7 +1356,7 @@ describe('runScheduler', () => {
       expect(result.outcome).toBe('completed');
       expect(result.success).toBe(true);
       expect(completed).toHaveLength(1);
-      expect(completed[0]!.nodeId).toBe('fast_node');
+      expect(completed[0]!.node.id).toBe('fast_node');
 
       const signal = node.capturedSignal!;
       expect(signal).toBeDefined();
@@ -1368,7 +1386,7 @@ describe('runScheduler', () => {
 
       nodeA.resolve({ status: 'exited', failure: false });
 
-      await waitForEvent(emitter, 'node_cancelled', (e) => e.nodeId === 'nodeB');
+      await waitForEvent(publisher, 'node.cancelled', (e) => e.node.id === 'nodeB');
 
       let settled = false;
       void schedulerDone.then(() => {
@@ -1398,7 +1416,7 @@ describe('runScheduler', () => {
 
       nodeA.resolve({ status: 'exited', failure: false });
 
-      await waitForEvent(emitter, 'node_cancelled', (e) => e.nodeId === 'nodeB');
+      await waitForEvent(publisher, 'node.cancelled', (e) => e.node.id === 'nodeB');
 
       nodeB.resolve({ status: 'completed', result: {} });
 
@@ -1426,6 +1444,131 @@ describe('runScheduler', () => {
       const nodeB = new StubNode({ id: 'nodeB', depends_on: ['nodeA'] });
 
       await expect(runScheduler([nodeA, nodeB], makeCtx(), options)).rejects.toThrow('2');
+    });
+  });
+
+  describe('event identity (NodeRef)', () => {
+    it('publishes node.started once per attempt, numbering attempts from 1', async () => {
+      const node = new SequencedNode(
+        { id: 'flaky', retries: { max_attempts: 1, initial_delay_ms: 1 } },
+        [
+          { status: 'failed', error: new Error('first try') },
+          { status: 'completed', result: {} },
+        ]
+      );
+      const started = collectEvents(publisher, 'node.started');
+      const completed = collectEvents(publisher, 'node.completed');
+
+      const result = await runScheduler([node], makeCtx(), options);
+
+      expect(result.success).toBe(true);
+      expect(started.map((e) => e.node.attempt)).toEqual([1, 2]);
+      expect(completed.map((e) => e.node.attempt)).toEqual([2]);
+    });
+
+    it('binds the publish and output a node receives to its own attempt', async () => {
+      const node = new (class extends BaseNode {
+        public run(runOptions: NodeRunOptions): Promise<NodeRunResult> {
+          runOptions.output('stdout', 'hello');
+
+          return Promise.resolve({ status: 'completed', result: {} });
+        }
+      })({ id: 'talker', name: 'Talker' });
+      const output = collectEvents(publisher, 'node.output');
+
+      await runScheduler([node], makeCtx(), options);
+
+      expect(output).toHaveLength(1);
+      expect(output[0]!.node).toMatchObject({ id: 'talker', name: 'Talker', attempt: 1 });
+      expect(output[0]!.data).toEqual({ stream: 'stdout', text: 'hello' });
+    });
+
+    it('gives a top-level node the path [id]', async () => {
+      const node = new StubNode({ id: 'top' });
+      const started = collectEvents(publisher, 'node.started');
+
+      await runScheduler([node], makeCtx(), options);
+
+      expect(started[0]!.node.path).toEqual(['top']);
+    });
+
+    it("prefixes a node's path with the scheduler's context path", async () => {
+      const node = new StubNode({ id: 'inner' });
+      const started = collectEvents(publisher, 'node.started');
+
+      await runScheduler([node], makeCtx({ path: ['outer_loop', 2] }), options);
+
+      expect(started[0]!.node.path).toEqual(['outer_loop', 2, 'inner']);
+    });
+
+    it("sets type from the node class's static type", async () => {
+      const typed = new (class extends StubNode {
+        public static override readonly type = 'custom';
+      })({ id: 'typed' });
+      const started = collectEvents(publisher, 'node.started');
+
+      await runScheduler([typed], makeCtx(), options);
+
+      expect(started[0]!.node.type).toBe('custom');
+    });
+
+    it('skips by if with reason "if" and attempt 0', async () => {
+      const node = new StubNode({ id: 'gated', if: 'false' });
+      const skipped = collectEvents(publisher, 'node.skipped');
+
+      await runScheduler([node], makeCtx(), options);
+
+      expect(skipped).toHaveLength(1);
+      expect(skipped[0]!.data.reason).toBe('if');
+      expect(skipped[0]!.node.attempt).toBe(0);
+    });
+
+    it('skips a dependent of a skipped node with reason "dependency_skipped"', async () => {
+      const gated = new StubNode({ id: 'gated', if: 'false' });
+      const dependent = new StubNode({ id: 'dependent', depends_on: ['gated'] });
+      const skipped = collectEvents(publisher, 'node.skipped');
+
+      await runScheduler([gated, dependent], makeCtx(), options);
+
+      expect(skipped.map((e) => [e.node.id, e.data.reason, e.node.attempt])).toEqual([
+        ['gated', 'if', 0],
+        ['dependent', 'dependency_skipped', 0],
+      ]);
+    });
+
+    it('publishes node.cancelled with the attempt that was in flight', async () => {
+      // Attempt 1 fails; attempt 2 hangs until the scheduler aborts it.
+      let attempts = 0;
+      let markSecondStarted!: () => void;
+      const secondStarted = new Promise<void>((resolve) => {
+        markSecondStarted = resolve;
+      });
+      const flaky = new (class extends BaseNode {
+        public run(runOptions: NodeRunOptions): Promise<NodeRunResult> {
+          attempts += 1;
+          if (attempts === 1) {
+            return Promise.resolve({ status: 'failed', error: new Error('first try') });
+          }
+
+          markSecondStarted();
+
+          return new Promise((resolve) => {
+            runOptions.signal.addEventListener('abort', () => {
+              resolve({ status: 'failed', error: new Error('aborted') });
+            });
+          });
+        }
+      })({ id: 'flaky', retries: { max_attempts: 1, initial_delay_ms: 1 } });
+      const exiter = new DeferredNode({ id: 'exiter' });
+      const cancelled = collectEvents(publisher, 'node.cancelled');
+
+      const schedulerDone = runScheduler([flaky, exiter], makeCtx(), options);
+      await Promise.all([secondStarted, exiter.started]);
+      exiter.resolve({ status: 'exited', failure: false });
+      await schedulerDone;
+
+      expect(cancelled).toHaveLength(1);
+      expect(cancelled[0]!.node).toMatchObject({ id: 'flaky', attempt: 2 });
     });
   });
 });

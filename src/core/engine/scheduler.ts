@@ -1,5 +1,9 @@
 import type { EngineEmitter } from './emitter.ts';
 import { EngineError, NodeError } from './errors.ts';
+import type { EventPublisher } from './event-publisher.ts';
+import { bindNodeEvents } from './event-publisher.ts';
+import type { NodeRef } from './events.ts';
+import { serializeError } from './events.ts';
 import type {
   BaseNode,
   ExecutionContext,
@@ -13,11 +17,15 @@ export type NodeStatus = 'pending' | 'in_flight' | 'skipped' | 'completed' | 'fa
 interface NodeStateEntry {
   node: BaseNode;
   status: NodeStatus;
+  // The attempt in flight or last run, 1-based; 0 until the node is dispatched.
+  attempt: number;
 }
 
 export interface SchedulerOptions {
   platform?: PlatformRuntime | undefined;
+  // Still carries approval_requested, the interactive handshake; lifecycle events go to publisher.
   emitter: EngineEmitter;
+  publisher: EventPublisher;
   // External cancellation signal (e.g. a LoopNode's attempt signal). When it fires, the scheduler
   // stops dispatching, drains in-flight nodes through the grace period, and aborts node runs.
   signal?: AbortSignal | undefined;
@@ -100,10 +108,11 @@ const runWithTimeout = (
   });
 };
 
+// startAttempt is called once per attempt, right before it runs, with the 1-based attempt number.
 const runWithRetry = async (
   node: BaseNode,
   schedulerSignal: AbortSignal,
-  buildOptions: (signal: AbortSignal) => Parameters<BaseNode['run']>[0]
+  startAttempt: (attempt: number, signal: AbortSignal) => Parameters<BaseNode['run']>[0]
 ): Promise<NodeRunResult> => {
   const maxAttempts = node.retries?.max_attempts ?? RETRY_DEFAULTS.max_attempts;
   const initialDelayMs = node.retries?.initial_delay_ms ?? RETRY_DEFAULTS.initial_delay_ms;
@@ -133,7 +142,7 @@ const runWithRetry = async (
 
     try {
       const result = await runWithTimeout(
-        node.run(buildOptions(attemptSignal)),
+        node.run(startAttempt(attempt + 1, attemptSignal)),
         node.timeout,
         node,
         attemptController
@@ -157,14 +166,14 @@ export const runScheduler = async (
   ctx: ExecutionContext,
   options: SchedulerOptions
 ): Promise<SchedulerResult> => {
-  const { platform, emitter } = options;
+  const { platform, emitter, publisher } = options;
   const externalSignal = options.signal;
 
   // Mutable needs map — shared by reference across all concurrent dispatches so nodes always see the latest completed results
   const needs = new Map<string, NodeResult>(ctx.needs);
 
   const state = new Map<string, NodeStateEntry>(
-    nodes.map((node) => [node.id, { node, status: 'pending' }])
+    nodes.map((node) => [node.id, { node, status: 'pending', attempt: 0 }])
   );
 
   let hasFailure = false;
@@ -183,12 +192,20 @@ export const runScheduler = async (
 
   const buildCtx = (): ExecutionContext => ({ ...ctx, needs });
 
-  // Marks all in-flight nodes as cancelled, emits node_cancelled for each, then signals the abort controller
+  const nodeRef = (node: BaseNode, attempt: number): NodeRef => ({
+    id: node.id,
+    name: node.displayName(),
+    type: node.type(),
+    path: [...ctx.path, node.id],
+    attempt,
+  });
+
+  // Marks all in-flight nodes as cancelled, publishes node.cancelled for each, then signals the abort controller
   const cancelInFlight = (): void => {
-    for (const [nodeId, e] of state.entries()) {
+    for (const e of state.values()) {
       if (e.status === 'in_flight') {
         e.status = 'cancelled';
-        emitter.emit('node_cancelled', { nodeId, nodeName: e.node.displayName() });
+        publisher.publishNodeEvent(nodeRef(e.node, e.attempt), 'node.cancelled', {});
       }
     }
 
@@ -200,16 +217,23 @@ export const runScheduler = async (
 
     entry.status = 'in_flight';
     pendingCount--;
-    emitter.emit('node_started', { nodeId: node.id, nodeName: node.displayName() });
 
-    const buildOptions = (signal: AbortSignal): Parameters<BaseNode['run']>[0] => ({
-      ctx: buildCtx(),
-      platform,
-      emitter,
-      signal,
-    });
+    const startAttempt = (attempt: number, signal: AbortSignal): Parameters<BaseNode['run']>[0] => {
+      entry.attempt = attempt;
+      const ref = nodeRef(node, attempt);
+      publisher.publishNodeEvent(ref, 'node.started', {});
 
-    const promise = runWithRetry(node, nodeRunSignal, buildOptions).then((result) => {
+      return {
+        ctx: buildCtx(),
+        platform,
+        emitter,
+        signal,
+        publisher,
+        ...bindNodeEvents(publisher, ref),
+      };
+    };
+
+    const promise = runWithRetry(node, nodeRunSignal, startAttempt).then((result) => {
       // Once a control-flow signal (exit/break) is recorded or this node was cancelled, discard the settlement
       if (exitResult || broke || entry.status === 'cancelled') {
         return;
@@ -222,7 +246,10 @@ export const runScheduler = async (
 
           cancelInFlight();
 
-          emitter.emit('workflow_exited', { reason: result.reason, failure: result.failure });
+          publisher.publishRunEvent('run.exited', {
+            ...(result.reason !== undefined ? { reason: result.reason } : {}),
+            failure: result.failure,
+          });
 
           return;
 
@@ -239,9 +266,7 @@ export const runScheduler = async (
           entry.status = 'completed';
 
           needs.set(node.id, result.result);
-          emitter.emit('node_completed', {
-            nodeId: node.id,
-            nodeName: node.displayName(),
+          publisher.publishNodeEvent(nodeRef(node, entry.attempt), 'node.completed', {
             result: result.result,
           });
 
@@ -250,13 +275,13 @@ export const runScheduler = async (
         case 'failed':
           entry.status = 'failed';
           hasFailure = true;
-          emitter.emit('node_failed', {
-            nodeId: node.id,
-            nodeName: node.displayName(),
-            error: new NodeError('Node failed', 'ENGINE_NODE_FAILED', node.id, {
-              nodeName: node.name,
-              cause: result.error,
-            }),
+          publisher.publishNodeEvent(nodeRef(node, entry.attempt), 'node.failed', {
+            error: serializeError(
+              new NodeError('Node failed', 'ENGINE_NODE_FAILED', node.id, {
+                nodeName: node.name,
+                cause: result.error,
+              })
+            ),
           });
       }
     });
@@ -307,9 +332,8 @@ export const runScheduler = async (
         if (anySkipped) {
           entry.status = 'skipped';
           pendingCount--;
-          emitter.emit('node_skipped', {
-            nodeId: entry.node.id,
-            nodeName: entry.node.displayName(),
+          publisher.publishNodeEvent(nodeRef(entry.node, 0), 'node.skipped', {
+            reason: 'dependency_skipped',
           });
           progressed = true;
 
@@ -324,14 +348,14 @@ export const runScheduler = async (
           entry.status = 'failed';
           pendingCount--;
           hasFailure = true;
-          emitter.emit('node_failed', {
-            nodeId: entry.node.id,
-            nodeName: entry.node.displayName(),
-            error: new NodeError(
-              'Failed to evaluate if expression',
-              'ENGINE_NODE_IF_ERROR',
-              entry.node.id,
-              { nodeName: entry.node.name, cause: err }
+          publisher.publishNodeEvent(nodeRef(entry.node, 0), 'node.failed', {
+            error: serializeError(
+              new NodeError(
+                'Failed to evaluate if expression',
+                'ENGINE_NODE_IF_ERROR',
+                entry.node.id,
+                { nodeName: entry.node.name, cause: err }
+              )
             ),
           });
 
@@ -341,10 +365,7 @@ export const runScheduler = async (
         if (!shouldRun) {
           entry.status = 'skipped';
           pendingCount--;
-          emitter.emit('node_skipped', {
-            nodeId: entry.node.id,
-            nodeName: entry.node.displayName(),
-          });
+          publisher.publishNodeEvent(nodeRef(entry.node, 0), 'node.skipped', { reason: 'if' });
           progressed = true;
 
           continue;
@@ -379,7 +400,7 @@ export const runScheduler = async (
   }
 
   // On external abort (and not already torn down by exit/break), mark in-flight nodes cancelled and
-  // emit node_cancelled for each, mirroring the exit/break teardown.
+  // publish node.cancelled for each, mirroring the exit/break teardown.
   if (externalSignal?.aborted && !(exitResult || broke)) {
     cancelInFlight();
   }

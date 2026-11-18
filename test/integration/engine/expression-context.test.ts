@@ -8,42 +8,28 @@ import { join } from 'node:path';
 
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 
-import type {
-  EngineEmitter,
-  EngineEventMap,
-  NodeResult,
-} from '../../../src/core/engine/emitter.ts';
-import { createEngineEmitter } from '../../../src/core/engine/emitter.ts';
+import type { NodeResult } from '../../../src/core/engine/emitter.ts';
+import type { SerializedError } from '../../../src/core/engine/events.ts';
 import type { WorkflowResult } from '../../../src/core/engine/workflow.ts';
 import { Workflow } from '../../../src/core/engine/workflow.ts';
-
-const collectEvents = <K extends keyof EngineEventMap>(
-  emitter: EngineEmitter,
-  event: K
-): EngineEventMap[K][0][] => {
-  const events: EngineEventMap[K][0][] = [];
-  emitter.on(event, (payload) => {
-    events.push(payload);
-  });
-
-  return events;
-};
+import type { EventOf } from '../../unit/core/engine/_events.ts';
+import { recordEvents, resultOf } from '../../unit/core/engine/_events.ts';
 
 interface RunOutcome {
   readonly result: WorkflowResult;
-  readonly started: EngineEventMap['node_started'][0][];
-  readonly completed: EngineEventMap['node_completed'][0][];
-  readonly failed: EngineEventMap['node_failed'][0][];
+  readonly started: EventOf<'node.started'>[];
+  readonly completed: EventOf<'node.completed'>[];
+  readonly failed: EventOf<'node.failed'>[];
 }
 
 const runWorkflow = async (yaml: string): Promise<RunOutcome> => {
   const workflow = await Workflow.from(yaml);
-  const emitter = createEngineEmitter();
-  const started = collectEvents(emitter, 'node_started');
-  const completed = collectEvents(emitter, 'node_completed');
-  const failed = collectEvents(emitter, 'node_failed');
+  const recorder = recordEvents();
+  const started = recorder.collect('node.started');
+  const completed = recorder.collect('node.completed');
+  const failed = recorder.collect('node.failed');
 
-  const result = await workflow.run({ inputs: {}, emitter });
+  const result = await workflow.run({ inputs: {}, onEvent: recorder.onEvent });
 
   return { result, started, completed, failed };
 };
@@ -51,7 +37,7 @@ const runWorkflow = async (yaml: string): Promise<RunOutcome> => {
 // A node inside a loop completes once per body execution, so these return one entry per
 // execution, in order.
 const resultsOf = (run: RunOutcome, nodeId: string): NodeResult[] =>
-  run.completed.filter((event) => event.nodeId === nodeId).map((event) => event.result);
+  run.completed.filter((event) => event.node.id === nodeId).map(resultOf);
 
 const outputsOf = (run: RunOutcome, nodeId: string): unknown[] =>
   resultsOf(run, nodeId).map((result) => result['output']);
@@ -65,13 +51,17 @@ const loopOutputsOf = (run: RunOutcome, nodeId: string, execution = 0): Record<s
   return result['output'] as Record<string, unknown>;
 };
 
-const startedIds = (run: RunOutcome): string[] => run.started.map((event) => event.nodeId);
+const startedIds = (run: RunOutcome): string[] => run.started.map((event) => event.node.id);
+
+// Every message along a serialized error's cause chain, outermost first.
+const errorChainText = (error: SerializedError | undefined): string[] =>
+  error === undefined ? [] : [`${error.name}: ${error.message}`, ...errorChainText(error.cause)];
 
 // Empty when the node never failed.
 const failureTextFor = (run: RunOutcome, nodeId: string): string =>
   run.failed
-    .filter((event) => event.nodeId === nodeId)
-    .map((event) => String(event.error))
+    .filter((event) => event.node.id === nodeId)
+    .flatMap((event) => errorChainText(event.data.error))
     .join('\n');
 
 const indentBlock = (block: string, spaces: number): string =>

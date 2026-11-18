@@ -9,6 +9,7 @@ import { createEngineEmitter } from '../../../../../src/core/engine/emitter.ts';
 import { ApprovalNode } from '../../../../../src/core/engine/nodes/approval.ts';
 import type { ExecutionContext, NodeRunResult } from '../../../../../src/core/engine/nodes/base.ts';
 import type { BaseNode } from '../../../../../src/core/engine/nodes/base.ts';
+import { collectEvents, eventOptions } from '../_events.ts';
 
 const makeCtx = (
   inputs: Record<string, string | number | bigint | boolean> = {}
@@ -19,6 +20,7 @@ const makeCtx = (
   cwd: '/tmp/work',
   heimdall: { run_cwd: '/tmp/work', session_dir: '/tmp/session' },
   scopes: new Map(),
+  path: [],
 });
 
 const makeNode = (raw: Record<string, unknown>): BaseNode<NodeRunResult> => ApprovalNode.parse(raw);
@@ -39,6 +41,7 @@ const runWithResolve = (
     ctx,
     emitter,
     signal: new AbortController().signal,
+    ...eventOptions(),
   });
 
   if (!capturedResolve) {
@@ -68,6 +71,7 @@ describe('ApprovalNode', () => {
         ctx: makeCtx(),
         emitter,
         signal: new AbortController().signal,
+        ...eventOptions(),
       });
 
       expect(capturedNodeId).toBe('approval1');
@@ -90,6 +94,7 @@ describe('ApprovalNode', () => {
         ctx: makeCtx({ name: 'World' }),
         emitter,
         signal: new AbortController().signal,
+        ...eventOptions(),
       });
 
       expect(capturedMessage).toBe('Hello World');
@@ -112,6 +117,7 @@ describe('ApprovalNode', () => {
         ctx: makeCtx(),
         emitter,
         signal: new AbortController().signal,
+        ...eventOptions(),
       });
 
       expect(capturedEnableFeedback).toBe(true);
@@ -131,6 +137,7 @@ describe('ApprovalNode', () => {
         ctx: makeCtx(),
         emitter,
         signal: new AbortController().signal,
+        ...eventOptions(),
       });
 
       expect(capturedEnableFeedback).toBe(false);
@@ -301,6 +308,7 @@ describe('ApprovalNode', () => {
         ctx: makeCtx(),
         emitter,
         signal: AbortSignal.abort(),
+        ...eventOptions(),
       });
 
       expect(result.status).toBe('failed');
@@ -324,6 +332,7 @@ describe('ApprovalNode', () => {
         ctx: makeCtx(),
         emitter,
         signal: controller.signal,
+        ...eventOptions(),
       });
 
       expect(requestedEvents).toHaveLength(1);
@@ -354,6 +363,7 @@ describe('ApprovalNode', () => {
         ctx: makeCtx(),
         emitter,
         signal: new AbortController().signal,
+        ...eventOptions(),
       });
 
       if (!capturedResolve) {
@@ -389,11 +399,126 @@ describe('ApprovalNode', () => {
           ctx: makeCtx(),
           emitter,
           signal: new AbortController().signal,
+          ...eventOptions(),
         })
       ).rejects.toMatchObject({
         name: 'NodeError',
         code: 'ENGINE_APPROVAL_NO_LISTENER',
       });
+    });
+  });
+
+  describe('approval events', () => {
+    // Runs the node with a listener that records the order of emitter and publisher activity.
+    const runRecording = (
+      raw: Record<string, unknown>,
+      signal: AbortSignal = new AbortController().signal
+    ): {
+      collected: ReturnType<typeof collectEvents>;
+      order: string[];
+      requests: ApprovalRequestedEvent[];
+      runPromise: Promise<NodeRunResult>;
+    } => {
+      const collected = collectEvents();
+      const order: string[] = [];
+      const requests: ApprovalRequestedEvent[] = [];
+      collected.publisher.subscribe((e) => order.push(e.type));
+      const emitter = createEngineEmitter();
+      emitter.on('approval_requested', (event) => {
+        order.push('approval_requested');
+        requests.push(event);
+      });
+
+      const runPromise = makeNode(raw).run({
+        ctx: makeCtx(),
+        emitter,
+        signal,
+        ...eventOptions(collected.publisher),
+      });
+
+      return { collected, order, requests, runPromise };
+    };
+
+    it('publishes approval.requested before emitting approval_requested', async () => {
+      const { collected, order, requests, runPromise } = runRecording({
+        id: 'gate',
+        approval: { message: 'Ship it?', enable_feedback: true },
+      });
+
+      expect(order).toEqual(['approval.requested', 'approval_requested']);
+      expect(collected.ofType('approval.requested')[0]!.data).toEqual({
+        message: 'Ship it?',
+        enableFeedback: true,
+      });
+
+      requests[0]!.resolve({ approved: true });
+      await runPromise;
+    });
+
+    it('publishes approval.resolved with the decision and feedback', async () => {
+      const { collected, requests, runPromise } = runRecording({
+        id: 'gate',
+        approval: { message: 'Ship it?', enable_feedback: true },
+      });
+
+      requests[0]!.resolve({ approved: false, feedback: 'add tests' });
+      await runPromise;
+
+      expect(collected.ofType('approval.resolved').map((e) => e.data)).toEqual([
+        { approved: false, feedback: 'add tests' },
+      ]);
+    });
+
+    it('leaves feedback out of approval.resolved when feedback is not enabled', async () => {
+      const { collected, requests, runPromise } = runRecording({
+        id: 'gate',
+        approval: { message: 'Ship it?' },
+      });
+
+      requests[0]!.resolve({ approved: true, feedback: 'ignored' });
+      await runPromise;
+
+      expect(collected.ofType('approval.resolved')[0]!.data).toEqual({ approved: true });
+    });
+
+    it('publishes approval.resolved even when a decline exits the run', async () => {
+      const { collected, requests, runPromise } = runRecording({
+        id: 'gate',
+        approval: { message: 'Ship it?', exit_on_no: true },
+      });
+
+      requests[0]!.resolve({ approved: false });
+
+      await expect(runPromise).resolves.toMatchObject({ status: 'exited' });
+      expect(collected.ofType('approval.resolved')[0]!.data).toEqual({ approved: false });
+    });
+
+    it('publishes no approval.resolved when the approval is cancelled', async () => {
+      const controller = new AbortController();
+      const { collected, runPromise } = runRecording(
+        { id: 'gate', approval: { message: 'Ship it?' } },
+        controller.signal
+      );
+
+      controller.abort();
+      await runPromise;
+
+      expect(collected.types()).toEqual(['approval.requested']);
+    });
+
+    it('publishes one approval.resolved when resolve is called twice', async () => {
+      const { collected, requests, runPromise } = runRecording({
+        id: 'gate',
+        approval: { message: 'Ship it?' },
+      });
+
+      requests[0]!.resolve({ approved: true });
+      expect(() => {
+        requests[0]!.resolve({ approved: false });
+      }).toThrow(expect.objectContaining({ code: 'ENGINE_APPROVAL_DOUBLE_RESOLVE' }));
+      await runPromise;
+
+      expect(collected.ofType('approval.resolved')).toHaveLength(1);
     });
   });
 

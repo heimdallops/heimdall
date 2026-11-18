@@ -116,8 +116,29 @@ describe('heimdall run — integration', () => {
 
       const result = await execa('node', [cliPath, 'run', filePath], { reject: false });
 
-      // node_completed fires → printer.success("Node completed: step1")
+      // node.completed is published → printer.success("Node completed: step1")
       expect(result.stderr).toMatch(/complet/i);
+    });
+
+    it('prints "Node started:" once per attempt for a node that is retried', async () => {
+      // Fails on the first attempt (creating the marker), succeeds on the retry.
+      const marker = join(tmpDir, 'attempted');
+      const filePath = await writeWorkflow(
+        'workflow.yaml',
+        `
+name: retrying
+nodes:
+  - id: flaky
+    retries: { max_attempts: 1, initial_delay_ms: 10 }
+    bash: 'if [ -f "${marker}" ]; then exit 0; else touch "${marker}"; exit 1; fi'
+`.trimStart()
+      );
+
+      const result = await execa('node', [cliPath, 'run', filePath], { reject: false });
+
+      expect(result.exitCode).toBe(0);
+      expect(result.stderr.match(/Node started: flaky/g)).toHaveLength(2);
+      expect(result.stderr.match(/Node completed: flaky/g)).toHaveLength(1);
     });
   });
 
@@ -147,7 +168,7 @@ describe('heimdall run — integration', () => {
 
       const result = await execa('node', [cliPath, 'run', filePath], { reject: false });
 
-      // The missing-input check runs before workflow.run() so no node_started fires
+      // The missing-input check runs before workflow.run() so no node.started fires
       expect(result.stderr).not.toMatch(/node started/i);
     });
   });

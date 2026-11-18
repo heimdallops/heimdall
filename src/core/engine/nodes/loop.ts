@@ -32,6 +32,8 @@ export class LoopNode extends BaseNode<NodeRunCompleted | NodeRunExited | NodeRu
   private readonly bodyNodes: BaseNode[];
   private readonly outputs: Record<string, string> | undefined;
 
+  public static override readonly type = 'loop';
+
   public static matches(raw: Record<string, unknown>): boolean {
     return 'loop' in raw;
   }
@@ -89,7 +91,7 @@ export class LoopNode extends BaseNode<NodeRunCompleted | NodeRunExited | NodeRu
   public override async run(
     options: NodeRunOptions
   ): Promise<NodeRunCompleted | NodeRunExited | NodeRunFailed> {
-    const { ctx, platform, emitter, signal } = options;
+    const { ctx, platform, emitter, publisher, signal } = options;
 
     const loopNeeds = selectDeclaredNeeds(ctx.needs, this.getDependencies());
 
@@ -116,11 +118,14 @@ export class LoopNode extends BaseNode<NodeRunCompleted | NodeRunExited | NodeRu
           prev: lastIterationNodes,
           index: completedIterations,
         } satisfies LoopScopeEntry),
+        // The iteration index is a JSON number; event paths never carry BigInts.
+        path: [...ctx.path, this.id, Number(completedIterations)],
       };
 
       const res = await runScheduler(this.bodyNodes, innerCtx, {
         platform,
         emitter,
+        publisher,
         signal,
       });
 

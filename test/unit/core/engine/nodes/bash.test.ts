@@ -13,6 +13,7 @@ import type {
   NodeRunResult,
 } from '../../../../../src/core/engine/nodes/base.ts';
 import { BashNode } from '../../../../../src/core/engine/nodes/bash.ts';
+import { eventOptions } from '../_events.ts';
 
 const makeCtx = (overrides: Partial<ExecutionContext> = {}): ExecutionContext => ({
   inputs: {},
@@ -23,6 +24,7 @@ const makeCtx = (overrides: Partial<ExecutionContext> = {}): ExecutionContext =>
   cwd: tmpdir(),
   heimdall: { run_cwd: tmpdir(), session_dir: '/tmp' },
   scopes: new Map(),
+  path: [],
   ...overrides,
 });
 
@@ -31,7 +33,7 @@ const emitter = createEngineEmitter();
 const makeNode = (raw: Record<string, unknown>): BashNode => BashNode.parse(raw);
 
 const run = (node: BashNode, ctx: ExecutionContext = makeCtx()): Promise<NodeRunResult> =>
-  node.run({ ctx, emitter, signal: new AbortController().signal });
+  node.run({ ctx, emitter, signal: new AbortController().signal, ...eventOptions() });
 
 const catchRejection = async (promise: Promise<unknown>): Promise<unknown> => {
   try {
@@ -462,6 +464,7 @@ describe('BashNode', () => {
         ctx: makeCtx(),
         emitter,
         signal: abortedSignal,
+        ...eventOptions(),
       });
 
       expect(result.status).toBe('failed');
@@ -478,6 +481,7 @@ describe('BashNode', () => {
         ctx: makeCtx(),
         emitter,
         signal: controller.signal,
+        ...eventOptions(),
       });
 
       controller.abort();
